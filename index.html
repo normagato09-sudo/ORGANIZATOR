@@ -776,9 +776,15 @@ function showAuthView(name){
 
 async function enterApp(user){
   currentUser = { id: user.id, username: user.username };
-  document.body.classList.remove('logged-out');
   $('account-username').textContent = currentUser.username;
+  // PARTE 22.2: el contenedor .app permanece oculto (body sigue con la clase
+  // "logged-out") mientras se cargan los datos de ESTA cuenta. Antes se
+  // revelaba .app inmediatamente, así que si alguien cerraba sesión e
+  // iniciaba sesión con otra cuenta sin recargar la página, durante el
+  // tiempo que tardaba loadState() en responder se podía ver un instante
+  // el DOM ya pintado de la cuenta anterior (tareas, etc.).
   await loadState();
+  document.body.classList.remove('logged-out');
 }
 
 function backToLoginScreen(){
