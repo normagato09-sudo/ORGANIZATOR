@@ -3,20 +3,14 @@
 // Crea una cuenta nueva. El id de usuario se genera aquí, en el servidor;
 // el cliente nunca elige ni envía su propio id.
 
-const crypto = require('crypto');
 const { kv } = require('../../lib/kv');
-const { randomHex, hashPassword, setSessionCookie } = require('../../lib/auth');
+const { randomHex, genRecoveryCode, hashPassword, setSessionCookie } = require('../../lib/auth');
 
 function usernameKey(usernameLower) {
   return 'idx:username:' + usernameLower;
 }
 function userKey(id) {
   return 'user:' + id;
-}
-
-function genRecoveryCode() {
-  const part = () => crypto.randomBytes(3).toString('hex').toUpperCase();
-  return `${part()}-${part()}-${part()}`;
 }
 
 module.exports = async (req, res) => {
