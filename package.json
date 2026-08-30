@@ -5,11 +5,10 @@
   "engines": {
     "node": ">=18.x"
   },
-  "dependencies": {
-    "@vercel/kv": "^2.0.0",
-    "@anthropic-ai/sdk": "^0.32.0"
+  "scripts": {
+    "dev": "node dev-server.js"
   },
-  "devDependencies": {
-    "vercel": "^37.0.0"
+  "dependencies": {
+    "redis": "^4.7.0"
   }
 }
