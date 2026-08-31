@@ -1,0 +1,13 @@
+# Secretos y configuración local — nunca subir a Git
+.env
+.env.local
+.env.*.local
+
+# Dependencias instaladas
+node_modules/
+
+# Almacenamiento local de desarrollo (fallback sin Redis)
+.local-kv.json
+
+# Logs
+*.log
