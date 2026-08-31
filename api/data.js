@@ -11,6 +11,12 @@ const { requireAuth } = require('../lib/auth');
 
 const ALLOWED_TYPES = new Set(['planner', 'chat']);
 
+// 2 MB es de sobra para los datos de planificación de una sola cuenta
+// (tareas, hábitos, objetivos, exámenes, estadísticas...), que son texto/
+// JSON, no ficheros. Sirve para evitar que una cuenta (o un bug del
+// frontend) intente guardar payloads desproporcionados.
+const MAX_DATA_BYTES = 2 * 1024 * 1024;
+
 function dataKey(userId, type) {
   return 'data:' + userId + ':' + type;
 }
@@ -39,6 +45,16 @@ module.exports = async (req, res) => {
   if (req.method === 'POST') {
     try {
       const { data } = req.body || {};
+
+      const size = Buffer.byteLength(JSON.stringify(data === undefined ? null : data), 'utf8');
+      if (size > MAX_DATA_BYTES) {
+        res.status(413).json({
+          error: 'Los datos que intentas guardar son demasiado grandes.',
+          maxBytes: MAX_DATA_BYTES,
+        });
+        return;
+      }
+
       await kv.set(dataKey(userId, type), data);
       res.status(200).json({ ok: true });
     } catch (e) {
