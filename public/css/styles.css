@@ -1,0 +1,734 @@
+/* public/css/styles.css
+ *
+ * Estilos de ORGANIZATOR. CSS plano, sin frameworks.
+ *
+ * Los colores y tipografía se definen como variables en :root para no
+ * repetir valores sueltos y para que el planner (siguiente fase) use
+ * exactamente la misma paleta sin duplicar código.
+ */
+
+:root {
+  --paper: #f7f7f5;
+  --ink: #1c1f26;
+  --ink-soft: #5b6270;
+  --line: #dcdee3;
+  --accent: #2f5d50;
+  --accent-hover: #244a40;
+  --alert: #b3261e;
+  --alert-bg: #fbebea;
+
+  --radius: 6px;
+  --font: system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+/* Clave: esto es lo que oculta auth-screen o app-screen según toque */
+.hidden {
+  display: none !important;
+}
+
+.screen {
+  min-height: 100vh;
+}
+
+/* --- Pantalla de login/registro --- */
+
+#auth-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 48px 16px;
+}
+
+#auth-screen h1 {
+  margin: 0 0 4px 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.auth-box {
+  width: 100%;
+  max-width: 320px;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.auth-box h2 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.auth-box form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-box label {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.auth-box input {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--ink);
+  margin-bottom: 12px;
+  background: #ffffff;
+}
+
+.auth-box input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.auth-box button {
+  margin-top: 2px;
+  padding: 9px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.auth-box button:hover {
+  background: var(--accent-hover);
+}
+
+.auth-box button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+.error {
+  color: var(--alert);
+  background: var(--alert-bg);
+  border: 1px solid #f2c6c4;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  max-width: 320px;
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* --- Pantalla de la app --- */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+.user-bar strong {
+  color: var(--ink);
+}
+
+.user-bar button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.user-bar button:hover {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+}
+
+#app-screen main {
+  padding: 24px;
+}
+/* --- Layout del planner --- */
+
+.app-body {
+  display: flex;
+  min-height: calc(100vh - 49px); /* resta la altura del header */
+}
+
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: #ffffff;
+  border-right: 1px solid var(--line);
+  padding: 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-item {
+  text-align: left;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.nav-item:hover {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.nav-item.active {
+  background: var(--paper);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.content {
+  flex: 1;
+  padding: 24px 32px;
+}
+
+.section h2 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.placeholder {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+/* Barra de pestañas inferior: solo visible en móvil */
+.tabbar {
+  display: none;
+}
+
+/* --- Responsive: móvil --- */
+
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+
+  .content {
+    padding: 16px;
+    padding-bottom: 72px; /* deja hueco para que la tabbar no tape contenido */
+  }
+
+  .tabbar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    border-top: 1px solid var(--line);
+    padding: 6px 4px;
+  }
+
+  .tab-item {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 6px 2px;
+    cursor: pointer;
+  }
+
+  .tab-item.active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+}
+
+/* --- Tareas y listas del planner --- */
+
+.inline-form {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  max-width: 420px;
+}
+
+.inline-form input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.inline-form input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.inline-form button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.inline-form button:hover {
+  background: var(--accent-hover);
+}
+
+.item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 420px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.item-text {
+  flex: 1;
+  font-size: 14px;
+}
+
+.item-text.done {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.item-delete {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.item-delete:hover {
+  color: var(--alert);
+}
+
+/* --- Hábitos --- */
+
+.item-habito {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.habito-info {
+  flex: 1;
+}
+
+.habito-nombre {
+  font-size: 14px;
+  display: block;
+}
+
+.habito-racha {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.habito-boton {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.habito-boton:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.habito-boton:disabled {
+  background: var(--paper);
+  color: var(--accent);
+  border-color: var(--line);
+  cursor: default;
+}
+
+/* --- Objetivos --- */
+
+.objetivo-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  max-width: 460px;
+}
+
+.objetivo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.objetivo-nombre {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.objetivo-progreso-texto {
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.objetivo-barra {
+  height: 6px;
+  background: var(--paper);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.objetivo-barra-relleno {
+  height: 100%;
+  background: var(--accent);
+}
+
+.paso-lista {
+  list-style: none;
+  margin: 0 0 10px 0;
+  padding: 0;
+}
+
+.paso-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.paso-texto {
+  flex: 1;
+}
+
+.paso-texto.done {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.paso-form {
+  display: flex;
+  gap: 6px;
+}
+
+.paso-form input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.paso-form button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.paso-form button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+
+/* --- Objetivos --- */
+
+.objetivo-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  max-width: 460px;
+}
+
+.objetivo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.objetivo-nombre {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.objetivo-progreso-texto {
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.objetivo-barra {
+  height: 6px;
+  background: var(--paper);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.objetivo-barra-relleno {
+  height: 100%;
+  background: var(--accent);
+}
+
+.paso-lista {
+  list-style: none;
+  margin: 0 0 10px 0;
+  padding: 0;
+}
+
+.paso-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+
+.paso-texto {
+  flex: 1;
+}
+
+.paso-texto.done {
+  color: var(--ink-soft);
+  text-decoration: line-through;
+}
+
+.paso-form {
+  display: flex;
+  gap: 6px;
+}
+
+.paso-form input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.paso-form button {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.paso-form button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+
+/* --- Exámenes --- */
+
+.examen-form {
+  max-width: 420px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.examen-form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.examen-form input[type="text"] {
+  flex: 2;
+}
+
+.examen-form input[type="date"] {
+  flex: 1;
+}
+
+.examen-form input,
+.examen-form textarea {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.examen-form input:focus,
+.examen-form textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.examen-form button {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.examen-form button:hover {
+  background: var(--accent-hover);
+}
+
+.item-examen {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+  max-width: 460px;
+}
+
+.examen-info {
+  flex: 1;
+}
+
+.examen-nombre {
+  font-size: 14px;
+  font-weight: 600;
+  display: block;
+}
+
+.examen-fecha {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.examen-fecha.proxima {
+  color: var(--alert);
+  font-weight: 600;
+}
+
+.examen-notas {
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-top: 4px;
+  white-space: pre-wrap;
+}
+
+
+/* --- Estadísticas --- */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  max-width: 480px;
+}
+
+.stat-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.stat-value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ORGANIZATOR</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+  <!-- Pantalla de login/registro. Se muestra cuando no hay sesión activa. -->
+  <div id="auth-screen" class="screen">
+    <h1>ORGANIZATOR</h1>
+
+    <p id="auth-error" class="error hidden"></p>
+
+    <section class="auth-box">
+      <h2>Iniciar sesión</h2>
+      <form id="login-form">
+        <label for="login-username">Usuario</label>
+        <input type="text" id="login-username" required autocomplete="username">
+
+        <label for="login-password">Contraseña</label>
+        <input type="password" id="login-password" required autocomplete="current-password">
+
+        <button type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <section class="auth-box">
+      <h2>Crear cuenta</h2>
+      <form id="register-form">
+        <label for="register-username">Usuario (mínimo 3 caracteres)</label>
+        <input type="text" id="register-username" required autocomplete="username">
+
+        <label for="register-password">Contraseña (mínimo 6 caracteres)</label>
+        <input type="password" id="register-password" required autocomplete="new-password">
+
+        <button type="submit">Registrarme</button>
+      </form>
+    </section>
+  </div>
+
+  <!-- Pantalla de la app. Se muestra solo cuando hay sesión activa. -->
+  <div id="app-screen" class="screen hidden">
+    <header class="app-header">
+      <h1>ORGANIZATOR</h1>
+      <div class="user-bar">
+        <span>Hola, <strong id="current-username"></strong></span>
+        <button id="logout-button">Cerrar sesión</button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <nav class="sidebar" aria-label="Secciones">
+        <button class="nav-item active" data-section="tareas">Tareas</button>
+        <button class="nav-item" data-section="habitos">Hábitos</button>
+        <button class="nav-item" data-section="objetivos">Objetivos</button>
+        <button class="nav-item" data-section="examenes">Exámenes</button>
+        <button class="nav-item" data-section="estadisticas">Estadísticas</button>
+      </nav>
+
+      <main class="content">
+        <section id="section-tareas" class="section">
+          <h2>Tareas</h2>
+
+          <form id="tarea-form" class="inline-form">
+            <input type="text" id="tarea-texto" placeholder="Nueva tarea" required>
+            <button type="submit">Añadir</button>
+          </form>
+
+          <ul id="tarea-lista" class="item-list"></ul>
+
+          <p id="tarea-vacio" class="placeholder hidden">No hay tareas. Añade la primera.</p>
+        </section>
+
+        <section id="section-habitos" class="section hidden">
+          <h2>Hábitos</h2>
+
+          <form id="habito-form" class="inline-form">
+            <input type="text" id="habito-texto" placeholder="Nuevo hábito" required>
+            <button type="submit">Añadir</button>
+          </form>
+
+          <ul id="habito-lista" class="item-list"></ul>
+
+          <p id="habito-vacio" class="placeholder hidden">No hay hábitos. Añade el primero.</p>
+        </section>
+
+        <section id="section-objetivos" class="section hidden">
+          <h2>Objetivos</h2>
+
+          <form id="objetivo-form" class="inline-form">
+            <input type="text" id="objetivo-texto" placeholder="Nuevo objetivo" required>
+            <button type="submit">Añadir</button>
+          </form>
+
+          <div id="objetivo-lista"></div>
+
+          <p id="objetivo-vacio" class="placeholder hidden">No hay objetivos. Añade el primero.</p>
+        </section>
+
+        <section id="section-examenes" class="section hidden">
+          <h2>Exámenes</h2>
+
+          <form id="examen-form" class="examen-form">
+            <div class="examen-form-row">
+              <input type="text" id="examen-nombre" placeholder="Nombre del examen" required>
+              <input type="date" id="examen-fecha" required>
+            </div>
+            <textarea id="examen-notas" placeholder="Notas (opcional)" rows="2"></textarea>
+            <button type="submit">Añadir examen</button>
+          </form>
+
+          <ul id="examen-lista" class="item-list"></ul>
+
+          <p id="examen-vacio" class="placeholder hidden">No hay exámenes. Añade el primero.</p>
+        </section>
+        <section id="section-estadisticas" class="section hidden">
+          <h2>Estadísticas</h2>
+
+          <div class="stats-grid">
+            <div class="stat-box">
+              <span class="stat-label">Tareas completadas</span>
+              <span class="stat-value" id="stat-tareas">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Racha más larga</span>
+              <span class="stat-value" id="stat-racha">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Progreso medio de objetivos</span>
+              <span class="stat-value" id="stat-objetivos">—</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Próximo examen</span>
+              <span class="stat-value" id="stat-examen">—</span>
+            </div>
+          </div>
+               </section>
+      </main>
+    </div>
+
+    <nav class="tabbar" aria-label="Secciones">
+      <button class="tab-item active" data-section="tareas">Tareas</button>
+      <button class="tab-item" data-section="habitos">Hábitos</button>
+      <button class="tab-item" data-section="objetivos">Objetivos</button>
+      <button class="tab-item" data-section="examenes">Exámenes</button>
+      <button class="tab-item" data-section="estadisticas">Estadíst.</button>
+    </nav>
+  </div>
+
+  <!-- Orden importante: primero api.js, luego auth.js (auth.js usa las
+       funciones de api.js), y al final el arranque de la app. -->
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/planner.js"></script>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', handleLoginSubmit);
+    document.getElementById('register-form').addEventListener('submit', handleRegisterSubmit);
+    document.getElementById('logout-button').addEventListener('click', handleLogoutClick);
+
+    checkSession();
+  </script>
+
+</body>
+</html>
