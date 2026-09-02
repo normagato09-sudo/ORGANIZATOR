@@ -103,3 +103,20 @@ async function handleLogoutClick() {
   currentUser = null;
   renderAuthState();
 }
+async function handleExportClick() {
+  const result = await apiExportarDatos();
+
+  if (!result.ok) {
+    alert(result.error || 'No se pudo exportar los datos.');
+    return;
+  }
+
+  const url = URL.createObjectURL(result.blob);
+  const enlace = document.createElement('a');
+  enlace.href = url;
+  enlace.download = result.filename;
+  document.body.appendChild(enlace);
+  enlace.click();
+  document.body.removeChild(enlace);
+  URL.revokeObjectURL(url);
+}
