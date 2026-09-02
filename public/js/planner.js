@@ -6,6 +6,9 @@
 
 let plannerData = { tareas: [], habitos: [], objetivos: [], examenes: [] };
 
+// Id de la tarea que está actualmente en modo edición (null si ninguna).
+let tareaEnEdicionId = null;
+
 function generateId() {
   return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -68,9 +71,56 @@ function renderTareas() {
     checkbox.checked = tarea.hecha;
     checkbox.addEventListener('change', () => toggleTarea(tarea.id));
 
+    li.appendChild(checkbox);
+
+    if (tareaEnEdicionId === tarea.id) {
+      // Modo edición: el texto se sustituye por un input inline.
+      const inputEdicion = document.createElement('input');
+      inputEdicion.type = 'text';
+      inputEdicion.className = 'item-edit-input';
+      inputEdicion.value = tarea.texto;
+
+      const guardar = document.createElement('button');
+      guardar.type = 'button';
+      guardar.className = 'item-save';
+      guardar.textContent = 'Guardar';
+      guardar.addEventListener('click', () => guardarEdicionTarea(tarea.id, inputEdicion.value));
+
+      const cancelar = document.createElement('button');
+      cancelar.type = 'button';
+      cancelar.className = 'item-cancel';
+      cancelar.textContent = 'Cancelar';
+      cancelar.addEventListener('click', () => cancelarEdicionTarea());
+
+      inputEdicion.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          guardarEdicionTarea(tarea.id, inputEdicion.value);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelarEdicionTarea();
+        }
+      });
+
+      li.appendChild(inputEdicion);
+      li.appendChild(guardar);
+      li.appendChild(cancelar);
+
+      lista.appendChild(li);
+      inputEdicion.focus();
+      inputEdicion.select();
+      return;
+    }
+
     const texto = document.createElement('span');
     texto.className = 'item-text' + (tarea.hecha ? ' done' : '');
     texto.textContent = tarea.texto;
+
+    const editar = document.createElement('button');
+    editar.type = 'button';
+    editar.className = 'item-edit';
+    editar.textContent = 'Editar';
+    editar.addEventListener('click', () => editarTarea(tarea.id));
 
     const borrar = document.createElement('button');
     borrar.type = 'button';
@@ -78,8 +128,8 @@ function renderTareas() {
     borrar.textContent = 'Eliminar';
     borrar.addEventListener('click', () => deleteTarea(tarea.id));
 
-    li.appendChild(checkbox);
     li.appendChild(texto);
+    li.appendChild(editar);
     li.appendChild(borrar);
     lista.appendChild(li);
   });
@@ -107,6 +157,36 @@ async function toggleTarea(id) {
 
 async function deleteTarea(id) {
   plannerData.tareas = plannerData.tareas.filter((t) => t.id !== id);
+  renderTareas();
+  await savePlannerData();
+}
+
+function editarTarea(id) {
+  tareaEnEdicionId = id;
+  renderTareas();
+}
+
+function cancelarEdicionTarea() {
+  tareaEnEdicionId = null;
+  renderTareas();
+}
+
+async function guardarEdicionTarea(id, nuevoTexto) {
+  const texto = nuevoTexto.trim();
+  if (!texto) {
+    // No se permite dejar la tarea sin texto; se descarta el cambio.
+    cancelarEdicionTarea();
+    return;
+  }
+
+  const tarea = plannerData.tareas.find((t) => t.id === id);
+  if (!tarea) {
+    cancelarEdicionTarea();
+    return;
+  }
+
+  tarea.texto = texto;
+  tareaEnEdicionId = null;
   renderTareas();
   await savePlannerData();
 }

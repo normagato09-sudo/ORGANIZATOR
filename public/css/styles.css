@@ -367,6 +367,58 @@ body {
   color: var(--alert);
 }
 
+.item-edit {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.item-edit:hover {
+  color: var(--accent);
+}
+
+.item-edit-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+}
+
+.item-save {
+  border: none;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 10px;
+}
+
+.item-save:hover {
+  background: var(--accent-hover);
+}
+
+.item-cancel {
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.item-cancel:hover {
+  color: var(--alert);
+}
+
 /* --- Hábitos --- */
 
 .item-habito {
@@ -731,4 +783,62 @@ body {
   .stats-grid {
     grid-template-columns: 1fr;
   }
+}
+/* --- Notificaciones push --- */
+
+.push-estado {
+  font-weight: 600;
+  margin: 8px 0 16px;
+}
+
+.push-prefs {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.push-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+
+/* Interruptor tipo "toggle", construido a partir de un checkbox normal
+   para que siga siendo accesible (teclado, lectores de pantalla) sin
+   depender de JavaScript para su apariencia. */
+.push-switch {
+  appearance: none;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease;
+}
+
+.push-switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 0.15s ease;
+}
+
+.push-switch:checked {
+  background: var(--accent);
+}
+
+.push-switch:checked::before {
+  transform: translateX(18px);
 }
