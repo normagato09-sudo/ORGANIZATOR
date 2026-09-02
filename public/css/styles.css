@@ -20,6 +20,12 @@
 
   --radius: 6px;
   --font: system-ui, sans-serif;
+
+  /* Colores de los tipos de elemento en el calendario (16.2.11) */
+  --cal-tarea: #2f5d50;
+  --cal-objetivo: #6b5ca5;
+  --cal-examen: #b3261e;
+  --cal-habito: #b9822e;
 }
 
 /* Modo oscuro (16.2.9). Redefine las mismas variables; el resto del CSS
@@ -35,6 +41,11 @@
   --accent-hover: #64b39c;
   --alert: #e5645c;
   --alert-bg: #3a2220;
+
+  --cal-tarea: #4f9d86;
+  --cal-objetivo: #9d8dd6;
+  --cal-examen: #e5645c;
+  --cal-habito: #d1a44f;
 }
 
 * {
@@ -923,4 +934,129 @@ body {
 
 .item-quitar-fecha:hover {
   color: var(--alert);
+}
+
+/* --- Calendario (16.2.11) --- */
+
+.calendario-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.calendario-toolbar button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.calendario-toolbar button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.calendario-mes-label {
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: capitalize;
+  min-width: 140px;
+  text-align: center;
+}
+
+.calendario-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin-bottom: 16px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.leyenda-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.leyenda-punto {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.punto-tarea { background: var(--cal-tarea); }
+.punto-objetivo { background: var(--cal-objetivo); }
+.punto-examen { background: var(--cal-examen); }
+.punto-habito { background: var(--cal-habito); }
+
+.calendario-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  max-width: 700px;
+}
+
+.calendario-dia-nombre {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-align: center;
+  padding-bottom: 4px;
+}
+
+.calendario-dia {
+  min-height: 64px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 6px;
+  background: var(--surface);
+}
+
+.calendario-dia.vacio {
+  border: none;
+  background: transparent;
+}
+
+.calendario-dia-numero {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.calendario-dia--hoy {
+  border-color: var(--accent);
+}
+
+.calendario-dia--hoy .calendario-dia-numero {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.calendario-dia-puntos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+@media (max-width: 768px) {
+  .calendario-dia {
+    min-height: 44px;
+    padding: 3px 4px;
+  }
+
+  .calendario-dia-numero {
+    font-size: 11px;
+  }
+
+  .calendario-mes-label {
+    min-width: 110px;
+    font-size: 14px;
+  }
 }

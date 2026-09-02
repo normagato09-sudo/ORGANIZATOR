@@ -61,6 +61,7 @@
         <button class="nav-item" data-section="objetivos">Objetivos</button>
         <button class="nav-item" data-section="examenes">Exámenes</button>
         <button class="nav-item" data-section="estadisticas">Estadísticas</button>
+        <button class="nav-item" data-section="calendario">Calendario</button>
       </nav>
 
       <main class="content">
@@ -191,6 +192,25 @@
             </div>
           </div>
                </section>
+
+        <section id="section-calendario" class="section hidden">
+          <h2>Calendario</h2>
+
+          <div class="calendario-toolbar">
+            <button type="button" id="calendario-mes-anterior" aria-label="Mes anterior">←</button>
+            <span id="calendario-mes-label" class="calendario-mes-label"></span>
+            <button type="button" id="calendario-mes-siguiente" aria-label="Mes siguiente">→</button>
+          </div>
+
+          <div class="calendario-leyenda">
+            <span class="leyenda-item"><span class="leyenda-punto punto-tarea"></span>Tareas</span>
+            <span class="leyenda-item"><span class="leyenda-punto punto-objetivo"></span>Objetivos</span>
+            <span class="leyenda-item"><span class="leyenda-punto punto-examen"></span>Exámenes</span>
+            <span class="leyenda-item"><span class="leyenda-punto punto-habito"></span>Hábitos</span>
+          </div>
+
+          <div id="calendario-grid" class="calendario-grid"></div>
+        </section>
       </main>
     </div>
 
@@ -200,6 +220,7 @@
       <button class="tab-item" data-section="objetivos">Objetivos</button>
       <button class="tab-item" data-section="examenes">Exámenes</button>
       <button class="tab-item" data-section="estadisticas">Estadíst.</button>
+      <button class="tab-item" data-section="calendario">Calend.</button>
     </nav>
   </div>
 

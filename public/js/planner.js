@@ -23,6 +23,11 @@ let habitoFiltro = 'todos';
 let objetivoOrden = 'recientes';
 let objetivoFiltro = 'todos';
 
+// Mes/año que se está viendo en el calendario (16.2.11). Solo vive en
+// memoria, como el orden/filtro de las listas: al recargar la página
+// vuelve al mes actual.
+let calendarioFecha = new Date();
+
 function generateId() {
   return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -37,6 +42,7 @@ function showSection(sectionName) {
     btn.classList.toggle('active', btn.dataset.section === sectionName);
   });
   if (sectionName === 'estadisticas') renderEstadisticas();
+  else if (sectionName === 'calendario') renderCalendario();
 }
 
 function initPlannerNav() {
@@ -60,6 +66,7 @@ async function loadPlannerData() {
   renderObjetivos();
   renderExamenes();
   renderEstadisticas();
+  renderCalendario();
 }
 
 async function savePlannerData() {
@@ -925,6 +932,118 @@ async function deleteExamen(id) {
   await savePlannerData();
 }
 
+// --- Calendario ---
+//
+// Vista de solo lectura: agrupa por fecha (clave 'YYYY-MM-DD') los
+// elementos que ya tienen fecha en plannerData. No añade ningún campo
+// nuevo ni toca savePlannerData — solo lee lo que ya existe.
+
+function reunirElementosPorFecha() {
+  const porFecha = {};
+
+  function agregar(fecha, tipo, texto) {
+    if (!fecha) return;
+    if (!porFecha[fecha]) {
+      porFecha[fecha] = { tareas: [], objetivos: [], examenes: [], habitos: [] };
+    }
+    porFecha[fecha][tipo].push(texto);
+  }
+
+  plannerData.tareas.forEach((t) => agregar(t.fecha, 'tareas', t.texto));
+  plannerData.objetivos.forEach((o) => agregar(o.fecha, 'objetivos', o.texto));
+  plannerData.examenes.forEach((e) => agregar(e.fecha, 'examenes', e.texto));
+  plannerData.habitos.forEach((h) => {
+    (h.fechas || []).forEach((fecha) => agregar(fecha, 'habitos', h.texto));
+  });
+
+  return porFecha;
+}
+
+const CALENDARIO_DIAS_SEMANA = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+function renderCalendario() {
+  const grid = document.getElementById('calendario-grid');
+  const label = document.getElementById('calendario-mes-label');
+  if (!grid || !label) return;
+
+  const ano = calendarioFecha.getFullYear();
+  const mes = calendarioFecha.getMonth();
+
+  label.textContent = calendarioFecha.toLocaleDateString('es-ES', {
+    month: 'long',
+    year: 'numeric',
+  });
+
+  const porFecha = reunirElementosPorFecha();
+  const hoy = getTodayISO();
+
+  grid.innerHTML = '';
+
+  CALENDARIO_DIAS_SEMANA.forEach((nombre) => {
+    const cabecera = document.createElement('div');
+    cabecera.className = 'calendario-dia-nombre';
+    cabecera.textContent = nombre;
+    grid.appendChild(cabecera);
+  });
+
+  // El mes empieza en lunes: getDay() da 0=domingo..6=sábado, así que
+  // se convierte a 0=lunes..6=domingo para calcular el hueco inicial.
+  const primerDiaMes = new Date(ano, mes, 1);
+  const huecoInicial = (primerDiaMes.getDay() + 6) % 7;
+  const diasEnMes = new Date(ano, mes + 1, 0).getDate();
+
+  for (let i = 0; i < huecoInicial; i++) {
+    const vacio = document.createElement('div');
+    vacio.className = 'calendario-dia vacio';
+    grid.appendChild(vacio);
+  }
+
+  for (let dia = 1; dia <= diasEnMes; dia++) {
+    const fechaISO = formatISODate(new Date(ano, mes, dia));
+    const elementos = porFecha[fechaISO];
+
+    const celda = document.createElement('div');
+    celda.className = 'calendario-dia' + (fechaISO === hoy ? ' calendario-dia--hoy' : '');
+
+    const numero = document.createElement('div');
+    numero.className = 'calendario-dia-numero';
+    numero.textContent = String(dia);
+    celda.appendChild(numero);
+
+    if (elementos) {
+      const resumenPartes = [];
+      const puntos = document.createElement('div');
+      puntos.className = 'calendario-dia-puntos';
+
+      [
+        ['tareas', 'punto-tarea', 'Tarea'],
+        ['objetivos', 'punto-objetivo', 'Objetivo'],
+        ['examenes', 'punto-examen', 'Examen'],
+        ['habitos', 'punto-habito', 'Hábito'],
+      ].forEach(([tipo, clase, etiqueta]) => {
+        elementos[tipo].forEach((texto) => {
+          const punto = document.createElement('span');
+          punto.className = 'leyenda-punto ' + clase;
+          puntos.appendChild(punto);
+          resumenPartes.push(etiqueta + ': ' + texto);
+        });
+      });
+
+      if (resumenPartes.length > 0) {
+        celda.title = resumenPartes.join('\n');
+        celda.appendChild(puntos);
+      }
+    }
+
+    grid.appendChild(celda);
+  }
+}
+
+function cambiarMesCalendario(delta) {
+  calendarioFecha = new Date(calendarioFecha.getFullYear(), calendarioFecha.getMonth() + delta, 1);
+  renderCalendario();
+}
+
 // --- Estadísticas ---
 
 function renderEstadisticas() {
@@ -960,43 +1079,6 @@ function renderEstadisticas() {
     const proximo = futuros[0];
     const dias = diasHasta(proximo.fecha);
     proximoEl.textContent = proximo.texto + ' (' + (dias === 0 ? 'hoy' : dias + ' días') + ')';
-  }
-}
-
-// --- Exportar / backup (16.2.8) ---
-//
-// Pide el backup al backend (que ya filtra por el usuario autenticado) y
-// dispara la descarga en el navegador con un enlace temporal invisible.
-// No modifica ni borra nada: es solo lectura + descarga.
-
-async function handleExportClick() {
-  const boton = document.getElementById('export-button');
-  const textoOriginal = boton.textContent;
-  boton.disabled = true;
-  boton.textContent = 'Exportando…';
-
-  try {
-    const result = await apiExportarDatos();
-
-    if (!result.ok) {
-      alert(result.error || 'No se pudo exportar los datos.');
-      return;
-    }
-
-    const url = URL.createObjectURL(result.blob);
-    const enlace = document.createElement('a');
-    enlace.href = url;
-    enlace.download = result.filename;
-    document.body.appendChild(enlace);
-    enlace.click();
-    document.body.removeChild(enlace);
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('export click error', e);
-    alert('Ha ocurrido un error al exportar los datos.');
-  } finally {
-    boton.disabled = false;
-    boton.textContent = textoOriginal;
   }
 }
 
@@ -1051,6 +1133,13 @@ function initPlanner() {
     objetivoFiltro = objetivoFiltroEl.value;
     renderObjetivos();
   });
+
+  // Navegación entre meses del calendario (16.2.11).
+  const calendarioAnteriorEl = document.getElementById('calendario-mes-anterior');
+  if (calendarioAnteriorEl) calendarioAnteriorEl.addEventListener('click', () => cambiarMesCalendario(-1));
+
+  const calendarioSiguienteEl = document.getElementById('calendario-mes-siguiente');
+  if (calendarioSiguienteEl) calendarioSiguienteEl.addEventListener('click', () => cambiarMesCalendario(1));
 }
 
 initPlanner();
