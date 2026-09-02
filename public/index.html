@@ -47,6 +47,7 @@
       <h1>ORGANIZATOR</h1>
       <div class="user-bar">
         <span>Hola, <strong id="current-username"></strong></span>
+        <button id="export-button">Exportar datos</button>
         <button id="logout-button">Cerrar sesión</button>
       </div>
     </header>
@@ -221,6 +222,7 @@
     document.getElementById('login-form').addEventListener('submit', handleLoginSubmit);
     document.getElementById('register-form').addEventListener('submit', handleRegisterSubmit);
     document.getElementById('logout-button').addEventListener('click', handleLogoutClick);
+    document.getElementById('export-button').addEventListener('click', handleExportClick);
 
     checkSession();
   </script>

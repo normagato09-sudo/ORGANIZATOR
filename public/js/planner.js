@@ -963,6 +963,43 @@ function renderEstadisticas() {
   }
 }
 
+// --- Exportar / backup (16.2.8) ---
+//
+// Pide el backup al backend (que ya filtra por el usuario autenticado) y
+// dispara la descarga en el navegador con un enlace temporal invisible.
+// No modifica ni borra nada: es solo lectura + descarga.
+
+async function handleExportClick() {
+  const boton = document.getElementById('export-button');
+  const textoOriginal = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = 'Exportando…';
+
+  try {
+    const result = await apiExportarDatos();
+
+    if (!result.ok) {
+      alert(result.error || 'No se pudo exportar los datos.');
+      return;
+    }
+
+    const url = URL.createObjectURL(result.blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = result.filename;
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('export click error', e);
+    alert('Ha ocurrido un error al exportar los datos.');
+  } finally {
+    boton.disabled = false;
+    boton.textContent = textoOriginal;
+  }
+}
+
 // --- Arranque ---
 
 function initPlanner() {

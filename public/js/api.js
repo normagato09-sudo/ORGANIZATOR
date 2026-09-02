@@ -69,3 +69,43 @@ async function apiGetData(type) {
 async function apiSaveData(type, data) {
   return apiRequest('/data', { method: 'POST', body: { type, data } });
 }
+
+// Exportar/backup (16.2.8): a diferencia del resto de funciones de este
+// archivo, aquí no usamos apiRequest porque esa función siempre intenta
+// parsear la respuesta como JSON y devolver { ok, status, data }. Para una
+// descarga necesitamos el Blob "en crudo" tal cual lo manda el servidor
+// (con su cabecera Content-Disposition), así que hacemos el fetch a mano,
+// pero manteniendo el mismo "credentials: 'include'" para mandar la cookie
+// de sesión.
+async function apiExportarDatos() {
+  let response;
+  try {
+    response = await fetch(API_BASE + '/export', {
+      method: 'GET',
+      credentials: 'include',
+    });
+  } catch (networkError) {
+    return { ok: false, error: 'No se pudo conectar con el servidor.' };
+  }
+
+  if (!response.ok) {
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      data = null;
+    }
+    return { ok: false, error: (data && data.error) || 'No se pudo exportar los datos.' };
+  }
+
+  const blob = await response.blob();
+
+  // Recupera el nombre de archivo que puso el servidor (Content-Disposition:
+  // attachment; filename="..."), para no tener que reconstruirlo aquí.
+  let filename = 'organizator-backup.json';
+  const disposition = response.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="([^"]+)"/);
+  if (match) filename = match[1];
+
+  return { ok: true, blob, filename };
+}
