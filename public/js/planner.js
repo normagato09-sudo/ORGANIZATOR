@@ -13,6 +13,16 @@ let tareaEnEdicionId = null;
 let habitoEnEdicionId = null;
 let objetivoEnEdicionId = null;
 
+// Orden y filtro actuales de cada lista. Solo viven en memoria (no se
+// guardan en plannerData ni se envían al backend): al recargar la página
+// vuelven a sus valores por defecto.
+let tareaOrden = 'recientes';
+let tareaFiltro = 'todas';
+let habitoOrden = 'recientes';
+let habitoFiltro = 'todos';
+let objetivoOrden = 'recientes';
+let objetivoFiltro = 'todos';
+
 function generateId() {
   return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -121,9 +131,19 @@ function renderTareas() {
   if (!lista) return;
 
   lista.innerHTML = '';
-  vacio.classList.toggle('hidden', plannerData.tareas.length > 0);
 
-  plannerData.tareas.forEach((tarea) => {
+  let items = plannerData.tareas.slice();
+
+  if (tareaFiltro === 'pendientes') items = items.filter((t) => !t.hecha);
+  else if (tareaFiltro === 'completadas') items = items.filter((t) => t.hecha);
+
+  if (tareaOrden === 'recientes') items.reverse();
+  else if (tareaOrden === 'alfabetico') items.sort((a, b) => a.texto.localeCompare(b.texto, 'es'));
+  // 'antiguas' es el orden de inserción tal cual, no hace falta tocarlo.
+
+  vacio.classList.toggle('hidden', items.length > 0);
+
+  items.forEach((tarea) => {
     const li = document.createElement('li');
     li.className = 'item';
 
@@ -341,11 +361,21 @@ function renderHabitos() {
   if (!lista) return;
 
   lista.innerHTML = '';
-  vacio.classList.toggle('hidden', plannerData.habitos.length > 0);
 
   const hoy = getTodayISO();
 
-  plannerData.habitos.forEach((habito) => {
+  let items = plannerData.habitos.slice();
+
+  if (habitoFiltro === 'hecho-hoy') items = items.filter((h) => h.fechas.includes(hoy));
+  else if (habitoFiltro === 'pendiente-hoy') items = items.filter((h) => !h.fechas.includes(hoy));
+
+  if (habitoOrden === 'recientes') items.reverse();
+  else if (habitoOrden === 'alfabetico') items.sort((a, b) => a.texto.localeCompare(b.texto, 'es'));
+  else if (habitoOrden === 'racha') items.sort((a, b) => calcularRacha(b.fechas) - calcularRacha(a.fechas));
+
+  vacio.classList.toggle('hidden', items.length > 0);
+
+  items.forEach((habito) => {
     const li = document.createElement('li');
     li.className = 'item-habito';
 
@@ -509,9 +539,24 @@ function renderObjetivos() {
   if (!lista) return;
 
   lista.innerHTML = '';
-  vacio.classList.toggle('hidden', plannerData.objetivos.length > 0);
 
-  plannerData.objetivos.forEach((objetivo) => {
+  let items = plannerData.objetivos.slice();
+
+  if (objetivoFiltro === 'completados') {
+    items = items.filter((o) => o.pasos.length > 0 && calcularProgreso(o.pasos) === 100);
+  } else if (objetivoFiltro === 'en-progreso') {
+    items = items.filter((o) => !(o.pasos.length > 0 && calcularProgreso(o.pasos) === 100));
+  }
+
+  if (objetivoOrden === 'recientes') items.reverse();
+  else if (objetivoOrden === 'alfabetico') items.sort((a, b) => a.texto.localeCompare(b.texto, 'es'));
+  else if (objetivoOrden === 'progreso') {
+    items.sort((a, b) => calcularProgreso(b.pasos) - calcularProgreso(a.pasos));
+  }
+
+  vacio.classList.toggle('hidden', items.length > 0);
+
+  items.forEach((objetivo) => {
     const card = document.createElement('div');
     card.className = 'objetivo-card';
 
@@ -934,6 +979,41 @@ function initPlanner() {
 
   const examenForm = document.getElementById('examen-form');
   if (examenForm) examenForm.addEventListener('submit', handleExamenSubmit);
+
+  // Barras de orden/filtro (16.2.5): cada select actualiza su variable de
+  // estado en memoria y vuelve a pintar solo su lista.
+  const tareaOrdenEl = document.getElementById('tarea-orden');
+  if (tareaOrdenEl) tareaOrdenEl.addEventListener('change', () => {
+    tareaOrden = tareaOrdenEl.value;
+    renderTareas();
+  });
+  const tareaFiltroEl = document.getElementById('tarea-filtro');
+  if (tareaFiltroEl) tareaFiltroEl.addEventListener('change', () => {
+    tareaFiltro = tareaFiltroEl.value;
+    renderTareas();
+  });
+
+  const habitoOrdenEl = document.getElementById('habito-orden');
+  if (habitoOrdenEl) habitoOrdenEl.addEventListener('change', () => {
+    habitoOrden = habitoOrdenEl.value;
+    renderHabitos();
+  });
+  const habitoFiltroEl = document.getElementById('habito-filtro');
+  if (habitoFiltroEl) habitoFiltroEl.addEventListener('change', () => {
+    habitoFiltro = habitoFiltroEl.value;
+    renderHabitos();
+  });
+
+  const objetivoOrdenEl = document.getElementById('objetivo-orden');
+  if (objetivoOrdenEl) objetivoOrdenEl.addEventListener('change', () => {
+    objetivoOrden = objetivoOrdenEl.value;
+    renderObjetivos();
+  });
+  const objetivoFiltroEl = document.getElementById('objetivo-filtro');
+  if (objetivoFiltroEl) objetivoFiltroEl.addEventListener('change', () => {
+    objetivoFiltro = objetivoFiltroEl.value;
+    renderObjetivos();
+  });
 }
 
 initPlanner();
