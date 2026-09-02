@@ -9,6 +9,10 @@ let plannerData = { tareas: [], habitos: [], objetivos: [], examenes: [] };
 // Id de la tarea que está actualmente en modo edición (null si ninguna).
 let tareaEnEdicionId = null;
 
+// Id del hábito y del objetivo actualmente en modo edición (null si ninguno).
+let habitoEnEdicionId = null;
+let objetivoEnEdicionId = null;
+
 function generateId() {
   return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -237,6 +241,46 @@ function renderHabitos() {
     const li = document.createElement('li');
     li.className = 'item-habito';
 
+    if (habitoEnEdicionId === habito.id) {
+      // Modo edición: el nombre se sustituye por un input inline.
+      // La racha (habito.fechas) no se toca, así que el progreso se mantiene.
+      const inputEdicion = document.createElement('input');
+      inputEdicion.type = 'text';
+      inputEdicion.className = 'item-edit-input';
+      inputEdicion.value = habito.texto;
+
+      const guardar = document.createElement('button');
+      guardar.type = 'button';
+      guardar.className = 'item-save';
+      guardar.textContent = 'Guardar';
+      guardar.addEventListener('click', () => guardarEdicionHabito(habito.id, inputEdicion.value));
+
+      const cancelar = document.createElement('button');
+      cancelar.type = 'button';
+      cancelar.className = 'item-cancel';
+      cancelar.textContent = 'Cancelar';
+      cancelar.addEventListener('click', () => cancelarEdicionHabito());
+
+      inputEdicion.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          guardarEdicionHabito(habito.id, inputEdicion.value);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelarEdicionHabito();
+        }
+      });
+
+      li.appendChild(inputEdicion);
+      li.appendChild(guardar);
+      li.appendChild(cancelar);
+
+      lista.appendChild(li);
+      inputEdicion.focus();
+      inputEdicion.select();
+      return;
+    }
+
     const info = document.createElement('div');
     info.className = 'habito-info';
 
@@ -260,6 +304,12 @@ function renderHabitos() {
     boton.disabled = hechoHoy;
     boton.addEventListener('click', () => marcarHabitoHoy(habito.id));
 
+    const editar = document.createElement('button');
+    editar.type = 'button';
+    editar.className = 'item-edit';
+    editar.textContent = 'Editar';
+    editar.addEventListener('click', () => editarHabito(habito.id));
+
     const borrar = document.createElement('button');
     borrar.type = 'button';
     borrar.className = 'item-delete';
@@ -268,6 +318,7 @@ function renderHabitos() {
 
     li.appendChild(info);
     li.appendChild(boton);
+    li.appendChild(editar);
     li.appendChild(borrar);
     lista.appendChild(li);
   });
@@ -303,6 +354,36 @@ async function deleteHabito(id) {
   await savePlannerData();
 }
 
+function editarHabito(id) {
+  habitoEnEdicionId = id;
+  renderHabitos();
+}
+
+function cancelarEdicionHabito() {
+  habitoEnEdicionId = null;
+  renderHabitos();
+}
+
+async function guardarEdicionHabito(id, nuevoTexto) {
+  const texto = nuevoTexto.trim();
+  if (!texto) {
+    // No se permite dejar el hábito sin texto; se descarta el cambio.
+    cancelarEdicionHabito();
+    return;
+  }
+
+  const habito = plannerData.habitos.find((h) => h.id === id);
+  if (!habito) {
+    cancelarEdicionHabito();
+    return;
+  }
+
+  habito.texto = texto;
+  habitoEnEdicionId = null;
+  renderHabitos();
+  await savePlannerData();
+}
+
 // --- Objetivos ---
 
 function calcularProgreso(pasos) {
@@ -326,13 +407,55 @@ function renderObjetivos() {
     const header = document.createElement('div');
     header.className = 'objetivo-header';
 
+    const pct = calcularProgreso(objetivo.pasos);
+
+    if (objetivoEnEdicionId === objetivo.id) {
+      // Modo edición: el nombre se sustituye por un input inline.
+      // objetivo.pasos no se toca, así que el progreso se mantiene.
+      const inputEdicion = document.createElement('input');
+      inputEdicion.type = 'text';
+      inputEdicion.className = 'item-edit-input';
+      inputEdicion.value = objetivo.texto;
+
+      const guardar = document.createElement('button');
+      guardar.type = 'button';
+      guardar.className = 'item-save';
+      guardar.textContent = 'Guardar';
+      guardar.addEventListener('click', () => guardarEdicionObjetivo(objetivo.id, inputEdicion.value));
+
+      const cancelar = document.createElement('button');
+      cancelar.type = 'button';
+      cancelar.className = 'item-cancel';
+      cancelar.textContent = 'Cancelar';
+      cancelar.addEventListener('click', () => cancelarEdicionObjetivo());
+
+      inputEdicion.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          guardarEdicionObjetivo(objetivo.id, inputEdicion.value);
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancelarEdicionObjetivo();
+        }
+      });
+
+      header.appendChild(inputEdicion);
+      header.appendChild(guardar);
+      header.appendChild(cancelar);
+
+      card.appendChild(header);
+      lista.appendChild(card);
+      inputEdicion.focus();
+      inputEdicion.select();
+      return;
+    }
+
     const nombre = document.createElement('span');
     nombre.className = 'objetivo-nombre';
     nombre.textContent = objetivo.texto;
 
     const progresoTexto = document.createElement('span');
     progresoTexto.className = 'objetivo-progreso-texto';
-    const pct = calcularProgreso(objetivo.pasos);
     progresoTexto.textContent = objetivo.pasos.length
       ? pct + '% (' + objetivo.pasos.filter((p) => p.hecho).length + '/' + objetivo.pasos.length + ')'
       : 'Sin pasos';
@@ -396,6 +519,12 @@ function renderObjetivos() {
       pasoInput.value = '';
     });
 
+    const editarObjetivoBtn = document.createElement('button');
+    editarObjetivoBtn.type = 'button';
+    editarObjetivoBtn.className = 'item-edit';
+    editarObjetivoBtn.textContent = 'Editar objetivo';
+    editarObjetivoBtn.addEventListener('click', () => editarObjetivo(objetivo.id));
+
     const borrarObjetivo = document.createElement('button');
     borrarObjetivo.type = 'button';
     borrarObjetivo.className = 'item-delete';
@@ -406,6 +535,7 @@ function renderObjetivos() {
     card.appendChild(barra);
     card.appendChild(pasoLista);
     card.appendChild(pasoForm);
+    card.appendChild(editarObjetivoBtn);
     card.appendChild(borrarObjetivo);
     lista.appendChild(card);
   });
@@ -451,6 +581,36 @@ async function deletePaso(objetivoId, pasoId) {
 
 async function deleteObjetivo(id) {
   plannerData.objetivos = plannerData.objetivos.filter((o) => o.id !== id);
+  renderObjetivos();
+  await savePlannerData();
+}
+
+function editarObjetivo(id) {
+  objetivoEnEdicionId = id;
+  renderObjetivos();
+}
+
+function cancelarEdicionObjetivo() {
+  objetivoEnEdicionId = null;
+  renderObjetivos();
+}
+
+async function guardarEdicionObjetivo(id, nuevoTexto) {
+  const texto = nuevoTexto.trim();
+  if (!texto) {
+    // No se permite dejar el objetivo sin texto; se descarta el cambio.
+    cancelarEdicionObjetivo();
+    return;
+  }
+
+  const objetivo = plannerData.objetivos.find((o) => o.id === id);
+  if (!objetivo) {
+    cancelarEdicionObjetivo();
+    return;
+  }
+
+  objetivo.texto = texto;
+  objetivoEnEdicionId = null;
   renderObjetivos();
   await savePlannerData();
 }
