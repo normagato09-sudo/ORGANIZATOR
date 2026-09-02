@@ -98,6 +98,7 @@ async function handleLoginSubmit(event) {
 }
 
 async function handleLogoutClick() {
+  if (typeof detenerPolling === 'function') detenerPolling();
   await apiLogout();
   currentUser = null;
   renderAuthState();

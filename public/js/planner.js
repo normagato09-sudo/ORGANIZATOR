@@ -28,6 +28,15 @@ let objetivoFiltro = 'todos';
 // vuelve al mes actual.
 let calendarioFecha = new Date();
 
+// --- Sincronización entre dispositivos (16.2.13) por polling ---
+//
+// No hay tiempo real de verdad (WebSockets): cada X segundos, y también
+// al volver a la pestaña, se vuelve a pedir /api/data?type=planner y, si
+// ha cambiado respecto a lo que hay en memoria, se repinta. Reutiliza el
+// mismo endpoint de siempre, sin tocar sesiones, Redis ni el backend.
+const POLLING_INTERVALO_MS = 15000;
+let pollingIntervalId = null;
+
 function generateId() {
   return 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -67,10 +76,60 @@ async function loadPlannerData() {
   renderExamenes();
   renderEstadisticas();
   renderCalendario();
+  iniciarPolling();
 }
 
 async function savePlannerData() {
   await apiSaveData('planner', plannerData);
+}
+
+// Compara el JSON recibido del servidor con lo que hay en memoria. Si es
+// igual, no hace falta repintar nada (evita parpadeos innecesarios).
+async function refrescarPlannerData() {
+  // Si el navegador tiene la pestaña en segundo plano, no merece la pena
+  // gastar peticiones: se pondrá al día en cuanto vuelva a estar visible
+  // (ver el listener de "visibilitychange" en iniciarPolling).
+  if (document.hidden) return;
+
+  // Si el usuario está editando algo ahora mismo, no se toca su edición
+  // a medias con datos que puedan venir de otro dispositivo.
+  if (tareaEnEdicionId || habitoEnEdicionId || objetivoEnEdicionId) return;
+
+  const result = await apiGetData('planner');
+  if (!result.ok || !result.data || !result.data.data) return;
+
+  const datosNuevos = JSON.stringify(result.data.data);
+  const datosActuales = JSON.stringify(plannerData);
+  if (datosNuevos === datosActuales) return;
+
+  plannerData = Object.assign(
+    { tareas: [], habitos: [], objetivos: [], examenes: [] },
+    result.data.data
+  );
+  renderTareas();
+  renderHabitos();
+  renderObjetivos();
+  renderExamenes();
+  renderEstadisticas();
+  renderCalendario();
+}
+
+function iniciarPolling() {
+  if (pollingIntervalId) return; // ya está en marcha, no duplicar
+  pollingIntervalId = setInterval(refrescarPlannerData, POLLING_INTERVALO_MS);
+  document.addEventListener('visibilitychange', onVisibilityChangePolling);
+}
+
+function detenerPolling() {
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
+    pollingIntervalId = null;
+  }
+  document.removeEventListener('visibilitychange', onVisibilityChangePolling);
+}
+
+function onVisibilityChangePolling() {
+  if (!document.hidden) refrescarPlannerData();
 }
 
 // --- Modal de confirmación de eliminación ---
