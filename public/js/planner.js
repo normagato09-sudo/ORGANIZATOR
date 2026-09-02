@@ -99,6 +99,20 @@ function pedirConfirmacion(mensaje) {
   });
 }
 
+// --- Utilidad de fecha límite compartida por tareas y objetivos ---
+//
+// Reutiliza diasHasta/formatFechaLegible (definidas más abajo, en la
+// sección de Exámenes; las funciones declaradas con "function" están
+// disponibles en todo el archivo independientemente del orden).
+function textoFechaLimite(fechaISO) {
+  const dias = diasHasta(fechaISO);
+  let texto = 'Vence: ' + formatFechaLegible(fechaISO);
+  if (dias < 0) texto += ' (venció)';
+  else if (dias === 0) texto += ' (hoy)';
+  else if (dias === 1) texto += ' (mañana)';
+  return { texto, vencida: dias < 0 };
+}
+
 // --- Tareas ---
 
 function renderTareas() {
@@ -121,17 +135,36 @@ function renderTareas() {
     li.appendChild(checkbox);
 
     if (tareaEnEdicionId === tarea.id) {
-      // Modo edición: el texto se sustituye por un input inline.
+      // Modo edición: el texto se sustituye por un input inline, y se
+      // añade una fila con la fecha límite (opcional) y las acciones.
+      const form = document.createElement('div');
+      form.className = 'item-edit-form';
+
       const inputEdicion = document.createElement('input');
       inputEdicion.type = 'text';
       inputEdicion.className = 'item-edit-input';
       inputEdicion.value = tarea.texto;
 
+      const fechaInput = document.createElement('input');
+      fechaInput.type = 'date';
+      fechaInput.className = 'item-edit-fecha';
+      fechaInput.value = tarea.fecha || '';
+
+      const quitarFecha = document.createElement('button');
+      quitarFecha.type = 'button';
+      quitarFecha.className = 'item-quitar-fecha';
+      quitarFecha.textContent = 'Quitar fecha';
+      quitarFecha.addEventListener('click', () => {
+        fechaInput.value = '';
+      });
+
       const guardar = document.createElement('button');
       guardar.type = 'button';
       guardar.className = 'item-save';
       guardar.textContent = 'Guardar';
-      guardar.addEventListener('click', () => guardarEdicionTarea(tarea.id, inputEdicion.value));
+      guardar.addEventListener('click', () =>
+        guardarEdicionTarea(tarea.id, inputEdicion.value, fechaInput.value)
+      );
 
       const cancelar = document.createElement('button');
       cancelar.type = 'button';
@@ -142,26 +175,45 @@ function renderTareas() {
       inputEdicion.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
-          guardarEdicionTarea(tarea.id, inputEdicion.value);
+          guardarEdicionTarea(tarea.id, inputEdicion.value, fechaInput.value);
         } else if (event.key === 'Escape') {
           event.preventDefault();
           cancelarEdicionTarea();
         }
       });
 
-      li.appendChild(inputEdicion);
-      li.appendChild(guardar);
-      li.appendChild(cancelar);
+      const filaFecha = document.createElement('div');
+      filaFecha.className = 'item-edit-row';
+      filaFecha.appendChild(fechaInput);
+      filaFecha.appendChild(quitarFecha);
+      filaFecha.appendChild(guardar);
+      filaFecha.appendChild(cancelar);
 
+      form.appendChild(inputEdicion);
+      form.appendChild(filaFecha);
+
+      li.appendChild(form);
       lista.appendChild(li);
       inputEdicion.focus();
       inputEdicion.select();
       return;
     }
 
+    const textoWrap = document.createElement('div');
+    textoWrap.className = 'item-text-wrap';
+
     const texto = document.createElement('span');
     texto.className = 'item-text' + (tarea.hecha ? ' done' : '');
     texto.textContent = tarea.texto;
+    textoWrap.appendChild(texto);
+
+    if (tarea.fecha) {
+      const { texto: fechaTexto, vencida } = textoFechaLimite(tarea.fecha);
+      const fechaEl = document.createElement('span');
+      fechaEl.className = 'item-fecha' + (vencida ? ' vencida' : '');
+      fechaEl.textContent = fechaTexto;
+      textoWrap.appendChild(fechaEl);
+    }
 
     const editar = document.createElement('button');
     editar.type = 'button';
@@ -178,7 +230,7 @@ function renderTareas() {
       if (confirmado) deleteTarea(tarea.id);
     });
 
-    li.appendChild(texto);
+    li.appendChild(textoWrap);
     li.appendChild(editar);
     li.appendChild(borrar);
     lista.appendChild(li);
@@ -188,11 +240,16 @@ function renderTareas() {
 async function handleTareaSubmit(event) {
   event.preventDefault();
   const input = document.getElementById('tarea-texto');
+  const fechaInput = document.getElementById('tarea-fecha');
   const texto = input.value.trim();
   if (!texto) return;
 
-  plannerData.tareas.push({ id: generateId(), texto, hecha: false });
+  const nuevaTarea = { id: generateId(), texto, hecha: false };
+  if (fechaInput && fechaInput.value) nuevaTarea.fecha = fechaInput.value;
+
+  plannerData.tareas.push(nuevaTarea);
   input.value = '';
+  if (fechaInput) fechaInput.value = '';
   renderTareas();
   await savePlannerData();
 }
@@ -221,7 +278,7 @@ function cancelarEdicionTarea() {
   renderTareas();
 }
 
-async function guardarEdicionTarea(id, nuevoTexto) {
+async function guardarEdicionTarea(id, nuevoTexto, nuevaFecha) {
   const texto = nuevoTexto.trim();
   if (!texto) {
     // No se permite dejar la tarea sin texto; se descarta el cambio.
@@ -236,6 +293,11 @@ async function guardarEdicionTarea(id, nuevoTexto) {
   }
 
   tarea.texto = texto;
+  if (nuevaFecha) {
+    tarea.fecha = nuevaFecha;
+  } else {
+    delete tarea.fecha;
+  }
   tareaEnEdicionId = null;
   renderTareas();
   await savePlannerData();
@@ -459,18 +521,34 @@ function renderObjetivos() {
     const pct = calcularProgreso(objetivo.pasos);
 
     if (objetivoEnEdicionId === objetivo.id) {
-      // Modo edición: el nombre se sustituye por un input inline.
+      // Modo edición: el nombre se sustituye por un input inline, y se
+      // añade una fila con la fecha límite (opcional) y las acciones.
       // objetivo.pasos no se toca, así que el progreso se mantiene.
       const inputEdicion = document.createElement('input');
       inputEdicion.type = 'text';
       inputEdicion.className = 'item-edit-input';
       inputEdicion.value = objetivo.texto;
 
+      const fechaInput = document.createElement('input');
+      fechaInput.type = 'date';
+      fechaInput.className = 'item-edit-fecha';
+      fechaInput.value = objetivo.fecha || '';
+
+      const quitarFecha = document.createElement('button');
+      quitarFecha.type = 'button';
+      quitarFecha.className = 'item-quitar-fecha';
+      quitarFecha.textContent = 'Quitar fecha';
+      quitarFecha.addEventListener('click', () => {
+        fechaInput.value = '';
+      });
+
       const guardar = document.createElement('button');
       guardar.type = 'button';
       guardar.className = 'item-save';
       guardar.textContent = 'Guardar';
-      guardar.addEventListener('click', () => guardarEdicionObjetivo(objetivo.id, inputEdicion.value));
+      guardar.addEventListener('click', () =>
+        guardarEdicionObjetivo(objetivo.id, inputEdicion.value, fechaInput.value)
+      );
 
       const cancelar = document.createElement('button');
       cancelar.type = 'button';
@@ -481,18 +559,24 @@ function renderObjetivos() {
       inputEdicion.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
-          guardarEdicionObjetivo(objetivo.id, inputEdicion.value);
+          guardarEdicionObjetivo(objetivo.id, inputEdicion.value, fechaInput.value);
         } else if (event.key === 'Escape') {
           event.preventDefault();
           cancelarEdicionObjetivo();
         }
       });
 
+      const filaFecha = document.createElement('div');
+      filaFecha.className = 'item-edit-row';
+      filaFecha.appendChild(fechaInput);
+      filaFecha.appendChild(quitarFecha);
+      filaFecha.appendChild(guardar);
+      filaFecha.appendChild(cancelar);
+
       header.appendChild(inputEdicion);
-      header.appendChild(guardar);
-      header.appendChild(cancelar);
 
       card.appendChild(header);
+      card.appendChild(filaFecha);
       lista.appendChild(card);
       inputEdicion.focus();
       inputEdicion.select();
@@ -511,6 +595,14 @@ function renderObjetivos() {
 
     header.appendChild(nombre);
     header.appendChild(progresoTexto);
+
+    let fechaEl = null;
+    if (objetivo.fecha) {
+      const { texto: fechaTexto, vencida } = textoFechaLimite(objetivo.fecha);
+      fechaEl = document.createElement('div');
+      fechaEl.className = 'item-fecha' + (vencida ? ' vencida' : '');
+      fechaEl.textContent = fechaTexto;
+    }
 
     const barra = document.createElement('div');
     barra.className = 'objetivo-barra';
@@ -584,6 +676,7 @@ function renderObjetivos() {
     });
 
     card.appendChild(header);
+    if (fechaEl) card.appendChild(fechaEl);
     card.appendChild(barra);
     card.appendChild(pasoLista);
     card.appendChild(pasoForm);
@@ -596,11 +689,16 @@ function renderObjetivos() {
 async function handleObjetivoSubmit(event) {
   event.preventDefault();
   const input = document.getElementById('objetivo-texto');
+  const fechaInput = document.getElementById('objetivo-fecha');
   const texto = input.value.trim();
   if (!texto) return;
 
-  plannerData.objetivos.push({ id: generateId(), texto, pasos: [] });
+  const nuevoObjetivo = { id: generateId(), texto, pasos: [] };
+  if (fechaInput && fechaInput.value) nuevoObjetivo.fecha = fechaInput.value;
+
+  plannerData.objetivos.push(nuevoObjetivo);
   input.value = '';
+  if (fechaInput) fechaInput.value = '';
   renderObjetivos();
   await savePlannerData();
 }
@@ -647,7 +745,7 @@ function cancelarEdicionObjetivo() {
   renderObjetivos();
 }
 
-async function guardarEdicionObjetivo(id, nuevoTexto) {
+async function guardarEdicionObjetivo(id, nuevoTexto, nuevaFecha) {
   const texto = nuevoTexto.trim();
   if (!texto) {
     // No se permite dejar el objetivo sin texto; se descarta el cambio.
@@ -662,6 +760,11 @@ async function guardarEdicionObjetivo(id, nuevoTexto) {
   }
 
   objetivo.texto = texto;
+  if (nuevaFecha) {
+    objetivo.fecha = nuevaFecha;
+  } else {
+    delete objetivo.fecha;
+  }
   objetivoEnEdicionId = null;
   renderObjetivos();
   await savePlannerData();
