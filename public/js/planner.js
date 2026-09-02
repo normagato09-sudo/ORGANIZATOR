@@ -56,6 +56,49 @@ async function savePlannerData() {
   await apiSaveData('planner', plannerData);
 }
 
+// --- Modal de confirmación de eliminación ---
+//
+// pedirConfirmacion(mensaje) muestra el modal reutilizable con el mensaje
+// indicado y devuelve una promesa: true si el usuario pulsa "Eliminar",
+// false si cancela, cierra con Escape o hace clic fuera del cuadro.
+
+function pedirConfirmacion(mensaje) {
+  const overlay = document.getElementById('confirm-modal');
+  const texto = document.getElementById('confirm-modal-mensaje');
+  const btnCancelar = document.getElementById('confirm-modal-cancelar');
+  const btnEliminar = document.getElementById('confirm-modal-eliminar');
+
+  if (!overlay) return Promise.resolve(true); // fallback defensivo
+
+  texto.textContent = mensaje;
+  overlay.classList.remove('hidden');
+  btnEliminar.focus();
+
+  return new Promise((resolve) => {
+    function cerrar(resultado) {
+      overlay.classList.add('hidden');
+      btnCancelar.removeEventListener('click', onCancelar);
+      btnEliminar.removeEventListener('click', onEliminar);
+      overlay.removeEventListener('click', onOverlayClick);
+      document.removeEventListener('keydown', onKeydown);
+      resolve(resultado);
+    }
+    function onCancelar() { cerrar(false); }
+    function onEliminar() { cerrar(true); }
+    function onOverlayClick(event) {
+      if (event.target === overlay) cerrar(false);
+    }
+    function onKeydown(event) {
+      if (event.key === 'Escape') cerrar(false);
+    }
+
+    btnCancelar.addEventListener('click', onCancelar);
+    btnEliminar.addEventListener('click', onEliminar);
+    overlay.addEventListener('click', onOverlayClick);
+    document.addEventListener('keydown', onKeydown);
+  });
+}
+
 // --- Tareas ---
 
 function renderTareas() {
@@ -130,7 +173,10 @@ function renderTareas() {
     borrar.type = 'button';
     borrar.className = 'item-delete';
     borrar.textContent = 'Eliminar';
-    borrar.addEventListener('click', () => deleteTarea(tarea.id));
+    borrar.addEventListener('click', async () => {
+      const confirmado = await pedirConfirmacion('¿Eliminar esta tarea?');
+      if (confirmado) deleteTarea(tarea.id);
+    });
 
     li.appendChild(texto);
     li.appendChild(editar);
@@ -314,7 +360,10 @@ function renderHabitos() {
     borrar.type = 'button';
     borrar.className = 'item-delete';
     borrar.textContent = 'Eliminar';
-    borrar.addEventListener('click', () => deleteHabito(habito.id));
+    borrar.addEventListener('click', async () => {
+      const confirmado = await pedirConfirmacion('¿Eliminar este hábito?');
+      if (confirmado) deleteHabito(habito.id);
+    });
 
     li.appendChild(info);
     li.appendChild(boton);
@@ -529,7 +578,10 @@ function renderObjetivos() {
     borrarObjetivo.type = 'button';
     borrarObjetivo.className = 'item-delete';
     borrarObjetivo.textContent = 'Eliminar objetivo';
-    borrarObjetivo.addEventListener('click', () => deleteObjetivo(objetivo.id));
+    borrarObjetivo.addEventListener('click', async () => {
+      const confirmado = await pedirConfirmacion('¿Eliminar este objetivo?');
+      if (confirmado) deleteObjetivo(objetivo.id);
+    });
 
     card.appendChild(header);
     card.appendChild(barra);
@@ -683,7 +735,10 @@ function renderExamenes() {
     borrar.type = 'button';
     borrar.className = 'item-delete';
     borrar.textContent = 'Eliminar';
-    borrar.addEventListener('click', () => deleteExamen(examen.id));
+    borrar.addEventListener('click', async () => {
+      const confirmado = await pedirConfirmacion('¿Eliminar este examen?');
+      if (confirmado) deleteExamen(examen.id);
+    });
 
     li.appendChild(info);
     li.appendChild(borrar);

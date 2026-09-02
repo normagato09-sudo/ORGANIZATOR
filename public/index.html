@@ -150,6 +150,18 @@
     </nav>
   </div>
 
+  <!-- Modal de confirmación de eliminación, reutilizable para tareas,
+       hábitos, objetivos y exámenes. Oculto por defecto con .hidden. -->
+  <div id="confirm-modal" class="modal-overlay hidden">
+    <div class="modal-box" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-mensaje">
+      <p id="confirm-modal-mensaje" class="modal-mensaje"></p>
+      <div class="modal-acciones">
+        <button type="button" id="confirm-modal-cancelar" class="modal-cancelar">Cancelar</button>
+        <button type="button" id="confirm-modal-eliminar" class="modal-eliminar">Eliminar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Orden importante: primero api.js, luego auth.js (auth.js usa las
        funciones de api.js), y al final el arranque de la app. -->
   <script src="js/api.js"></script>
