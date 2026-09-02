@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ORGANIZATOR</title>
   <link rel="stylesheet" href="css/styles.css">
+  <script src="js/theme.js"></script>
 </head>
 <body>
 
@@ -47,6 +48,7 @@
       <h1>ORGANIZATOR</h1>
       <div class="user-bar">
         <span>Hola, <strong id="current-username"></strong></span>
+        <button id="theme-toggle-button">🌙 Modo oscuro</button>
         <button id="export-button">Exportar datos</button>
         <button id="logout-button">Cerrar sesión</button>
       </div>
@@ -224,6 +226,7 @@
     document.getElementById('logout-button').addEventListener('click', handleLogoutClick);
     document.getElementById('export-button').addEventListener('click', handleExportClick);
 
+    initThemeToggle();
     checkSession();
   </script>
 

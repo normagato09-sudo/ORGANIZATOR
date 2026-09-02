@@ -9,6 +9,7 @@
 
 :root {
   --paper: #f7f7f5;
+  --surface: #ffffff;
   --ink: #1c1f26;
   --ink-soft: #5b6270;
   --line: #dcdee3;
@@ -19,6 +20,21 @@
 
   --radius: 6px;
   --font: system-ui, sans-serif;
+}
+
+/* Modo oscuro (16.2.9). Redefine las mismas variables; el resto del CSS
+ * no cambia porque todo el archivo ya usa var(--paper), var(--surface),
+ * var(--ink), etc. en vez de colores sueltos. */
+[data-theme="dark"] {
+  --paper: #16181d;
+  --surface: #1e2127;
+  --ink: #eceef1;
+  --ink-soft: #9aa1ad;
+  --line: #333842;
+  --accent: #4f9d86;
+  --accent-hover: #64b39c;
+  --alert: #e5645c;
+  --alert-bg: #3a2220;
 }
 
 * {
@@ -64,7 +80,7 @@ body {
 .auth-box {
   width: 100%;
   max-width: 320px;
-  background: #ffffff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 20px;
@@ -96,7 +112,7 @@ body {
   font-family: inherit;
   color: var(--ink);
   margin-bottom: 12px;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 .auth-box input:focus {
@@ -146,7 +162,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 14px 24px;
-  background: #ffffff;
+  background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
 
@@ -172,7 +188,7 @@ body {
   padding: 6px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   font-family: inherit;
   cursor: pointer;
@@ -197,7 +213,7 @@ body {
 .sidebar {
   width: 200px;
   flex-shrink: 0;
-  background: #ffffff;
+  background: var(--surface);
   border-right: 1px solid var(--line);
   padding: 16px 8px;
   display: flex;
@@ -267,7 +283,7 @@ body {
     bottom: 0;
     left: 0;
     right: 0;
-    background: #ffffff;
+    background: var(--surface);
     border-top: 1px solid var(--line);
     padding: 6px 4px;
   }
@@ -355,7 +371,7 @@ body {
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   font-size: 13px;
   font-family: inherit;
@@ -484,7 +500,7 @@ body {
 .habito-boton {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   font-family: inherit;
   font-size: 13px;
@@ -587,7 +603,7 @@ body {
   padding: 6px 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #ffffff;
+  background: var(--surface);
   font-family: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -799,7 +815,7 @@ body {
 }
 
 .modal-box {
-  background: #ffffff;
+  background: var(--surface);
   border-radius: var(--radius);
   border: 1px solid var(--line);
   padding: 20px;
@@ -823,7 +839,7 @@ body {
 .modal-cancelar {
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   font-family: inherit;
   font-size: 13px;
