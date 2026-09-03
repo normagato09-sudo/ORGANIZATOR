@@ -314,6 +314,23 @@ body {
     color: var(--accent);
     font-weight: 600;
   }
+    .app-header {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    row-gap: 8px;
+  }
+
+  .user-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .user-bar button {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
 }
 
 /* --- Tareas y listas del planner --- */
