@@ -23,27 +23,32 @@ function actualizarTextoBotonTema(boton) {
   boton.textContent = esOscuro ? '☀️ Modo claro' : '🌙 Modo oscuro';
 }
 
-// Conecta el botón de la cabecera con el cambio de tema.
+// Conecta el/los botón(es) de modo oscuro con el cambio de tema. Ahora hay
+// dos: el de la cabecera (visible en escritorio) y el del menú lateral de
+// Ajustes (visible en móvil), así que se buscan por clase en vez de por un
+// único id, y los dos quedan sincronizados entre sí.
 // Se llama desde index.html cuando arranca la app (igual que
-// checkSession()), no antes: el botón todavía no existe en el DOM
+// checkSession()), no antes: los botones todavía no existen en el DOM
 // mientras el navegador solo ha cargado el <head>.
 function initThemeToggle() {
-  var boton = document.getElementById('theme-toggle-button');
-  if (!boton) return;
+  var botones = document.querySelectorAll('.theme-toggle-button');
+  if (!botones.length) return;
 
-  actualizarTextoBotonTema(boton);
+  botones.forEach(actualizarTextoBotonTema);
 
-  boton.addEventListener('click', function () {
-    var esOscuroAhora = document.documentElement.getAttribute('data-theme') === 'dark';
+  botones.forEach(function (boton) {
+    boton.addEventListener('click', function () {
+      var esOscuroAhora = document.documentElement.getAttribute('data-theme') === 'dark';
 
-    if (esOscuroAhora) {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('organizator-theme', 'light');
-    } else {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('organizator-theme', 'dark');
-    }
+      if (esOscuroAhora) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('organizator-theme', 'light');
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('organizator-theme', 'dark');
+      }
 
-    actualizarTextoBotonTema(boton);
+      botones.forEach(actualizarTextoBotonTema);
+    });
   });
 }

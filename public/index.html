@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>ORGANIZATOR</title>
   <link rel="stylesheet" href="css/styles.css">
   <link rel="manifest" href="/manifest.json">
@@ -50,9 +50,12 @@
       <h1>ORGANIZATOR</h1>
       <div class="user-bar">
         <span>Hola, <strong id="current-username"></strong></span>
-        <button id="theme-toggle-button">🌙 Modo oscuro</button>
-        <button id="export-button">Exportar datos</button>
-        <button id="logout-button">Cerrar sesión</button>
+        <div class="header-actions">
+          <button id="theme-toggle-button" class="theme-toggle-button">🌙 Modo oscuro</button>
+          <button id="export-button">Exportar datos</button>
+          <button id="logout-button">Cerrar sesión</button>
+        </div>
+        <button id="menu-toggle-button" class="menu-toggle-button" aria-label="Abrir menú">☰</button>
       </div>
     </header>
 
@@ -216,13 +219,27 @@
       </main>
     </div>
 
-    <nav class="tabbar" aria-label="Secciones">
-      <button class="tab-item active" data-section="tareas">Tareas</button>
-      <button class="tab-item" data-section="habitos">Hábitos</button>
-      <button class="tab-item" data-section="objetivos">Objetivos</button>
-      <button class="tab-item" data-section="examenes">Exámenes</button>
-      <button class="tab-item" data-section="estadisticas">Estadíst.</button>
-      <button class="tab-item" data-section="calendario">Calend.</button>
+    <div id="menu-overlay" class="menu-overlay hidden"></div>
+
+    <nav id="side-menu" class="side-menu" aria-label="Menú">
+      <div class="side-menu-header">
+        <span>Menú</span>
+        <button id="menu-close-button" class="menu-close-button" aria-label="Cerrar menú">×</button>
+      </div>
+
+      <button class="side-menu-item active" data-section="tareas">Tareas</button>
+      <button class="side-menu-item" data-section="habitos">Hábitos</button>
+      <button class="side-menu-item" data-section="objetivos">Objetivos</button>
+      <button class="side-menu-item" data-section="examenes">Exámenes</button>
+      <button class="side-menu-item" data-section="estadisticas">Estadísticas</button>
+      <button class="side-menu-item" data-section="calendario">Calendario</button>
+
+      <div class="side-menu-separator"></div>
+      <p class="side-menu-section-title">⚙️ Ajustes</p>
+
+      <button id="menu-theme-toggle-button" class="side-menu-item theme-toggle-button">🌙 Modo oscuro</button>
+      <button id="menu-export-button" class="side-menu-item">Exportar datos</button>
+      <button id="menu-logout-button" class="side-menu-item">Cerrar sesión</button>
     </nav>
   </div>
 
@@ -248,6 +265,34 @@
     document.getElementById('register-form').addEventListener('submit', handleRegisterSubmit);
     document.getElementById('logout-button').addEventListener('click', handleLogoutClick);
     document.getElementById('export-button').addEventListener('click', handleExportClick);
+    document.getElementById('menu-logout-button').addEventListener('click', handleLogoutClick);
+    document.getElementById('menu-export-button').addEventListener('click', handleExportClick);
+
+    // Menú lateral (móvil): abre/cierra el panel y cierra al elegir una sección.
+    function initSideMenu() {
+      var menuToggle = document.getElementById('menu-toggle-button');
+      var menuClose = document.getElementById('menu-close-button');
+      var overlay = document.getElementById('menu-overlay');
+      var sideMenu = document.getElementById('side-menu');
+
+      function abrirMenu() {
+        sideMenu.classList.add('open');
+        overlay.classList.remove('hidden');
+      }
+      function cerrarMenu() {
+        sideMenu.classList.remove('open');
+        overlay.classList.add('hidden');
+      }
+
+      if (menuToggle) menuToggle.addEventListener('click', abrirMenu);
+      if (menuClose) menuClose.addEventListener('click', cerrarMenu);
+      if (overlay) overlay.addEventListener('click', cerrarMenu);
+
+      document.querySelectorAll('.side-menu-item[data-section]').forEach(function (btn) {
+        btn.addEventListener('click', cerrarMenu);
+      });
+    }
+    initSideMenu();
 
     initThemeToggle();
     checkSession();
