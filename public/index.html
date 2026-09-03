@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ORGANIZATOR</title>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#2f5d50">
   <script src="js/theme.js"></script>
 </head>
 <body>
@@ -249,6 +251,10 @@
 
     initThemeToggle();
     checkSession();
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
   </script>
 
 </body>
