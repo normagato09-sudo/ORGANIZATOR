@@ -47,7 +47,7 @@ function showSection(sectionName) {
   document.querySelectorAll('.section').forEach((el) => {
     el.classList.toggle('hidden', el.id !== 'section-' + sectionName);
   });
-  document.querySelectorAll('.nav-item, .tab-item').forEach((btn) => {
+  document.querySelectorAll('.nav-item, .side-menu-item[data-section]').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.section === sectionName);
   });
   if (sectionName === 'estadisticas') renderEstadisticas();
@@ -55,7 +55,7 @@ function showSection(sectionName) {
 }
 
 function initPlannerNav() {
-  document.querySelectorAll('.nav-item, .tab-item').forEach((btn) => {
+  document.querySelectorAll('.nav-item, .side-menu-item[data-section]').forEach((btn) => {
     btn.addEventListener('click', () => showSection(btn.dataset.section));
   });
 }
