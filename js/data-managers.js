@@ -13,7 +13,7 @@ class ColeDataManager {
    */
   static async createSubject(name, teacher = '', classroom = '') {
     const subject = {
-      id: null, // Se genera en db.set
+      id: generateId(),
       name,
       teacher,
       classroom,
@@ -21,8 +21,8 @@ class ColeDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.COLE_SUBJECTS, subject);
-    return { ...subject, id };
+    await db.set(STORES.COLE_SUBJECTS, subject);
+    return subject;
   }
 
   /**
@@ -37,7 +37,7 @@ class ColeDataManager {
    */
   static async createTask(title, subjectId, dueDate, priority = 2) {
     const task = {
-      id: null,
+      id: generateId(),
       area: 'cole',
       title,
       description: '',
@@ -53,8 +53,8 @@ class ColeDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.COLE_TASKS, task);
-    return { ...task, id };
+    await db.set(STORES.COLE_TASKS, task);
+    return task;
   }
 
   /**
@@ -77,7 +77,7 @@ class ColeDataManager {
    */
   static async createExam(title, subjectId, examDate, location = '', priority = 3) {
     const exam = {
-      id: null,
+      id: generateId(),
       area: 'cole',
       title,
       description: '',
@@ -95,8 +95,8 @@ class ColeDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.COLE_EXAMS, exam);
-    return { ...exam, id };
+    await db.set(STORES.COLE_EXAMS, exam);
+    return exam;
   }
 
   /**
@@ -128,7 +128,7 @@ class CesiDataManager {
    */
   static async createMeeting(title, startTime, endTime, location = '', priority = 2) {
     const meeting = {
-      id: null,
+      id: generateId(),
       area: 'cesi',
       title,
       description: '',
@@ -147,8 +147,8 @@ class CesiDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.CESI_MEETINGS, meeting);
-    return { ...meeting, id };
+    await db.set(STORES.CESI_MEETINGS, meeting);
+    return meeting;
   }
 
   /**
@@ -174,7 +174,7 @@ class CesiDataManager {
    */
   static async createTask(title, dueDate, assignee = '', priority = 2) {
     const task = {
-      id: null,
+      id: generateId(),
       area: 'cesi',
       title,
       description: '',
@@ -192,8 +192,8 @@ class CesiDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.CESI_TASKS, task);
-    return { ...task, id };
+    await db.set(STORES.CESI_TASKS, task);
+    return task;
   }
 
   /**
@@ -214,7 +214,7 @@ class HouseDataManager {
    */
   static async createTask(title, dueDate, room = '', frequency = 'once', priority = 2) {
     const task = {
-      id: null,
+      id: generateId(),
       area: 'casa',
       title,
       description: '',
@@ -232,8 +232,8 @@ class HouseDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.HOUSE_TASKS, task);
-    return { ...task, id };
+    await db.set(STORES.HOUSE_TASKS, task);
+    return task;
   }
 
   /**
@@ -262,7 +262,7 @@ class ShoppingDataManager {
    */
   static async createList(name, purpose = '', targetDate = null) {
     const list = {
-      id: null,
+      id: generateId(),
       name,
       purpose,
       createdDate: new Date(),
@@ -273,8 +273,8 @@ class ShoppingDataManager {
       actualCost: 0,
       notes: ''
     };
-    const id = await db.set(STORES.SHOPPING_LISTS, list);
-    return { ...list, id };
+    await db.set(STORES.SHOPPING_LISTS, list);
+    return list;
   }
 
   /**
@@ -297,7 +297,7 @@ class ShoppingDataManager {
    */
   static async addItem(listId, name, category = '', quantity = 1, unit = '') {
     const item = {
-      id: null,
+      id: generateId(),
       listId,
       name,
       category,
@@ -310,8 +310,8 @@ class ShoppingDataManager {
       notes: '',
       isRecurring: false
     };
-    const id = await db.set(STORES.SHOPPING_ITEMS, item);
-    return { ...item, id };
+    await db.set(STORES.SHOPPING_ITEMS, item);
+    return item;
   }
 
   /**
@@ -344,7 +344,7 @@ class VacationDataManager {
    */
   static async createVacation(title, startDate, endDate, location = '', type = 'vacation') {
     const vacation = {
-      id: null,
+      id: generateId(),
       title,
       startDate,
       endDate,
@@ -357,8 +357,8 @@ class VacationDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.VACATIONS, vacation);
-    return { ...vacation, id };
+    await db.set(STORES.VACATIONS, vacation);
+    return vacation;
   }
 
   /**
@@ -384,7 +384,7 @@ class VacationDataManager {
    */
   static async createHoliday(name, date, country = 'ES', isOfficial = true) {
     const holiday = {
-      id: null,
+      id: generateId(),
       name,
       date,
       country,
@@ -393,8 +393,8 @@ class VacationDataManager {
       notes: '',
       createdAt: new Date()
     };
-    const id = await db.set(STORES.HOLIDAYS, holiday);
-    return { ...holiday, id };
+    await db.set(STORES.HOLIDAYS, holiday);
+    return holiday;
   }
 
   /**
@@ -415,7 +415,7 @@ class RubikDataManager {
    */
   static async createSession(cubeType = '3x3', sessionType = 'practice', durationMinutes = 0) {
     const session = {
-      id: null,
+      id: generateId(),
       date: new Date(),
       sessionType,
       durationMinutes,
@@ -431,8 +431,8 @@ class RubikDataManager {
       createdAt: new Date(),
       updatedAt: new Date()
     };
-    const id = await db.set(STORES.RUBIK_SESSIONS, session);
-    return { ...session, id };
+    await db.set(STORES.RUBIK_SESSIONS, session);
+    return session;
   }
 
   /**
@@ -447,7 +447,7 @@ class RubikDataManager {
    */
   static async recordSolve(sessionId, time, cubeType = '3x3', dnf = false, plus2 = false) {
     const solve = {
-      id: null,
+      id: generateId(),
       sessionId,
       cubeType,
       time,
@@ -459,8 +459,8 @@ class RubikDataManager {
       notes: '',
       timestamp: new Date()
     };
-    const id = await db.set(STORES.RUBIK_SOLVES, solve);
-    return { ...solve, id };
+    await db.set(STORES.RUBIK_SOLVES, solve);
+    return solve;
   }
 
   /**
@@ -475,7 +475,7 @@ class RubikDataManager {
    */
   static async createCube(name, type = '3x3', brand = '', isMain = false) {
     const cube = {
-      id: null,
+      id: generateId(),
       name,
       type,
       brand,
@@ -489,8 +489,8 @@ class RubikDataManager {
       notes: '',
       createdAt: new Date()
     };
-    const id = await db.set(STORES.RUBIK_CUBES, cube);
-    return { ...cube, id };
+    await db.set(STORES.RUBIK_CUBES, cube);
+    return cube;
   }
 
   /**
@@ -511,7 +511,7 @@ class GeneralEventDataManager {
    */
   static async createEvent(title, startDate, area, type, sourceId, priority = 2) {
     const event = {
-      id: null,
+      id: generateId(),
       title,
       startDate,
       endDate: startDate,
@@ -523,8 +523,8 @@ class GeneralEventDataManager {
       completed: false,
       description: ''
     };
-    const id = await db.set(STORES.GENERAL_EVENTS, event);
-    return { ...event, id };
+    await db.set(STORES.GENERAL_EVENTS, event);
+    return event;
   }
 
   /**
