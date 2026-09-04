@@ -142,7 +142,8 @@ async function runPersistenceTest() {
     
     // 5. OBTENER EVENTOS DEL DÍA Y PRÓXIMOS
     console.log('\n5️⃣  Recuperando eventos del Inicio...');
-    const today = new Date();\n    const todayEvents = await GeneralEventDataManager.getEventsForDate(today);
+    const today = new Date();
+    const todayEvents = await GeneralEventDataManager.getEventsForDate(today);
     console.log(`   ✅ Eventos para hoy: ${todayEvents.length}`);
     
     const upcomingEvents = await GeneralEventDataManager.getUpcomingEvents(7);

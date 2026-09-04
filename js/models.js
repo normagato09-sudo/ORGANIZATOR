@@ -360,11 +360,3 @@ function createBaseItem(area, overrides = {}) {
     ...overrides
   };
 }
-
-// Export para Node.js/módulos
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    generateId,
-    createBaseItem
-  };
-}
