@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORGANIZATOR — Inicio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F2EE;
+    --surface:#FFFFFF;
+    --ink:#1B1F23;
+    --ink-soft:#63676C;
+    --line:#E3E1DB;
+    --radius:14px;
+
+    --cole:#D98E2C;      --cole-bg:#FBF0DF;
+    --cesi:#6B4FE0;      --cesi-bg:#EFEBFD;
+    --rubik:#1E9E8C;     --rubik-bg:#E4F5F2;
+    --casa:#B5623B;      --casa-bg:#F6E9E2;
+    --compras:#3E8C5B;   --compras-bg:#E7F3EC;
+    --vacaciones:#2F6FE0;--vacaciones-bg:#E6EDFC;
+    --ia:#1B1F23;
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:-0.01em;
+  }
+
+  .app{
+    display:grid;
+    grid-template-columns:76px 1fr 300px;
+    min-height:100vh;
+  }
+
+  /* ---------- Rail de navegación ---------- */
+  nav.rail{
+    background:var(--surface);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px 0;
+    gap:4px;
+  }
+  .rail-logo{
+    width:34px;height:34px;border-radius:9px;
+    background:var(--ink);
+    margin-bottom:22px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--paper);font-family:'Space Grotesk';font-weight:700;font-size:15px;
+  }
+  .rail-item{
+    width:56px;
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:9px 0;
+    border-radius:12px;
+    cursor:pointer;
+    color:var(--ink-soft);
+    position:relative;
+    transition:background .15s ease, color .15s ease;
+  }
+  .rail-item .ic{
+    width:34px;height:34px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+    background:transparent;
+  }
+  .rail-item .lb{font-size:10px;font-weight:500;}
+  .rail-item:hover{background:var(--paper);}
+  .rail-item.active{color:var(--ink);}
+  .rail-item.active .ic{background:var(--ink);color:var(--paper);}
+  .rail-item.settings{margin-top:auto;}
+
+  /* colores de identidad por sección al pasar por 'active' de ejemplo en cada icono */
+  .rail-item[data-c="cole"].active .ic{background:var(--cole);}
+  .rail-item[data-c="cesi"].active .ic{background:var(--cesi);}
+  .rail-item[data-c="rubik"].active .ic{background:var(--rubik);}
+  .rail-item[data-c="casa"].active .ic{background:var(--casa);}
+  .rail-item[data-c="compras"].active .ic{background:var(--compras);}
+  .rail-item[data-c="vacaciones"].active .ic{background:var(--vacaciones);}
+
+  /* ---------- Contenido central ---------- */
+  main{
+    padding:40px 44px 60px;
+    max-width:760px;
+  }
+  .greeting{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin:0 0 2px;
+    font-weight:500;
+  }
+  .date{
+    font-size:30px;
+    font-weight:600;
+    margin:0 0 34px;
+  }
+  .date .dow{color:var(--ink-soft);font-weight:500;}
+
+  section.block{margin-bottom:38px;}
+  .block-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .block-head h2{font-size:15px;font-weight:600;margin:0;}
+  .block-head .hint{font-size:12px;color:var(--ink-soft);}
+
+  /* Plan de hoy — línea de tiempo vacía */
+  .timeline{
+    border-left:2px solid var(--line);
+    margin-left:6px;
+    padding-left:22px;
+    display:flex;
+    flex-direction:column;
+    gap:0;
+  }
+  .empty-state{
+    background:var(--surface);
+    border:1px dashed var(--line);
+    border-radius:var(--radius);
+    padding:26px 24px;
+    color:var(--ink-soft);
+    font-size:13.5px;
+    line-height:1.5;
+  }
+  .empty-state strong{color:var(--ink);font-weight:600;}
+
+  /* IA */
+  .ia-block{
+    background:var(--ink);
+    border-radius:var(--radius);
+    padding:22px 24px;
+    color:var(--paper);
+  }
+  .ia-block h2{color:var(--paper);}
+  .ia-block .hint{color:#9BA0A6;}
+  .ia-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .ia-btn{
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.16);
+    color:var(--paper);
+    font-family:'IBM Plex Sans';
+    font-size:13px;
+    font-weight:500;
+    padding:10px 16px;
+    border-radius:10px;
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  .ia-btn:hover{background:rgba(255,255,255,0.16);}
+  .ia-btn:disabled{opacity:.5;cursor:not-allowed;}
+
+  /* Tarjetas de áreas */
+  .areas{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:12px;
+  }
+  .area-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    min-height:92px;
+  }
+  .area-card .ic{
+    width:28px;height:28px;border-radius:8px;
+    display:flex;align-items:center;justify-content:center;font-size:14px;
+  }
+  .area-card .name{font-size:13px;font-weight:600;}
+  .area-card .status{font-size:11.5px;color:var(--ink-soft);}
+  .area-card[data-c="cole"] .ic{background:var(--cole-bg);color:var(--cole);}
+  .area-card[data-c="cesi"] .ic{background:var(--cesi-bg);color:var(--cesi);}
+  .area-card[data-c="rubik"] .ic{background:var(--rubik-bg);color:var(--rubik);}
+  .area-card[data-c="casa"] .ic{background:var(--casa-bg);color:var(--casa);}
+  .area-card[data-c="compras"] .ic{background:var(--compras-bg);color:var(--compras);}
+  .area-card[data-c="vacaciones"] .ic{background:var(--vacaciones-bg);color:var(--vacaciones);}
+
+  /* ---------- Columna derecha ---------- */
+  aside{
+    border-left:1px solid var(--line);
+    padding:40px 26px;
+    display:flex;
+    flex-direction:column;
+    gap:30px;
+  }
+  aside h3{font-size:12px;font-weight:600;margin:0 0 12px;color:var(--ink-soft);text-transform:none;}
+  .side-card{
+    background:var(--surface);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;
+  }
+  .side-empty{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+
+  @media (max-width:920px){
+    .app{grid-template-columns:64px 1fr;}
+    aside{display:none;}
+    .areas{grid-template-columns:repeat(2,1fr);}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- RAIL DE NAVEGACIÓN -->
+  <nav class="rail">
+    <div class="rail-logo">O</div>
+
+    <div class="rail-item active">
+      <div class="ic">🏠︎</div>
+      <div class="lb">Inicio</div>
+    </div>
+    <div class="rail-item" data-c="rubik">
+      <div class="ic">🧊</div>
+      <div class="lb">Rubik</div>
+    </div>
+    <div class="rail-item" data-c="cesi">
+      <div class="ic">🤝</div>
+      <div class="lb">CESI</div>
+    </div>
+    <div class="rail-item" data-c="casa">
+      <div class="ic">🏠</div>
+      <div class="lb">Casa</div>
+    </div>
+    <div class="rail-item" data-c="compras">
+      <div class="ic">🛒</div>
+      <div class="lb">Compras</div>
+    </div>
+    <div class="rail-item" data-c="vacaciones">
+      <div class="ic">🌴</div>
+      <div class="lb">Vacac.</div>
+    </div>
+    <div class="rail-item" data-c="cole">
+      <div class="ic">🏫</div>
+      <div class="lb">Cole</div>
+    </div>
+
+    <div class="rail-item settings">
+      <div class="ic">⚙️</div>
+      <div class="lb">Ajustes</div>
+    </div>
+  </nav>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main>
+    <p class="greeting">Buenos días</p>
+    <h1 class="date"><span class="dow">Viernes</span> · 4 de septiembre</h1>
+
+    <!-- PLAN DE HOY -->
+    <section class="block">
+      <div class="block-head">
+        <h2>Plan de hoy</h2>
+        <span class="hint">Se irá completando desde Cole, CESI, Rubik, Casa y Vacaciones</span>
+      </div>
+      <div class="empty-state">
+        Todavía no hay nada programado para hoy.<br>
+        <strong>Aquí aparecerá tu día</strong> como una línea de tiempo: exámenes, reuniones, entrenos y tareas, cada uno con el color de su sección.
+      </div>
+    </section>
+
+    <!-- IA -->
+    <section class="block">
+      <div class="ia-block">
+        <div class="block-head">
+          <h2>Organización con IA</h2>
+          <span class="hint">Disponible cuando tengas tareas y eventos guardados</span>
+        </div>
+        <div class="ia-actions">
+          <button class="ia-btn" disabled>✨ Organizar mi día</button>
+          <button class="ia-btn" disabled>✨ Organizar mi semana</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- TARJETAS DE ÁREAS -->
+    <section class="block">
+      <div class="block-head">
+        <h2>Áreas</h2>
+      </div>
+      <div class="areas">
+        <div class="area-card" data-c="cole">
+          <div class="ic">🏫</div>
+          <div class="name">Cole</div>
+          <div class="status">Sin datos todavía</div>
+        </div>
+        <div class="area-card" data-c="cesi">
+          <div class="ic">🤝</div>
+          <div class="name">CESI</div>
+          <div class="status">Sin datos todavía</div>
+        </div>
+        <div class="area-card" data-c="rubik">
+          <div class="ic">🧊</div>
+          <div class="name">Rubik</div>
+          <div class="status">Sin datos todavía</div>
+        </div>
+        <div class="area-card" data-c="casa">
+          <div class="ic">🏠</div>
+          <div class="name">Casa</div>
+          <div class="status">Sin datos todavía</div>
+        </div>
+        <div class="area-card" data-c="compras">
+          <div class="ic">🛒</div>
+          <div class="name">Compras</div>
+          <div class="status">Sin datos todavía</div>
+        </div>
+        <div class="area-card" data-c="vacaciones">
+          <div class="ic">🌴</div>
+          <div class="name">Vacaciones</div>
+          <div class="status">Sin datos todavía</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- COLUMNA DERECHA -->
+  <aside>
+    <div>
+      <h3>Ahora / Siguiente</h3>
+      <div class="side-card">
+        <p class="side-empty">Cuando añadas eventos con hora, aquí verás lo que toca ahora y lo siguiente en tu agenda.</p>
+      </div>
+    </div>
+
+    <div>
+      <h3>Próximos eventos</h3>
+      <div class="side-card">
+        <p class="side-empty">Exámenes, reuniones de CESI, festivos y vacaciones aparecerán aquí ordenados por fecha.</p>
+      </div>
+    </div>
+
+    <div>
+      <h3>Tareas pendientes</h3>
+      <div class="side-card">
+        <p class="side-empty">Un recuento rápido de lo que tienes abierto en Cole, Casa y CESI.</p>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+</body>
+</html>
