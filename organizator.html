@@ -643,6 +643,23 @@
 
 </div>
 
+<!-- ============================================ -->
+<!-- SCRIPTS - Orden correcto de carga (Fase 2.1) -->
+<!-- ============================================ -->
+
+<!-- 1. Sistema de persistencia con IndexedDB -->
+<script src="js/db.js"></script>
+
+<!-- 2. Modelos y estructuras de datos -->
+<script src="js/models.js"></script>
+
+<!-- 3. Gestores de datos por área -->
+<script src="js/data-managers.js"></script>
+
+<!-- 4. Prueba de persistencia (solo si IndexedDB está disponible) -->
+<script src="js/test-persistence.js"></script>
+
+<!-- 5. Script de navegación original -->
 <script>
   const app = document.getElementById('app');
   const sidebar = document.getElementById('sidebar');
