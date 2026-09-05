@@ -1,0 +1,1777 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORGANIZATOR</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1B1F23">
+<link rel="icon" href="/icons/icon-512.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ORGANIZATOR">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F2EE;
+    --surface:#FFFFFF;
+    --ink:#1B1F23;
+    --ink-soft:#63676C;
+    --line:#E3E1DB;
+    --radius:14px;
+
+    --task:#3E7CB1;      --task-bg:#E7F0F8;
+    --event:#8355D9;      --event-bg:#EFE9FB;
+
+    --alta:#C0453B; --media:#C98A22; --baja:#8B8F94;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    overflow-x:hidden;
+  }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:-0.01em;
+  }
+  button, input, select, textarea{font-family:inherit;}
+
+  .app{
+    display:grid;
+    grid-template-columns:76px minmax(0,1fr) 300px;
+    min-height:100vh;
+  }
+  .app.no-aside{grid-template-columns:76px minmax(0,1fr);}
+
+  /* ---------- Rail de navegación ---------- */
+  nav.rail{
+    background:var(--surface);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px 0;
+    gap:4px;
+    overflow-y:auto;
+  }
+  .rail-logo{
+    width:34px;height:34px;border-radius:9px;
+    background:var(--ink);
+    margin-bottom:22px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--paper);font-family:'Space Grotesk';font-weight:700;font-size:15px;
+    flex:none;
+  }
+  .rail-item{
+    width:56px;
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:9px 0;
+    border-radius:12px;
+    cursor:pointer;
+    color:var(--ink-soft);
+    position:relative;
+    transition:background .15s ease, color .15s ease;
+    border:none;
+    background:transparent;
+  }
+  .rail-item .ic{
+    width:34px;height:34px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+    background:transparent;
+  }
+  .rail-item .lb{font-size:10px;font-weight:500;}
+  .rail-item:hover{background:var(--paper);}
+  .rail-item.active{color:var(--ink);}
+  .rail-item.active .ic{background:var(--ink);color:var(--paper);}
+  .rail-item.settings{margin-top:auto;}
+
+  /* ---------- Menú móvil (hamburguesa) ---------- */
+  .menu-toggle{
+    display:none;
+    position:fixed;top:14px;left:14px;z-index:900;
+    width:40px;height:40px;border-radius:10px;
+    border:1px solid var(--line);background:var(--surface);
+    align-items:center;justify-content:center;
+    font-size:18px;cursor:pointer;color:var(--ink);
+  }
+  .menu-backdrop{
+    display:none;
+    position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:999;
+  }
+
+  /* ---------- Contenido central ---------- */
+  main{
+    padding:40px 44px 60px;
+    max-width:820px;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .greeting{font-size:13px;color:var(--ink-soft);margin:0 0 2px;font-weight:500;}
+  .date{font-size:30px;font-weight:600;margin:0 0 34px;}
+  .date .dow{color:var(--ink-soft);font-weight:500;}
+
+  section.block{margin-bottom:38px;}
+  .block-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap;}
+  .block-head h2{font-size:15px;font-weight:600;margin:0;}
+  .block-head .hint{font-size:12px;color:var(--ink-soft);}
+
+  .empty-state{
+    background:var(--surface);
+    border:1px dashed var(--line);
+    border-radius:var(--radius);
+    padding:26px 24px;
+    color:var(--ink-soft);
+    font-size:13.5px;
+    line-height:1.5;
+  }
+  .empty-state strong{color:var(--ink);font-weight:600;}
+  .empty-state.small{padding:16px 18px;font-size:12.5px;}
+
+  /* IA */
+  #today-timeline{margin-bottom:16px;}
+  .ia-thread-messages{margin-bottom:14px;}
+  .ia-block{background:var(--ink);border-radius:var(--radius);padding:22px 24px;color:var(--paper);}
+  .ia-block .empty-hint{font-size:12.5px;color:#9BA0A6;line-height:1.5;}
+  .ia-block h2{color:var(--paper);}
+  .ia-block .hint{color:#9BA0A6;}
+  .ia-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .ia-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);color:var(--paper);font-size:13px;font-weight:500;padding:10px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease;}
+  .ia-btn:hover{background:rgba(255,255,255,0.16);}
+  .ia-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .ia-status{margin-top:12px;font-size:12.5px;color:#9BA0A6;min-height:1px;}
+  .ia-summary{font-size:13px;color:var(--paper);line-height:1.5;margin-bottom:10px;}
+  .ia-timeline{display:flex;flex-direction:column;gap:0;}
+  .ia-tl-item{display:flex;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
+  .ia-tl-item:last-child{border-bottom:none;}
+  .ia-tl-time{width:52px;flex:none;font-size:12px;color:#9BA0A6;font-weight:500;padding-top:2px;}
+  .ia-tl-bar{width:3px;border-radius:3px;flex:none;background:rgba(255,255,255,0.25);}
+  .ia-tl-bar.proposal{background:transparent;border-left:2px dashed #9BA0A6;width:0;}
+  .ia-tl-body{flex:1;display:flex;flex-direction:column;gap:3px;}
+  .ia-tl-title{font-size:13.5px;font-weight:600;color:var(--paper);}
+  .ia-tag{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:6px;background:rgba(255,255,255,0.12);color:#D7D9DC;margin-left:6px;}
+  .ia-tag.proposal{background:rgba(255,255,255,0.06);border:1px dashed rgba(255,255,255,0.3);}
+  .ia-tl-tag{font-size:11px;color:#9BA0A6;}
+  .ia-tl-actions{display:flex;gap:6px;margin-top:5px;}
+  .ia-mini-btn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:var(--paper);font-size:11.5px;padding:5px 10px;border-radius:7px;cursor:pointer;}
+  .ia-mini-btn:hover{background:rgba(255,255,255,0.2);}
+  .ia-mini-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .ia-mini-ghost{background:transparent;border:none;color:#9BA0A6;font-size:11.5px;padding:5px 6px;cursor:pointer;}
+  .ia-mini-ghost:hover{color:var(--paper);}
+  .ia-week-day{margin-bottom:14px;}
+  .ia-week-day h4{font-size:12.5px;font-weight:600;margin:0 0 6px;color:#D7D9DC;}
+  .ia-chat-form{margin-top:16px;display:flex;gap:8px;}
+  .ia-chat-form input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);border-radius:9px;padding:9px 12px;color:var(--paper);font-size:13px;}
+  .ia-chat-form input::placeholder{color:#9BA0A6;}
+  .ia-chat-form input:focus{outline:2px solid rgba(255,255,255,0.3);}
+  .ia-chat-log{margin-top:12px;display:flex;flex-direction:column;gap:10px;}
+  .ia-chat-msg{font-size:13px;line-height:1.5;}
+  .ia-chat-msg .q{color:#9BA0A6;font-weight:500;margin-bottom:3px;}
+  .ia-chat-msg .a{color:var(--paper);}
+  .ia-applied-list{margin:6px 0 0;padding-left:18px;font-size:12px;color:#9BA0A6;}
+  .ia-applied-list li{margin-bottom:2px;}
+
+  /* Timeline "Hoy" */
+  .timeline{display:flex;flex-direction:column;gap:0;}
+  .tl-item{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .tl-item:last-child{border-bottom:none;}
+  .tl-time{width:56px;flex:none;font-size:12px;color:var(--ink-soft);font-weight:500;padding-top:2px;}
+  .tl-bar{width:3px;border-radius:3px;flex:none;}
+  .tl-body{flex:1;display:flex;flex-direction:column;gap:2px;}
+  .tl-title{font-size:13.5px;font-weight:600;}
+  .tl-tag{font-size:11px;color:var(--ink-soft);}
+
+  /* ---------- Cabecera de sección ---------- */
+  .area-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:30px;}
+  .area-head-l{display:flex;align-items:center;gap:14px;}
+  .area-head .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none;}
+  .area-head h1{font-size:24px;font-weight:600;margin:0;}
+  .area-head p{font-size:13px;color:var(--ink-soft);margin:2px 0 0;}
+
+  .btn{
+    background:var(--surface);border:1px solid var(--line);color:var(--ink);
+    font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:9px;cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .btn:hover{border-color:var(--ink-soft);}
+  .btn-dark{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .btn-dark:hover{opacity:.9;}
+  .btn-ghost{background:transparent;border:none;color:var(--ink-soft);padding:6px 8px;}
+  .btn-ghost:hover{color:var(--ink);}
+  .btn-sm{padding:5px 9px;font-size:11.5px;border-radius:7px;}
+
+  /* Listas de tareas y eventos */
+  .item-list{display:flex;flex-direction:column;gap:8px;}
+  .task-row, .event-row{
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;display:flex;align-items:flex-start;gap:12px;
+  }
+  .task-row.done{opacity:.55;}
+  .task-row.done .task-title{text-decoration:line-through;}
+  .checkbox{
+    width:19px;height:19px;border-radius:6px;border:1.5px solid var(--line);
+    flex:none;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    background:var(--surface);font-size:12px;color:var(--surface);
+  }
+  .checkbox.checked{background:var(--ink);border-color:var(--ink);color:var(--paper);}
+  .row-body{flex:1;min-width:0;}
+  .row-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .task-title, .event-title{font-size:13.5px;font-weight:600;}
+  .row-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:11.5px;color:var(--ink-soft);}
+  .priority-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .row-notes{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.4;}
+  .row-actions{display:flex;gap:2px;flex:none;}
+
+  /* ---------- Ajustes ---------- */
+  .settings-list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .settings-row:last-child{border-bottom:none;}
+  .settings-row .left{display:flex;align-items:center;gap:12px;}
+  .toggle{width:34px;height:20px;border-radius:20px;background:var(--line);position:relative;flex:none;cursor:pointer;border:none;padding:0;transition:background .15s ease;}
+  .toggle.on{background:var(--ink);}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:left .15s ease;}
+  .toggle.on::after{left:16px;}
+  .settings-row .row-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .settings-row .left.stack{flex-direction:column;align-items:flex-start;gap:2px;}
+  .settings-row.select-row{gap:14px;}
+  .settings-row select{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;color:var(--ink);background:var(--surface);}
+  .settings-row select:focus{outline:2px solid var(--ink);outline-offset:1px;}
+
+  /* ---------- Horarios bloqueados ---------- */
+  .schedule-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);gap:12px;cursor:pointer;}
+  .schedule-row:last-child{border-bottom:none;}
+  .schedule-row:hover{background:var(--paper);}
+  .schedule-row .sched-main{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .schedule-row .sched-name{font-size:13.5px;font-weight:600;}
+  .schedule-row .sched-meta{font-size:11.5px;color:var(--ink-soft);}
+  .schedule-row .sched-time{font-size:12.5px;color:var(--ink-soft);font-weight:500;flex:none;}
+  .day-pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .day-pill{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+  .day-pill.on{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .add-schedule-btn{display:block;width:100%;text-align:left;padding:14px 18px;border:none;background:transparent;color:var(--ink-soft);font-size:13px;font-weight:500;cursor:pointer;}
+  .add-schedule-btn:hover{background:var(--paper);color:var(--ink);}
+  .btn-danger{border-color:var(--alta);color:var(--alta);}
+  .btn-danger:hover{background:var(--alta);color:var(--surface);}
+  .settings-actions{display:flex;flex-wrap:wrap;gap:10px;}
+  .app-info-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;font-size:13px;color:var(--ink-soft);line-height:1.6;}
+  .app-info-box strong{color:var(--ink);}
+  .hour-row{display:flex;align-items:center;gap:10px;}
+  .hour-row select{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;}
+
+  /* ---------- Calendario ---------- */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+  .cal-head h1{font-size:22px;font-weight:600;margin:0;}
+  .cal-nav{display:flex;gap:6px;align-items:center;}
+  .cal-nav button{
+    width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);
+    cursor:pointer;color:var(--ink);font-size:14px;display:flex;align-items:center;justify-content:center;
+  }
+  .cal-nav button:hover{border-color:var(--ink-soft);}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:26px;}
+  .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
+  .cal-cell{
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    min-height:74px;padding:7px;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+    transition:border-color .15s ease;
+  }
+  .cal-cell:hover{border-color:var(--ink-soft);}
+  .cal-cell.empty{background:transparent;border-color:transparent;cursor:default;}
+  .cal-cell.today{border-color:var(--ink);border-width:1.5px;}
+  .cal-cell.selected{background:var(--paper);}
+  .cal-daynum{font-size:12px;font-weight:600;}
+  .cal-dots{display:flex;flex-wrap:wrap;gap:3px;}
+  .cal-dot{width:6px;height:6px;border-radius:50%;}
+  .cal-more{font-size:9.5px;color:var(--ink-soft);}
+  .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .day-panel-head h2{font-size:14.5px;font-weight:600;margin:0;}
+  .day-panel-actions{display:flex;gap:8px;}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(27,31,35,0.4);
+    display:none;align-items:flex-start;justify-content:center;
+    padding:60px 20px;overflow-y:auto;z-index:100;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--surface);border-radius:16px;padding:26px 26px 22px;
+    width:100%;max-width:420px;
+  }
+  .modal-box h3{font-size:16px;font-weight:600;margin:0 0 18px;}
+  .form-group{margin-bottom:14px;}
+  .form-group label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .form-group input, .form-group select, .form-group textarea{
+    width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+    font-size:13.5px;color:var(--ink);background:var(--surface);
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus{outline:2px solid var(--ink);outline-offset:1px;}
+  .form-row-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;}
+  .form-check{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;}
+  .form-check input{width:auto;}
+  .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px;}
+  .modal-actions .right{display:flex;gap:8px;}
+
+  /* ---------- Columna derecha ---------- */
+  aside{border-left:1px solid var(--line);padding:40px 26px;display:flex;flex-direction:column;gap:30px;}
+  aside h3{font-size:12px;font-weight:600;margin:0 0 12px;color:var(--ink-soft);}
+  .side-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .side-empty{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+  .side-item{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:6px 0;}
+  .side-item:not(:last-child){border-bottom:1px solid var(--line);}
+  .side-dot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .side-item .sd-title{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .side-item .sd-when{color:var(--ink-soft);font-size:11px;flex:none;}
+
+  .toast{
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:10px;
+    font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:200;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  /* ---------- Aviso de actualización de la PWA ---------- */
+  .update-banner{
+    position:fixed;left:50%;bottom:-80px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:14px;
+    background:var(--ink);color:var(--paper);padding:12px 16px 12px 18px;border-radius:12px;
+    font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,0.18);transition:bottom .25s ease;z-index:300;
+  }
+  .update-banner.show{bottom:22px;}
+  .update-banner button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.24);color:var(--paper);font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;}
+  .update-banner button:hover{background:rgba(255,255,255,0.22);}
+
+  @media (max-width:920px){
+    .app, .app.no-aside{grid-template-columns:minmax(0,1fr);}
+    aside{display:none;}
+    main{padding:70px 18px 50px;}
+    .form-row-2{grid-template-columns:1fr;}
+
+    .menu-toggle{display:flex;}
+    .menu-backdrop.open{display:block;}
+    nav.rail{
+      position:fixed;top:0;left:0;height:100vh;
+      width:min(78vw,280px);
+      transform:translateX(-100%);
+      transition:transform .22s ease;
+      z-index:1000;
+      box-shadow:4px 0 22px rgba(0,0,0,0.18);
+      align-items:stretch;
+      padding:24px 14px;
+    }
+    nav.rail.open{transform:translateX(0);}
+    .rail-logo{align-self:flex-start;margin-left:6px;}
+    .rail-item{
+      width:100%;
+      flex-direction:row;
+      justify-content:flex-start;
+      gap:14px;
+      padding:12px 14px;
+      border-radius:10px;
+    }
+    .rail-item .ic{width:30px;height:30px;font-size:15px;flex:none;}
+    .rail-item .lb{font-size:14px;}
+    .rail-item.settings{margin-top:auto;}
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menú">☰</button>
+  <div class="menu-backdrop" id="menu-backdrop"></div>
+
+  <nav class="rail">
+    <div class="rail-logo">O</div>
+    <button class="rail-item active" data-view="inicio"><div class="ic">🏠︎</div><div class="lb">Inicio</div></button>
+    <button class="rail-item" data-view="calendario"><div class="ic">📅</div><div class="lb">Calendario</div></button>
+    <button class="rail-item settings" data-view="ajustes"><div class="ic">⚙️</div><div class="lb">Ajustes</div></button>
+  </nav>
+
+  <main>
+
+    <!-- ===================== INICIO (chat con la IA) ===================== -->
+    <div class="view active" id="view-inicio">
+      <p class="greeting" id="greeting">Buenos días</p>
+      <h1 class="date"><span class="dow" id="dow">—</span> · <span id="fulldate">—</span></h1>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Hoy</h2>
+          <span class="hint">Lo que ya tienes programado para hoy</span>
+        </div>
+        <div id="today-timeline"></div>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>🤖 Asistente ORGANIZATOR</h2>
+          <span class="hint">Cuéntale lo que tienes que hacer y él lo organiza en tu calendario — nunca se inventa nada</span>
+        </div>
+        <div class="ia-block" id="ia-block">
+          <div class="ia-thread-messages ia-chat-log" id="ia-thread-messages">
+            <p class="empty-hint">Escribe cosas como «el 8 de septiembre tengo médico a las 17:00», «el 15 examen de matemáticas, tengo que estudiar unas 4 horas» o «el día 12 finalmente no puedo estudiar».</p>
+          </div>
+          <div class="ia-actions">
+            <button class="ia-btn" id="ia-day-btn">✨ Organizar mi día</button>
+            <button class="ia-btn" id="ia-week-btn">✨ Organizar mi semana</button>
+          </div>
+          <div class="ia-status" id="ia-status"></div>
+          <form class="ia-chat-form" id="ia-chat-form">
+            <input type="text" id="ia-chat-input" placeholder="Escribe lo que tengas que hacer, una fecha, una cita…" autocomplete="off">
+            <button type="submit" class="ia-btn">Enviar</button>
+          </form>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== CALENDARIO ===================== -->
+    <div class="view" id="view-calendario">
+      <div class="area-head">
+        <div class="area-head-l">
+          <div class="ic" style="background:var(--paper);color:var(--ink);">📅</div>
+          <div><h1>Calendario</h1><p>Todo lo que has organizado con el asistente, día a día</p></div>
+        </div>
+      </div>
+
+      <section class="block">
+        <div class="cal-head">
+          <h1 id="cal-title">—</h1>
+          <div class="cal-nav">
+            <button id="cal-prev">‹</button>
+            <button id="cal-today" class="btn btn-sm" style="width:auto;">Hoy</button>
+            <button id="cal-next">›</button>
+          </div>
+        </div>
+        <div class="cal-grid" id="cal-dow-row"></div>
+        <div class="cal-grid" id="cal-grid"></div>
+
+        <div class="day-panel-head">
+          <h2 id="day-panel-title">Selecciona un día</h2>
+          <div class="day-panel-actions">
+            <button class="btn btn-sm" id="day-add-task">+ Tarea</button>
+            <button class="btn btn-sm" id="day-add-event">+ Evento</button>
+          </div>
+        </div>
+        <div id="day-panel-content"></div>
+      </section>
+    </div>
+
+    <!-- ===================== AJUSTES (contenido generado por JS, ver renderAjustes()) ===================== -->
+    <div class="view" id="view-ajustes"></div>
+
+    <!-- input oculto para importar datos -->
+    <input type="file" id="import-file-input" accept="application/json" style="display:none;">
+
+  </main>
+
+  <aside id="sidebar">
+    <div>
+      <h3>Ahora / Siguiente</h3>
+      <div class="side-card" id="side-now"></div>
+    </div>
+    <div>
+      <h3>Próximos eventos</h3>
+      <div class="side-card" id="side-upcoming"></div>
+    </div>
+    <div>
+      <h3>Tareas pendientes</h3>
+      <div class="side-card" id="side-tasks"></div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ===================== MODAL ===================== -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box" id="modal-box"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="update-banner" id="update-banner">
+  <span>Hay una nueva versión de ORGANIZATOR disponible.</span>
+  <button type="button" id="update-banner-btn">Actualizar</button>
+</div>
+
+<!-- Polyfill de window.storage con IndexedDB — debe cargarse ANTES del script
+     principal para que loadState() ya lo encuentre disponible fuera de Claude. -->
+<script src="/js/storage-polyfill.js"></script>
+
+<!-- Scheduler (algoritmo de huecos libres) y capa de acciones de IA:
+     deben cargarse antes del script principal para que initIA() ya
+     encuentre window.Scheduler y window.AIActions listos. -->
+<script src="/js/scheduler.js"></script>
+<script src="/js/ai-actions.js"></script>
+
+<script>
+/* ==================================================================
+   CONFIGURACIÓN
+   ================================================================== */
+const PRIORITIES = {
+  alta:  { label:'Alta',  color:'var(--alta)'  },
+  media: { label:'Media', color:'var(--media)' },
+  baja:  { label:'Baja',  color:'var(--baja)'  },
+};
+const DOW_NAMES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DOW_SHORT = ['L','M','X','J','V','S','D'];
+// Nombres completos en el mismo orden que DOW_SHORT (0=Lunes...6=Domingo), usados para el contexto de la IA
+const DOW_FULL_MONFIRST = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+/* ==================================================================
+   AJUSTES — valores por defecto
+   ================================================================== */
+const APP_NAME = 'ORGANIZATOR';
+const APP_VERSION = '2.0.0';
+function defaultPrefs(){
+  return {
+    defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
+    showCompletedTasks: true,     // mostrar tareas ya completadas
+    showPastEvents: true,         // mostrar eventos ya pasados
+    calendarView: 'month',        // vista de calendario predeterminada (de momento solo existe 'month')
+    dayStartHour: 8,              // primera hora del día, para futuras vistas por horas
+    dayEndHour: 22,               // última hora del día, para futuras vistas por horas
+  };
+}
+function defaultIA(){
+  return {
+    enabled: true, // futuras preferencias de IA se añadirán aquí sin romper compatibilidad
+  };
+}
+
+/* ==================================================================
+   ESTADO
+   ================================================================== */
+let state = {
+  tasks: [], events: [],
+  customSchedules: [],
+  prefs: defaultPrefs(),
+  ia: defaultIA(),
+};
+window.state = state; // necesario para que js/ai-actions.js (archivo aparte) pueda leer/escribir el mismo state
+let currentView = 'inicio';
+let cal = { year:0, month:0, selected:null };
+
+/* ==================================================================
+   UTILIDADES DE FECHA
+   ================================================================== */
+function pad(n){ return String(n).padStart(2,'0'); }
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function nowTimeStr(){ const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function parseYMD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y, m-1, d); }
+function humanDate(s){
+  if(!s) return '';
+  const d = parseYMD(s);
+  return `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
+}
+function humanDateShort(s){
+  if(!s) return '';
+  const d = parseYMD(s);
+  return `${DOW_SHORT[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
+}
+function isDateInRange(dateStr, start, end){
+  if(!end) return dateStr === start;
+  return dateStr >= start && dateStr <= end;
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+/* ==================================================================
+   HORARIOS BLOQUEADOS (bloques de rutina definidos por el usuario)
+   Cada bloque: { id, name, days:[0..6] (0=Lunes...6=Domingo, igual que DOW_SHORT), startTime:"HH:MM", endTime:"HH:MM" }
+   ================================================================== */
+async function addCustomSchedule(data){
+  state.customSchedules.push({ id: uid(), name: data.name, days: data.days, startTime: data.startTime, endTime: data.endTime, createdAt: Date.now() });
+  await saveCustomSchedules();
+}
+async function updateCustomSchedule(id, data){
+  const s = state.customSchedules.find(x=>x.id===id);
+  if(!s) return;
+  s.name = data.name; s.days = data.days; s.startTime = data.startTime; s.endTime = data.endTime;
+  await saveCustomSchedules();
+}
+async function deleteCustomSchedule(id){
+  state.customSchedules = state.customSchedules.filter(x=>x.id!==id);
+  await saveCustomSchedules();
+}
+function dowOfDate(dateStr){
+  // Convierte una fecha YYYY-MM-DD al mismo índice de día que usa DOW_SHORT (0=Lunes...6=Domingo)
+  return (parseYMD(dateStr).getDay() + 6) % 7;
+}
+function schedulesForDow(dow){
+  return state.customSchedules
+    .filter(s => Array.isArray(s.days) && s.days.includes(dow))
+    .sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+}
+
+/* ==================================================================
+   ALMACENAMIENTO (persistente, personal — no compartido)
+   ================================================================== */
+async function loadState(){
+  try{
+    const t = await window.storage.get('tasks', false);
+    state.tasks = t ? JSON.parse(t.value) : [];
+  }catch(e){ state.tasks = []; }
+  try{
+    const e = await window.storage.get('events', false);
+    state.events = e ? JSON.parse(e.value) : [];
+  }catch(e){ state.events = []; }
+  try{
+    const cs = await window.storage.get('customSchedules', false);
+    state.customSchedules = cs ? JSON.parse(cs.value) : [];
+  }catch(e){ state.customSchedules = []; }
+  // Ajustes: se cargan por separado y se combinan con los valores por defecto,
+  // así si en el futuro se añaden más claves no se rompe con datos antiguos.
+  try{
+    const p = await window.storage.get('settingsPrefs', false);
+    state.prefs = p ? { ...defaultPrefs(), ...JSON.parse(p.value) } : defaultPrefs();
+  }catch(e){ state.prefs = defaultPrefs(); }
+  try{
+    const ia = await window.storage.get('settingsIA', false);
+    state.ia = ia ? { ...defaultIA(), ...JSON.parse(ia.value) } : defaultIA();
+  }catch(e){ state.ia = defaultIA(); }
+}
+async function saveTasks(){
+  try{ await window.storage.set('tasks', JSON.stringify(state.tasks), false); }
+  catch(e){ console.error('No se pudieron guardar las tareas', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveEvents(){
+  try{ await window.storage.set('events', JSON.stringify(state.events), false); }
+  catch(e){ console.error('No se pudieron guardar los eventos', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveCustomSchedules(){
+  try{ await window.storage.set('customSchedules', JSON.stringify(state.customSchedules), false); }
+  catch(e){ console.error('No se pudieron guardar los horarios bloqueados', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function savePrefs(){
+  try{ await window.storage.set('settingsPrefs', JSON.stringify(state.prefs), false); }
+  catch(e){ console.error('No se pudieron guardar las preferencias', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveIA(){
+  try{ await window.storage.set('settingsIA', JSON.stringify(state.ia), false); }
+  catch(e){ console.error('No se pudo guardar la configuración de IA', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+
+/* ==================================================================
+   CRUD
+   ================================================================== */
+async function addTask(data){
+  state.tasks.push({ id:uid(), done:false, createdAt:Date.now(), ...data });
+  await saveTasks();
+}
+async function updateTask(id, data){
+  const t = state.tasks.find(x=>x.id===id);
+  if(t) Object.assign(t, data);
+  await saveTasks();
+}
+async function deleteTask(id){
+  state.tasks = state.tasks.filter(x=>x.id!==id);
+  await saveTasks();
+}
+async function toggleTask(id){
+  const t = state.tasks.find(x=>x.id===id);
+  if(t) t.done = !t.done;
+  await saveTasks();
+  renderCurrentView();
+}
+async function addEvent(data){
+  state.events.push({ id:uid(), createdAt:Date.now(), ...data });
+  await saveEvents();
+}
+async function updateEvent(id, data){
+  const e = state.events.find(x=>x.id===id);
+  if(e) Object.assign(e, data);
+  await saveEvents();
+}
+async function deleteEvent(id){
+  state.events = state.events.filter(x=>x.id!==id);
+  await saveEvents();
+}
+
+/* ==================================================================
+   TOAST
+   ================================================================== */
+let toastTimer;
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+/* ==================================================================
+   NAVEGACIÓN
+   ================================================================== */
+const app = document.getElementById('app');
+const sidebar = document.getElementById('sidebar');
+
+function showView(name){
+  currentView = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  document.querySelectorAll('.rail-item').forEach(r => r.classList.toggle('active', r.dataset.view === name));
+  const showAside = (name === 'inicio' || name === 'calendario');
+  app.classList.toggle('no-aside', !showAside);
+  sidebar.style.display = showAside ? '' : 'none';
+  window.scrollTo(0,0);
+  renderCurrentView();
+}
+function renderCurrentView(){
+  if(currentView === 'inicio') renderInicio();
+  else if(currentView === 'calendario') renderCalendar();
+  else if(currentView === 'ajustes') renderAjustes();
+}
+
+document.querySelectorAll('.rail-item').forEach(item => {
+  item.addEventListener('click', () => { showView(item.dataset.view); closeMobileMenu(); });
+});
+
+/* ---------- Menú móvil (hamburguesa) ---------- */
+const menuToggleBtn = document.getElementById('menu-toggle');
+const menuBackdropEl = document.getElementById('menu-backdrop');
+const railNavEl = document.querySelector('nav.rail');
+function closeMobileMenu(){
+  if(railNavEl) railNavEl.classList.remove('open');
+  if(menuBackdropEl) menuBackdropEl.classList.remove('open');
+}
+function toggleMobileMenu(){
+  if(railNavEl) railNavEl.classList.toggle('open');
+  if(menuBackdropEl) menuBackdropEl.classList.toggle('open');
+}
+if(menuToggleBtn) menuToggleBtn.addEventListener('click', toggleMobileMenu);
+if(menuBackdropEl) menuBackdropEl.addEventListener('click', closeMobileMenu);
+
+/* ==================================================================
+   BARRA LATERAL (Ahora/Siguiente, próximos eventos, tareas pendientes)
+   ================================================================== */
+function updateSidebar(){
+  const today = todayStr();
+  const now = nowTimeStr();
+
+  const todayEvents = state.events
+    .filter(e=>!e.allDay && e.date===today && e.startTime)
+    .sort((a,b)=>a.startTime.localeCompare(b.startTime));
+  const current = todayEvents.find(e => e.startTime<=now && (!e.endTime || e.endTime>=now));
+  const next = todayEvents.find(e => e.startTime>now);
+  const nowEl = document.getElementById('side-now');
+  if(current){
+    nowEl.innerHTML = `<p class="side-empty"><strong style="color:var(--ink);">Ahora:</strong> ${esc(current.title)}</p>` +
+      (next?`<p class="side-empty" style="margin-top:8px;"><strong style="color:var(--ink);">Siguiente:</strong> ${esc(next.title)} · ${next.startTime}</p>`:'');
+  } else if(next){
+    nowEl.innerHTML = `<p class="side-empty"><strong style="color:var(--ink);">Siguiente:</strong> ${esc(next.title)} · ${next.startTime}</p>`;
+  } else {
+    nowEl.innerHTML = `<p class="side-empty">Cuando añadas eventos con hora, aquí verás lo que toca ahora y lo siguiente en tu agenda.</p>`;
+  }
+
+  const upcoming = state.events
+    .filter(e => (e.endDate ? e.endDate>=today : e.date>=today))
+    .sort((a,b)=> a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''))
+    .slice(0,5);
+  const upEl = document.getElementById('side-upcoming');
+  upEl.innerHTML = upcoming.length ? upcoming.map(e=>`
+    <div class="side-item">
+      <div class="side-dot" style="background:var(--event);"></div>
+      <div class="sd-title">${esc(e.title)}</div>
+      <div class="sd-when">${humanDate(e.date)}</div>
+    </div>`).join('') : `<p class="side-empty">Tus próximas citas, exámenes y reuniones aparecerán aquí ordenados por fecha.</p>`;
+
+  const pending = state.tasks.filter(t=>!t.done)
+    .sort((a,b)=>{
+      const ad=(a.scheduledDate||a.dueDate)||'9999', bd=(b.scheduledDate||b.dueDate)||'9999';
+      return ad.localeCompare(bd);
+    }).slice(0,5);
+  const tEl = document.getElementById('side-tasks');
+  tEl.innerHTML = pending.length ? pending.map(t=>`
+    <div class="side-item">
+      <div class="side-dot" style="background:var(--task);"></div>
+      <div class="sd-title">${esc(t.title)}</div>
+      <div class="sd-when">${t.scheduledDate ? humanDate(t.scheduledDate) : (t.dueDate ? humanDate(t.dueDate) : '')}</div>
+    </div>`).join('') : `<p class="side-empty">Tus tareas pendientes aparecerán aquí.</p>`;
+}
+
+/* ==================================================================
+   RENDER: INICIO
+   ================================================================== */
+function renderInicio(){
+  const h = new Date().getHours();
+  document.getElementById('greeting').textContent = h<12?'Buenos días':(h<20?'Buenas tardes':'Buenas noches');
+  const d = new Date();
+  document.getElementById('dow').textContent = DOW_NAMES[d.getDay()];
+  document.getElementById('fulldate').textContent = `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
+
+  const today = todayStr();
+  // Una tarea puede tener dueDate (su fecha límite) distinta de
+  // scheduledDate (el día en que Scheduler decidió que se hace realmente);
+  // para "hoy" nos importa dónde está programada, no cuándo vence.
+  const items = [];
+  state.tasks.filter(t=>!t.done && (t.scheduledDate||t.dueDate)===today).forEach(t=>{
+    const time = t.scheduledStart || t.dueTime || '';
+    items.push({ type:'task', title:t.title, sortKey:time||'23:59', timeLabel:time, warning:t.schedulingWarning||'' });
+  });
+  state.events.filter(e=>isDateInRange(today, e.date, e.endDate)).forEach(e=>{
+    items.push({ type:'event', title:e.title, sortKey:(e.allDay?'00:00':(e.startTime||'00:00')), timeLabel: e.allDay?'Todo el día':(e.startTime||'') });
+  });
+  items.sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+
+  const timelineEl = document.getElementById('today-timeline');
+  if(items.length===0){
+    timelineEl.innerHTML = `<div class="empty-state">Todavía no hay nada programado para hoy.<br><strong>Cuéntaselo al asistente</strong> de aquí abajo y aparecerá en tu día y en tu calendario.</div>`;
+  } else {
+    timelineEl.innerHTML = `<div class="timeline">${items.map(it=>`
+      <div class="tl-item">
+        <div class="tl-time">${it.timeLabel||'—'}</div>
+        <div class="tl-bar" style="background:var(--${it.type==='event'?'event':'task'});"></div>
+        <div class="tl-body">
+          <div class="tl-title">${esc(it.title)}</div>
+          <div class="tl-tag">${it.type==='task'?'tarea':'evento'}${it.warning?` · <span style="color:var(--alta);">${esc(it.warning)}</span>`:''}</div>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
+  // Bloque de IA: se oculta por completo si el usuario la ha desactivado en Ajustes
+  const iaBlock = document.getElementById('ia-block');
+  if(iaBlock) iaBlock.style.display = state.ia.enabled ? '' : 'none';
+
+  updateSidebar();
+}
+
+function esc(s){
+  return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ==================================================================
+   FILAS DE TAREA / EVENTO (reutilizadas en Calendario)
+   ================================================================== */
+function taskRowHTML(t){
+  const overdue = t.dueDate && t.dueDate < todayStr() && !t.done;
+  return `
+    <div class="task-row ${t.done?'done':''}">
+      <div class="checkbox ${t.done?'checked':''}" data-action="toggle-task" data-id="${t.id}">${t.done?'✓':''}</div>
+      <div class="row-body">
+        <div class="row-top">
+          <span class="task-title">${esc(t.title)}</span>
+          ${t.priority ? `<span class="priority-dot" style="background:${PRIORITIES[t.priority].color};" title="Prioridad ${PRIORITIES[t.priority].label}"></span>` : ''}
+        </div>
+        <div class="row-meta">
+          ${t.scheduledDate ? `<span>Programada: ${humanDateShort(t.scheduledDate)} · ${t.scheduledStart}-${t.scheduledEnd}</span>` : ''}
+          ${t.dueDate ? `<span style="${overdue?'color:var(--alta);font-weight:600;':''}">${t.scheduledDate?'Vence':''} ${humanDateShort(t.dueDate)}${(!t.scheduledDate && t.dueTime)?' · '+t.dueTime:''}</span>` : ''}
+          ${t.priority ? `<span>Prioridad ${PRIORITIES[t.priority].label}</span>` : ''}
+          ${t.schedulingWarning ? `<span style="color:var(--alta);">${esc(t.schedulingWarning)}</span>` : ''}
+        </div>
+        ${t.notes ? `<div class="row-notes">${esc(t.notes)}</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <button class="btn-ghost" data-action="edit-task" data-id="${t.id}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-task" data-id="${t.id}" title="Eliminar">🗑️</button>
+      </div>
+    </div>`;
+}
+function eventRowHTML(e){
+  return `
+    <div class="event-row">
+      <div class="row-body">
+        <div class="row-top"><span class="event-title">${esc(e.title)}</span></div>
+        <div class="row-meta">
+          <span>${humanDateShort(e.date)}${e.endDate?' → '+humanDateShort(e.endDate):''}</span>
+          <span>${e.allDay?'Todo el día':(e.startTime||'')+(e.endTime?' - '+e.endTime:'')}</span>
+          ${e.location?`<span>${esc(e.location)}</span>`:''}
+        </div>
+        ${e.notes ? `<div class="row-notes">${esc(e.notes)}</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <button class="btn-ghost" data-action="edit-event" data-id="${e.id}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-event" data-id="${e.id}" title="Eliminar">🗑️</button>
+      </div>
+    </div>`;
+}
+
+/* ==================================================================
+   RENDER: CALENDARIO
+   ================================================================== */
+function renderCalendar(){
+  const dowRow = document.getElementById('cal-dow-row');
+  dowRow.innerHTML = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+
+  document.getElementById('cal-title').textContent = `${MONTH_NAMES[cal.month][0].toUpperCase()}${MONTH_NAMES[cal.month].slice(1)} ${cal.year}`;
+
+  const firstOfMonth = new Date(cal.year, cal.month, 1);
+  const startOffset = (firstOfMonth.getDay()+6)%7; // lunes=0
+  const daysInMonth = new Date(cal.year, cal.month+1, 0).getDate();
+  const today = todayStr();
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let day=1; day<=daysInMonth; day++){
+    const dateStr = `${cal.year}-${pad(cal.month+1)}-${pad(day)}`;
+    const dayTypes = [];
+    // Una tarea se pinta en el día donde va a HACERSE (scheduledDate si
+    // el Scheduler ya le asignó hueco), no necesariamente en su fecha límite.
+    if(state.tasks.some(t=>(t.scheduledDate||t.dueDate)===dateStr)) dayTypes.push('task');
+    if(state.events.some(e=>isDateInRange(dateStr, e.date, e.endDate))) dayTypes.push('event');
+    cells += `
+      <div class="cal-cell ${dateStr===today?'today':''} ${dateStr===cal.selected?'selected':''}" data-date="${dateStr}">
+        <div class="cal-daynum">${day}</div>
+        <div class="cal-dots">${dayTypes.map(ty=>`<div class="cal-dot" style="background:var(--${ty});"></div>`).join('')}</div>
+      </div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = cells;
+  document.getElementById('cal-grid').querySelectorAll('.cal-cell[data-date]').forEach(c=>{
+    c.addEventListener('click', ()=>{ cal.selected = c.dataset.date; renderCalendar(); });
+  });
+
+  renderDayPanel();
+  updateSidebar();
+}
+function renderDayPanel(){
+  const sel = cal.selected;
+  const title = document.getElementById('day-panel-title');
+  const content = document.getElementById('day-panel-content');
+  if(!sel){
+    title.textContent = 'Selecciona un día';
+    content.innerHTML = `<div class="empty-state small">Haz clic en un día del calendario para ver o añadir tareas y eventos.</div>`;
+    return;
+  }
+  title.textContent = humanDateShort(sel) + ' de ' + parseYMD(sel).getFullYear();
+  const dayTasks = state.tasks.filter(t=>(t.scheduledDate||t.dueDate)===sel);
+  const dayEvents = state.events.filter(e=>isDateInRange(sel, e.date, e.endDate));
+
+  if(dayTasks.length===0 && dayEvents.length===0){
+    content.innerHTML = `<div class="empty-state small">No hay nada guardado para este día todavía.</div>`;
+  } else {
+    content.innerHTML = `<div class="item-list">
+      ${dayEvents.map(e=>eventRowHTML(e)).join('')}
+      ${dayTasks.map(t=>taskRowHTML(t)).join('')}
+    </div>`;
+    content.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTask(b.dataset.id)));
+    content.querySelectorAll('[data-action="edit-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({taskId:b.dataset.id})));
+    content.querySelectorAll('[data-action="delete-task"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar esta tarea?')){ deleteTask(b.dataset.id).then(renderCurrentView); } }));
+    content.querySelectorAll('[data-action="edit-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({eventId:b.dataset.id})));
+    content.querySelectorAll('[data-action="delete-event"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar este evento?')){ deleteEvent(b.dataset.id).then(renderCurrentView); } }));
+  }
+}
+
+document.getElementById('cal-prev').addEventListener('click', ()=>{ cal.month--; if(cal.month<0){cal.month=11;cal.year--;} renderCalendar(); });
+document.getElementById('cal-next').addEventListener('click', ()=>{ cal.month++; if(cal.month>11){cal.month=0;cal.year++;} renderCalendar(); });
+document.getElementById('cal-today').addEventListener('click', ()=>{ const d=new Date(); cal.year=d.getFullYear(); cal.month=d.getMonth(); cal.selected=todayStr(); renderCalendar(); });
+document.getElementById('day-add-task').addEventListener('click', ()=>{ if(cal.selected) openTaskModal({date:cal.selected}); });
+document.getElementById('day-add-event').addEventListener('click', ()=>{ if(cal.selected) openEventModal({date:cal.selected}); });
+
+/* ==================================================================
+   MODAL: TAREA
+   ================================================================== */
+const overlay = document.getElementById('modal-overlay');
+const modalBox = document.getElementById('modal-box');
+function closeModal(){ overlay.classList.remove('open'); modalBox.innerHTML=''; }
+overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+function openTaskModal({taskId=null, date=null}={}){
+  const editing = !!taskId;
+  const existing = editing ? state.tasks.find(t=>t.id===taskId) : null;
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} tarea</h3>
+    <form id="task-form">
+      <div class="form-group"><label>Título</label>
+        <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Estudiar para el examen">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Fecha límite</label>
+          <input type="date" name="dueDate" value="${existing?existing.dueDate||'':(date||'')}">
+        </div>
+        <div class="form-group"><label>Hora (opcional)</label>
+          <input type="time" name="dueTime" value="${existing?existing.dueTime||'':''}">
+        </div>
+      </div>
+      <div class="form-group"><label>Prioridad</label>
+        <select name="priority">
+          <option value="media" ${(!existing||existing.priority==='media')?'selected':''}>Media</option>
+          <option value="alta" ${existing&&existing.priority==='alta'?'selected':''}>Alta</option>
+          <option value="baja" ${existing&&existing.priority==='baja'?'selected':''}>Baja</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="task-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="task-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  modalBox.querySelector('#task-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#task-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar esta tarea?')){ await deleteTask(taskId); closeModal(); renderCurrentView(); }
+    });
+  }
+  modalBox.querySelector('#task-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      title: fd.get('title').trim(),
+      dueDate: fd.get('dueDate') || '',
+      dueTime: fd.get('dueTime') || '',
+      priority: fd.get('priority'),
+      notes: fd.get('notes').trim(),
+    };
+    if(!data.title) return;
+    if(editing) await updateTask(taskId, data); else await addTask(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   MODAL: EVENTO
+   ================================================================== */
+function openEventModal({eventId=null, date=null}={}){
+  const editing = !!eventId;
+  const existing = editing ? state.events.find(x=>x.id===eventId) : null;
+  const allDay = existing ? !!existing.allDay : false;
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} evento</h3>
+    <form id="event-form">
+      <div class="form-group"><label>Título</label>
+        <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Reunión de equipo">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Fecha</label>
+          <input type="date" name="date" required value="${existing?existing.date:(date||'')}">
+        </div>
+        <div class="form-group"><label>Fecha de fin (opcional)</label>
+          <input type="date" name="endDate" value="${existing?existing.endDate||'':''}">
+        </div>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="allDay" id="event-allday" ${allDay?'checked':''}>
+        <label for="event-allday" style="margin:0;">Todo el día</label>
+      </div>
+      <div class="form-row-2" id="event-time-row" style="${allDay?'display:none;':''}">
+        <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':''}"></div>
+        <div class="form-group"><label>Hora fin (opcional)</label><input type="time" name="endTime" value="${existing?existing.endTime||'':''}"></div>
+      </div>
+      <div class="form-group"><label>Ubicación (opcional)</label>
+        <input type="text" name="location" value="${existing?esc(existing.location||''):''}">
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="event-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="event-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  const allDayCb = modalBox.querySelector('#event-allday');
+  allDayCb.addEventListener('change', ()=>{
+    document.getElementById('event-time-row').style.display = allDayCb.checked ? 'none' : '';
+  });
+
+  modalBox.querySelector('#event-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#event-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar este evento?')){ await deleteEvent(eventId); closeModal(); renderCurrentView(); }
+    });
+  }
+  modalBox.querySelector('#event-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const isAllDay = fd.get('allDay') === 'on';
+    const data = {
+      title: fd.get('title').trim(),
+      date: fd.get('date'),
+      endDate: fd.get('endDate') || '',
+      allDay: isAllDay,
+      startTime: isAllDay ? '' : (fd.get('startTime')||''),
+      endTime: isAllDay ? '' : (fd.get('endTime')||''),
+      location: fd.get('location').trim(),
+      notes: fd.get('notes').trim(),
+    };
+    if(!data.title || !data.date) return;
+    if(editing) await updateEvent(eventId, data); else await addEvent(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   MODAL: HORARIO BLOQUEADO
+   ================================================================== */
+function openScheduleModal({scheduleId=null}={}){
+  const editing = !!scheduleId;
+  const existing = editing ? state.customSchedules.find(s=>s.id===scheduleId) : null;
+  const selectedDays = existing ? existing.days : [];
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} bloque de horario</h3>
+    <form id="schedule-form">
+      <div class="form-group"><label>Nombre</label>
+        <input type="text" name="name" required value="${existing?esc(existing.name):''}" placeholder="Ej. Escuela, Trabajo, Gimnasio…">
+      </div>
+      <div class="form-group"><label>Días</label>
+        <div class="day-pills" id="schedule-day-pills">
+          ${DOW_SHORT.map((lb,i)=>`<button type="button" class="day-pill ${selectedDays.includes(i)?'on':''}" data-day="${i}">${lb}</button>`).join('')}
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Hora inicio</label>
+          <input type="time" name="startTime" required value="${existing?existing.startTime:''}">
+        </div>
+        <div class="form-group"><label>Hora fin</label>
+          <input type="time" name="endTime" required value="${existing?existing.endTime:''}">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="schedule-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="schedule-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  let days = [...selectedDays];
+  modalBox.querySelectorAll('#schedule-day-pills .day-pill').forEach(pill=>{
+    pill.addEventListener('click', ()=>{
+      const d = Number(pill.dataset.day);
+      if(days.includes(d)){ days = days.filter(x=>x!==d); pill.classList.remove('on'); }
+      else { days.push(d); pill.classList.add('on'); }
+    });
+  });
+
+  modalBox.querySelector('#schedule-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#schedule-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar este bloque de horario?')){ await deleteCustomSchedule(scheduleId); closeModal(); renderAjustes(); }
+    });
+  }
+  modalBox.querySelector('#schedule-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      name: fd.get('name').trim(),
+      days: [...days].sort((a,b)=>a-b),
+      startTime: fd.get('startTime'),
+      endTime: fd.get('endTime'),
+    };
+    if(!data.name || !data.days.length || !data.startTime || !data.endTime) return;
+    if(editing) await updateCustomSchedule(scheduleId, data); else await addCustomSchedule(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderAjustes();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   RENDER: AJUSTES
+   ================================================================== */
+function renderScheduleRows(){
+  const sorted = [...state.customSchedules].sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+  const rows = sorted.map(s=>{
+    const daysLabel = DOW_SHORT.map((lb,i)=> s.days.includes(i) ? `<strong>${lb}</strong>` : lb).join(' ');
+    return `<div class="schedule-row" data-schedule-id="${s.id}">
+      <div class="sched-main">
+        <div class="sched-name">${esc(s.name)}</div>
+        <div class="sched-meta">${daysLabel}</div>
+      </div>
+      <div class="sched-time">${esc(s.startTime)} – ${esc(s.endTime)}</div>
+    </div>`;
+  }).join('');
+  const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no has creado ningún bloque. Añade tu escuela, tu trabajo, el gimnasio… lo que quieras que ORGANIZATOR sepa que tienes ocupado.</div>`;
+  return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-schedule">+ Añadir bloque de horario</button>`;
+}
+
+function renderAjustes(){
+  const el = document.getElementById('view-ajustes');
+
+  const homeOptions = [{id:'inicio', name:'Inicio'}, {id:'calendario', name:'Calendario'}]
+    .map(o=>`<option value="${o.id}" ${state.prefs.defaultHome===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
+
+  const hourOptions = (selected)=> Array.from({length:24},(_,h)=>`<option value="${h}" ${Number(selected)===h?'selected':''}>${pad(h)}:00</option>`).join('');
+
+  el.innerHTML = `
+    <div class="area-head">
+      <div class="area-head-l">
+        <div class="ic" style="background:var(--paper);color:var(--ink);">⚙️</div>
+        <div><h1>Ajustes</h1><p>Preferencias generales de ORGANIZATOR</p></div>
+      </div>
+    </div>
+
+    <section class="block">
+      <div class="block-head"><h2>Horarios bloqueados</h2><span class="hint">Define los bloques fijos de tu rutina (escuela, trabajo, gimnasio…) para que la IA nunca te ponga nada encima</span></div>
+      <div class="settings-list" id="schedules-list">${renderScheduleRows()}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Preferencias de organización</h2></div>
+      <div class="settings-list">
+        <div class="settings-row select-row">
+          <div class="left">Inicio predeterminado</div>
+          <select id="pref-default-home">${homeOptions}</select>
+        </div>
+        <div class="settings-row">
+          <div class="left">Mostrar tareas completadas</div>
+          <button type="button" class="toggle ${state.prefs.showCompletedTasks?'on':''}" data-toggle-pref="showCompletedTasks" aria-label="Mostrar tareas completadas"></button>
+        </div>
+        <div class="settings-row">
+          <div class="left">Mostrar eventos pasados</div>
+          <button type="button" class="toggle ${state.prefs.showPastEvents?'on':''}" data-toggle-pref="showPastEvents" aria-label="Mostrar eventos pasados"></button>
+        </div>
+        <div class="settings-row select-row">
+          <div class="left">Horario del día</div>
+          <div class="hour-row">
+            <select id="pref-day-start">${hourOptions(state.prefs.dayStartHour)}</select>
+            <span class="hint">a</span>
+            <select id="pref-day-end">${hourOptions(state.prefs.dayEndHour)}</select>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Organización con IA</h2></div>
+      <div class="settings-list">
+        <div class="settings-row">
+          <div class="left stack">
+            <div>Asistente de IA</div>
+            <div class="row-sub">${state.ia.enabled ? 'Activado — entiende lo que escribes en Inicio y organiza tu calendario automáticamente' : 'Desactivado — no se envía ni se solicita nada a la IA'}</div>
+          </div>
+          <button type="button" class="toggle ${state.ia.enabled?'on':''}" id="toggle-ia" aria-label="Activar o desactivar la IA"></button>
+        </div>
+      </div>
+      <p class="hint" style="display:block;margin-top:8px;">La IA solo usa las tareas, eventos y horarios bloqueados que ya tienes guardados — nunca se inventa información. Al desactivarla, el chat de Inicio desaparece y no se hace ninguna petición.</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Datos</h2></div>
+      <div class="settings-actions">
+        <button class="btn" id="btn-export-data">⬇️ Exportar datos</button>
+        <button class="btn" id="btn-import-data">⬆️ Importar datos</button>
+        <button class="btn btn-danger" id="btn-delete-data">🗑️ Borrar todos los datos</button>
+      </div>
+      <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con todos tus datos. Importar y borrar piden confirmación explícita antes de aplicarse.</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Información de la aplicación</h2></div>
+      <div class="app-info-box">
+        <div><strong>${APP_NAME}</strong> · versión ${APP_VERSION}</div>
+        <div style="margin-top:6px;">Cuéntale a la IA lo que tienes que hacer y ella lo organiza en tu calendario, guardado de forma privada en tu cuenta.</div>
+      </div>
+    </section>
+  `;
+
+  el.querySelectorAll('[data-toggle-pref]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const key = btn.dataset.togglePref;
+      state.prefs[key] = !state.prefs[key];
+      await savePrefs();
+      renderAjustes();
+    });
+  });
+  const homeSelect = el.querySelector('#pref-default-home');
+  if(homeSelect) homeSelect.addEventListener('change', async ()=>{
+    state.prefs.defaultHome = homeSelect.value;
+    await savePrefs();
+  });
+  const startSelect = el.querySelector('#pref-day-start');
+  const endSelect = el.querySelector('#pref-day-end');
+  if(startSelect) startSelect.addEventListener('change', async ()=>{
+    state.prefs.dayStartHour = Number(startSelect.value);
+    await savePrefs();
+  });
+  if(endSelect) endSelect.addEventListener('change', async ()=>{
+    state.prefs.dayEndHour = Number(endSelect.value);
+    await savePrefs();
+  });
+  const iaToggle = el.querySelector('#toggle-ia');
+  if(iaToggle) iaToggle.addEventListener('click', async ()=>{
+    state.ia.enabled = !state.ia.enabled;
+    await saveIA();
+    renderAjustes();
+    if(currentView==='inicio') renderInicio();
+  });
+
+  const addSchedBtn = el.querySelector('#btn-add-schedule');
+  if(addSchedBtn) addSchedBtn.addEventListener('click', ()=> openScheduleModal());
+  el.querySelectorAll('[data-schedule-id]').forEach(row=>{
+    row.addEventListener('click', ()=> openScheduleModal({ scheduleId: row.dataset.scheduleId }));
+  });
+
+  el.querySelector('#btn-export-data').addEventListener('click', exportData);
+  el.querySelector('#btn-import-data').addEventListener('click', ()=> document.getElementById('import-file-input').click());
+  el.querySelector('#btn-delete-data').addEventListener('click', deleteAllData);
+}
+
+/* ---------- Exportar / Importar / Borrar datos ---------- */
+function exportData(){
+  const payload = {
+    app: APP_NAME,
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: {
+      tasks: state.tasks,
+      events: state.events,
+      customSchedules: state.customSchedules,
+      prefs: state.prefs,
+      ia: state.ia,
+    }
+  };
+  try{
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `organizator-backup-${todayStr()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Datos exportados');
+  }catch(err){
+    console.error(err);
+    showToast('No se pudo exportar. Inténtalo de nuevo.');
+  }
+}
+
+function initSettingsDataIO(){
+  const input = document.getElementById('import-file-input');
+  if(!input) return;
+  input.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    input.value = '';
+    if(!file) return;
+    let parsed;
+    try{
+      const text = await file.text();
+      parsed = JSON.parse(text);
+    }catch(err){
+      showToast('El archivo no es un JSON válido');
+      return;
+    }
+    const data = (parsed && typeof parsed === 'object' && parsed.data) ? parsed.data : parsed;
+    if(!data || typeof data !== 'object'){
+      showToast('El archivo no tiene el formato esperado');
+      return;
+    }
+    const ok = confirm('Vas a reemplazar TODOS los datos actuales de ORGANIZATOR por los del archivo importado. Esta acción no se puede deshacer. ¿Quieres continuar?');
+    if(!ok) return;
+
+    state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    state.events = Array.isArray(data.events) ? data.events : [];
+    state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
+    state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
+    state.ia = { ...defaultIA(), ...(data.ia||{}) };
+
+    try{
+      await Promise.all([
+        saveTasks(), saveEvents(), saveCustomSchedules(),
+        savePrefs(), saveIA(),
+      ]);
+      showToast('Datos importados correctamente');
+      showView('inicio');
+    }catch(err){
+      console.error(err);
+      showToast('Hubo un problema guardando los datos importados');
+    }
+  });
+}
+
+async function deleteAllData(){
+  const ok1 = confirm('Esto borrará PERMANENTEMENTE todos tus datos de ORGANIZATOR (tareas, eventos y ajustes). Esta acción no se puede deshacer. ¿Seguro que quieres continuar?');
+  if(!ok1) return;
+  const ok2 = confirm('Última confirmación: se van a borrar todos tus datos ahora mismo. ¿Confirmas el borrado?');
+  if(!ok2) return;
+
+  state.tasks = [];
+  state.events = [];
+  state.customSchedules = [];
+  state.prefs = defaultPrefs();
+  state.ia = defaultIA();
+
+  try{
+    await Promise.all([
+      saveTasks(), saveEvents(), saveCustomSchedules(),
+      savePrefs(), saveIA(),
+    ]);
+    showToast('Todos los datos se han borrado');
+    showView('inicio');
+  }catch(err){
+    console.error(err);
+    showToast('Hubo un problema al borrar los datos');
+  }
+}
+
+/* ==================================================================
+   IA — ASISTENTE PERSONAL
+   ================================================================== */
+let iaProposals = [];      // propuestas activas de la última respuesta (día/semana/chat), transitorio
+let iaChatHistory = [];    // historial de chat en memoria, no se guarda en window.storage
+
+/* ---------- Llamada a la IA ----------
+   El navegador NUNCA llama directamente a Anthropic ni conoce ninguna API key:
+   habla con nuestro propio endpoint serverless de Vercel (/api/ai), que es
+   quien reenvía la petición a Anthropic usando la clave secreta guardada
+   como variable de entorno del servidor. Aquí solo viaja el contexto real
+   de ORGANIZATOR (buildContext) y el prompt del sistema, nunca credenciales. */
+async function callAI(systemPrompt, userPrompt){
+  if(!state.ia.enabled){
+    // Segunda barrera de seguridad: aunque algo llegue a invocar callAI,
+    // nunca debe salir una petición de red si el usuario desactivó la IA en Ajustes.
+    throw new Error('La IA está desactivada en Ajustes');
+  }
+  let response;
+  try{
+    response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: systemPrompt, prompt: userPrompt })
+    });
+  }catch(networkErr){
+    throw new Error('No se pudo contactar con el servidor de ORGANIZATOR');
+  }
+  let data = null;
+  try{ data = await response.json(); }catch(parseErr){ /* respuesta no-JSON, se maneja abajo */ }
+  if(!response.ok){
+    throw new Error((data && data.error) ? data.error : ('HTTP ' + response.status));
+  }
+  if(!data || !data.text) throw new Error('Respuesta vacía de la IA');
+  return data.text;
+}
+function parseAIJSON(text){
+  let clean = text.trim();
+  clean = clean.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
+  return JSON.parse(clean);
+}
+
+/* ---------- Contexto real de ORGANIZATOR (nunca se inventa nada) ---------- */
+function buildContext(scope){
+  const today = todayStr();
+  const pend = state.tasks.filter(t => !t.done);
+  const overdue = pend.filter(t => t.dueDate && t.dueDate < today);
+  const noDate = pend.filter(t => !t.dueDate);
+
+  let rangeEnd = today;
+  if(scope === 'week' || scope === 'chat'){
+    const d = parseYMD(today); d.setDate(d.getDate() + 6);
+    rangeEnd = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  const rangeTasks = pend.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= rangeEnd)
+    .sort((a,b) => (a.dueDate+(a.dueTime||'')).localeCompare(b.dueDate+(b.dueTime||'')));
+
+  const eventsInRange = state.events.filter(e => {
+    const end = e.endDate || e.date;
+    return end >= today && e.date <= rangeEnd;
+  }).sort((a,b) => a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''));
+
+  const lines = [];
+  lines.push(`FECHA ACTUAL: ${today} (${DOW_NAMES[new Date().getDay()]}), hora actual: ${nowTimeStr()}.`);
+  if(scope === 'week' || scope === 'chat') lines.push(`RANGO CONSIDERADO: ${today} a ${rangeEnd}.`);
+  lines.push('');
+  lines.push('TAREAS ATRASADAS (fecha límite ya pasada, sin completar):');
+  lines.push(overdue.length ? overdue.map(t => `- ${t.title} (vencía ${t.dueDate}${t.dueTime?' '+t.dueTime:''}, prioridad ${t.priority||'media'})`).join('\n') : '(ninguna)');
+  lines.push('');
+  lines.push(`TAREAS CON FECHA (${today} a ${rangeEnd}):`);
+  lines.push(rangeTasks.length ? rangeTasks.map(t => `- ${t.title} — vence ${t.dueDate}${t.scheduledDate ? `, YA PROGRAMADA el ${t.scheduledDate} de ${t.scheduledStart} a ${t.scheduledEnd}` : (t.dueTime?', HORA FIJA '+t.dueTime:', SIN HORA FIJA AÚN')}, prioridad ${t.priority||'media'}${t.notes?', notas: '+t.notes:''}`).join('\n') : '(ninguna)');
+  lines.push('');
+  lines.push('TAREAS SIN FECHA ASIGNADA (no se les puede suponer una fecha):');
+  lines.push(noDate.length ? noDate.map(t => `- ${t.title}${t.priority?' (prioridad '+t.priority+')':''}`).join('\n') : '(ninguna)');
+  lines.push('');
+  lines.push(`EVENTOS (${today} a ${rangeEnd}, con hora fija cuando existe):`);
+  lines.push(eventsInRange.length ? eventsInRange.map(e => `- ${e.title} — ${e.date}${e.endDate&&e.endDate!==e.date?' a '+e.endDate:''}${e.allDay?', TODO EL DÍA':(e.startTime?', HORA FIJA '+e.startTime+(e.endTime?'–'+e.endTime:''):', sin hora')}${e.location?', lugar: '+e.location:''}`).join('\n') : '(ninguno)');
+
+  lines.push('');
+  lines.push('HORARIO BLOQUEADO DEL USUARIO (bloques fijos de su rutina, definidos por él mismo en Ajustes; se repiten cada semana los días indicados — nunca hay que ponerle nada encima):');
+  if(!state.customSchedules.length){
+    lines.push('(el usuario todavía no ha definido ningún bloque de horario)');
+  } else if(scope === 'day'){
+    const dow = dowOfDate(today);
+    const todays = schedulesForDow(dow);
+    lines.push(todays.length
+      ? todays.map(s => `- ${s.name}: ${s.startTime}–${s.endTime}`).join('\n')
+      : '(el usuario no tiene bloques de horario para hoy)');
+  } else {
+    lines.push(state.customSchedules.map(s => `- ${s.name}: ${s.startTime}–${s.endTime} (se repite: ${s.days.map(d=>DOW_FULL_MONFIRST[d]).join(', ')})`).join('\n'));
+  }
+
+  return lines.join('\n');
+}
+
+const PLAN_ITEM_SCHEMA = `{
+  "sourceType": "existing" | "proposal",
+  "kind": "task" | "event" | "idea",
+  "time": string|null,
+  "title": string,
+  "reason": string|null
+}`;
+
+const IA_RULES = `Eres el asistente de organización integrado en la app ORGANIZATOR. Recibes un contexto con información REAL del usuario: tareas, eventos y su horario bloqueado (bloques fijos de rutina como la escuela, el trabajo o el gimnasio).
+
+Reglas estrictas, sin excepción:
+- Responde SIEMPRE en español: los textos, los resúmenes, los motivos y, si generas nombres de días de la semana (label), usa los nombres en español (lunes, martes, miércoles, jueves, viernes, sábado, domingo), nunca en inglés.
+- No inventes tareas, eventos ni horas que no estén literalmente en el contexto.
+- Todo lo que venga del contexto (tareas y eventos existentes) debe marcarse "sourceType":"existing" y conservar su hora tal cual (o null si no tiene). Una tarea marcada "YA PROGRAMADA" ya tiene hueco asignado por el sistema: trátala como "existing" con esa hora, no la vuelvas a proponer ni le busques otra.
+- El HORARIO BLOQUEADO del usuario representa tiempo ya ocupado en los días indicados: nunca propongas algo nuevo que se solape con esos bloques.
+- Si propones una hora para algo que no la tiene, o sugieres algo nuevo (estudiar, repasar, descansar), márcalo "sourceType":"proposal" — nunca lo presentes como si ya existiera en la agenda.
+- Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, una tarea atrasada, un hueco libre, etc.). Explica brevemente el motivo en "reason".
+- Si no hay información suficiente para un plan útil, dilo en "summary" y devuelve "planItems" vacío o muy reducido.
+- Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown ni bloques de código.`;
+
+function iaSetStatus(msg){ document.getElementById('ia-status').textContent = msg || ''; }
+function iaSetButtonsDisabled(disabled){
+  const d = document.getElementById('ia-day-btn'); if(d) d.disabled = disabled;
+  const w = document.getElementById('ia-week-btn'); if(w) w.disabled = disabled;
+}
+
+/* ---------- Hilo único del asistente ----------
+   Tanto los botones "Organizar mi día/semana" como el chat libre escriben
+   en el mismo hilo (#ia-thread-messages): cada acción añade una burbuja
+   "pregunta" + una burbuja "respuesta" que se resuelve cuando llega la IA. */
+function iaThreadAddPending(question){
+  const log = document.getElementById('ia-thread-messages');
+  const placeholder = log.querySelector('.empty-hint');
+  if(placeholder) placeholder.remove();
+  const msgEl = document.createElement('div');
+  msgEl.className = 'ia-chat-msg';
+  msgEl.innerHTML = `<div class="q">${esc(question)}</div><div class="a">Pensando…</div>`;
+  log.appendChild(msgEl);
+  log.scrollTop = log.scrollHeight;
+  return msgEl;
+}
+function iaThreadResolve(msgEl, html){
+  msgEl.querySelector('.a').innerHTML = html;
+}
+
+/* ---------- Render de un item de plan (existente o propuesta) ---------- */
+function renderIAItemHTML(it, dateForApply){
+  const barColor = it.kind==='event' ? 'var(--event)' : 'var(--task)';
+  if(it.sourceType === 'existing'){
+    return `<div class="ia-tl-item">
+      <div class="ia-tl-time">${esc(it.time||'—')}</div>
+      <div class="ia-tl-bar" style="background:${barColor};"></div>
+      <div class="ia-tl-body">
+        <div class="ia-tl-title">${esc(it.title)}<span class="ia-tag">${it.kind==='event'?'evento':'tarea'}</span></div>
+      </div>
+    </div>`;
+  }
+  const idx = iaProposals.length;
+  iaProposals.push({ ...it, applyDate: dateForApply });
+  return `<div class="ia-tl-item">
+    <div class="ia-tl-time">${esc(it.time||'—')}</div>
+    <div class="ia-tl-bar proposal"></div>
+    <div class="ia-tl-body">
+      <div class="ia-tl-title">${esc(it.title)}<span class="ia-tag proposal">propuesta IA</span></div>
+      ${it.reason ? `<div class="ia-tl-tag">${esc(it.reason)}</div>` : ''}
+      <div class="ia-tl-actions">
+        <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
+        <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+      </div>
+    </div>
+  </div>`;
+}
+function wireIAProposalButtons(container){
+  container.querySelectorAll('[data-ia-apply]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const it = iaProposals[Number(b.dataset.iaApply)];
+      if(!it || b.disabled) return;
+      b.disabled = true;
+      await applyIAProposal(it, it.applyDate || todayStr());
+      b.textContent = 'Añadido ✓';
+      showToast('Añadido al plan');
+    });
+  });
+  container.querySelectorAll('[data-ia-discard]').forEach(b=>{
+    b.addEventListener('click', ()=>{ b.closest('.ia-tl-item').remove(); });
+  });
+}
+async function applyIAProposal(it, date){
+  if(it.time){
+    await addEvent({ title: it.title, date, endDate:'', allDay:false, startTime: it.time, endTime:'', location:'', notes: it.reason||'' });
+  } else {
+    await addTask({ title: it.title, dueDate: date, dueTime:'', priority:'media', notes: it.reason||'' });
+  }
+  if(currentView === 'inicio') renderInicio();
+  if(currentView === 'calendario') renderCalendar();
+}
+
+/* ---------- Organizar mi día ---------- */
+async function runIADay(){
+  iaSetButtonsDisabled(true);
+  iaSetStatus('Analizando tu día…');
+  const msgEl = iaThreadAddPending('✨ Organizar mi día');
+  try{
+    const context = buildContext('day');
+    const system = IA_RULES + `\n\nGenera un plan SOLO para hoy. Esquema exacto:\n{\n  "summary": string,\n  "planItems": [${PLAN_ITEM_SCHEMA}]\n}\nOrdena planItems cronológicamente cuando tengan hora; los que no tengan hora van al final.`;
+    iaSetStatus('Generando planificación…');
+    const raw = await callAI(system, context);
+    const data = parseAIJSON(raw);
+    iaProposals = [];
+    const itemsHtml = (data.planItems||[]).map(it=>renderIAItemHTML(it, todayStr())).join('');
+    iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
+      (itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">No hay datos suficientes todavía para proponer un plan.</p>`));
+    wireIAProposalButtons(msgEl);
+    iaSetStatus('');
+  }catch(err){
+    console.error(err);
+    iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo generar la planificación (error de conexión con la IA). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
+    iaSetStatus('');
+  }finally{
+    iaSetButtonsDisabled(false);
+  }
+}
+
+/* ---------- Organizar mi semana ---------- */
+async function runIAWeek(){
+  iaSetButtonsDisabled(true);
+  iaSetStatus('Analizando tu semana…');
+  const msgEl = iaThreadAddPending('✨ Organizar mi semana');
+  try{
+    const context = buildContext('week');
+    const system = IA_RULES + `\n\nGenera un plan para los próximos 7 días (hoy incluido), agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": [].`;
+    iaSetStatus('Generando planificación semanal…');
+    const raw = await callAI(system, context);
+    const data = parseAIJSON(raw);
+    iaProposals = [];
+    const daysHtml = (data.days||[]).map(day=>{
+      const itemsHtml = (day.items||[]).map(it=>renderIAItemHTML(it, day.date || todayStr())).join('');
+      return `<div class="ia-week-day"><h4>${esc(day.label||day.date||'')}</h4>${itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">Sin novedades este día.</p>`}</div>`;
+    }).join('');
+    iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
+      (daysHtml || `<p class="empty-hint">No hay datos suficientes todavía para proponer una planificación semanal.</p>`));
+    wireIAProposalButtons(msgEl);
+    iaSetStatus('');
+  }catch(err){
+    console.error(err);
+    iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo generar la planificación semanal (error de conexión con la IA). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
+    iaSetStatus('');
+  }finally{
+    iaSetButtonsDisabled(false);
+  }
+}
+
+/* ---------- Chat con la IA (acciones aplicadas automáticamente) ----------
+   Usa AIActions.runIAAction() (js/ai-actions.js) para crear/mover/cancelar
+   tareas y eventos directamente a partir de lo que el usuario escribe en
+   lenguaje natural, y para las tareas sin hora deja que Scheduler
+   (js/scheduler.js) decida el hueco libre real. */
+async function runIAActionChat(question){
+  const msgEl = iaThreadAddPending(question);
+  try{
+    const { answer, applied } = await AIActions.runIAAction(question);
+    const appliedHtml = applied.length
+      ? `<ul class="ia-applied-list">${applied.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`
+      : '';
+    iaThreadResolve(msgEl, esc(answer||'') + appliedHtml);
+    if(currentView === 'calendario') renderCalendar();
+    else if(currentView === 'inicio') renderInicio();
+  }catch(err){
+    console.error(err);
+    iaThreadResolve(msgEl, 'No se pudo contactar con la IA ahora mismo. Inténtalo de nuevo en un momento.');
+  }
+}
+
+/* ---------- Wiring inicial del bloque IA (bloque estático, se conecta una vez) ---------- */
+function initIA(){
+  const dayBtn = document.getElementById('ia-day-btn');
+  const weekBtn = document.getElementById('ia-week-btn');
+  const chatForm = document.getElementById('ia-chat-form');
+  if(dayBtn) dayBtn.addEventListener('click', runIADay);
+  if(weekBtn) weekBtn.addEventListener('click', runIAWeek);
+  if(chatForm) chatForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const input = document.getElementById('ia-chat-input');
+    const q = input.value.trim();
+    if(!q) return;
+    input.value = '';
+    runIAActionChat(q);
+  });
+}
+
+/* ==================================================================
+   PWA — registro del Service Worker y control de actualizaciones.
+   No toca window.storage ni ningún dato del usuario: solo gestiona
+   la caché del "shell" estático de la app.
+   ================================================================== */
+function initPWA(){
+  if(!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').then(reg=>{
+    // Si ya hay un SW esperando (por ejemplo, se abrió una pestaña nueva
+    // después de que otra ya descargara la actualización), avisamos ya.
+    if(reg.waiting && navigator.serviceWorker.controller){
+      showUpdateBanner(reg);
+    }
+    reg.addEventListener('updatefound', ()=>{
+      const installing = reg.installing;
+      if(!installing) return;
+      installing.addEventListener('statechange', ()=>{
+        // 'installed' + ya había un controller = es una actualización real,
+        // no la primera instalación de la PWA.
+        if(installing.state === 'installed' && navigator.serviceWorker.controller){
+          showUpdateBanner(reg);
+        }
+      });
+    });
+  }).catch(err=> console.warn('No se pudo registrar el Service Worker', err));
+
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(reloading) return;
+    reloading = true;
+    location.reload();
+  });
+}
+function showUpdateBanner(reg){
+  const banner = document.getElementById('update-banner');
+  const btn = document.getElementById('update-banner-btn');
+  if(!banner || !btn) return;
+  banner.classList.add('show');
+  btn.onclick = ()=>{
+    if(reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+    banner.classList.remove('show');
+  };
+}
+
+/* ==================================================================
+   INICIALIZACIÓN
+   ================================================================== */
+(async function init(){
+  document.getElementById('today-timeline').innerHTML = `<div class="empty-state small">Cargando…</div>`;
+  const d = new Date();
+  cal.year = d.getFullYear(); cal.month = d.getMonth(); cal.selected = todayStr();
+  await loadState();
+  initIA();
+  initSettingsDataIO();
+  initPWA();
+  showView(state.prefs.defaultHome || 'inicio');
+})();
+</script>
+
+</body>
+</html>
