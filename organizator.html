@@ -1,0 +1,2939 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ORGANIZATOR</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#1B1F23">
+<link rel="icon" href="/icons/icon-512.png" type="image/png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ORGANIZATOR">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F3F2EE;
+    --surface:#FFFFFF;
+    --ink:#1B1F23;
+    --ink-soft:#63676C;
+    --line:#E3E1DB;
+    --radius:14px;
+
+    --cole:#D98E2C;      --cole-bg:#FBF0DF;
+    --cesi:#6B4FE0;      --cesi-bg:#EFEBFD;
+    --rubik:#1E9E8C;     --rubik-bg:#E4F5F2;
+    --casa:#B5623B;      --casa-bg:#F6E9E2;
+    --compras:#3E8C5B;   --compras-bg:#E7F3EC;
+    --vacaciones:#2F6FE0;--vacaciones-bg:#E6EDFC;
+
+    --alta:#C0453B; --media:#C98A22; --baja:#8B8F94;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{
+    overflow-x:hidden;
+  }
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3,.display{
+    font-family:'Space Grotesk',sans-serif;
+    letter-spacing:-0.01em;
+  }
+  button, input, select, textarea{font-family:inherit;}
+
+  .app{
+    display:grid;
+    grid-template-columns:76px minmax(0,1fr) 300px;
+    min-height:100vh;
+  }
+  .app.no-aside{grid-template-columns:76px minmax(0,1fr);}
+
+  /* ---------- Rail de navegación ---------- */
+  nav.rail{
+    background:var(--surface);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px 0;
+    gap:4px;
+    overflow-y:auto;
+  }
+  .rail-logo{
+    width:34px;height:34px;border-radius:9px;
+    background:var(--ink);
+    margin-bottom:22px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--paper);font-family:'Space Grotesk';font-weight:700;font-size:15px;
+    flex:none;
+  }
+  .rail-item{
+    width:56px;
+    display:flex;flex-direction:column;align-items:center;gap:5px;
+    padding:9px 0;
+    border-radius:12px;
+    cursor:pointer;
+    color:var(--ink-soft);
+    position:relative;
+    transition:background .15s ease, color .15s ease;
+    border:none;
+    background:transparent;
+  }
+  .rail-item .ic{
+    width:34px;height:34px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:16px;
+    background:transparent;
+  }
+  .rail-item .lb{font-size:10px;font-weight:500;}
+  .rail-item:hover{background:var(--paper);}
+  .rail-item.active{color:var(--ink);}
+  .rail-item.active .ic{background:var(--ink);color:var(--paper);}
+  .rail-item.settings{margin-top:auto;}
+
+  .rail-item[data-c="cole"].active .ic{background:var(--cole);}
+  .rail-item[data-c="cesi"].active .ic{background:var(--cesi);}
+  .rail-item[data-c="rubik"].active .ic{background:var(--rubik);}
+  .rail-item[data-c="casa"].active .ic{background:var(--casa);}
+  .rail-item[data-c="compras"].active .ic{background:var(--compras);}
+  .rail-item[data-c="vacaciones"].active .ic{background:var(--vacaciones);}
+
+  /* ---------- Menú móvil (hamburguesa) ---------- */
+  .menu-toggle{
+    display:none;
+    position:fixed;top:14px;left:14px;z-index:900;
+    width:40px;height:40px;border-radius:10px;
+    border:1px solid var(--line);background:var(--surface);
+    align-items:center;justify-content:center;
+    font-size:18px;cursor:pointer;color:var(--ink);
+  }
+  .menu-backdrop{
+    display:none;
+    position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:999;
+  }
+
+  /* ---------- Contenido central ---------- */
+  main{
+    padding:40px 44px 60px;
+    max-width:820px;
+  }
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .greeting{font-size:13px;color:var(--ink-soft);margin:0 0 2px;font-weight:500;}
+  .date{font-size:30px;font-weight:600;margin:0 0 34px;}
+  .date .dow{color:var(--ink-soft);font-weight:500;}
+
+  section.block{margin-bottom:38px;}
+  .block-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:12px;flex-wrap:wrap;}
+  .block-head h2{font-size:15px;font-weight:600;margin:0;}
+  .block-head .hint{font-size:12px;color:var(--ink-soft);}
+
+  .empty-state{
+    background:var(--surface);
+    border:1px dashed var(--line);
+    border-radius:var(--radius);
+    padding:26px 24px;
+    color:var(--ink-soft);
+    font-size:13.5px;
+    line-height:1.5;
+  }
+  .empty-state strong{color:var(--ink);font-weight:600;}
+  .empty-state.small{padding:16px 18px;font-size:12.5px;}
+
+  /* IA */
+  .ia-block{background:var(--ink);border-radius:var(--radius);padding:22px 24px;color:var(--paper);}
+  .ia-block h2{color:var(--paper);}
+  .ia-block .hint{color:#9BA0A6;}
+  .ia-actions{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+  .ia-btn{background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);color:var(--paper);font-size:13px;font-weight:500;padding:10px 16px;border-radius:10px;cursor:pointer;transition:background .15s ease;}
+  .ia-btn:hover{background:rgba(255,255,255,0.16);}
+  .ia-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .ia-status{margin-top:12px;font-size:12.5px;color:#9BA0A6;min-height:1px;}
+  .ia-response{margin-top:10px;}
+  .ia-response .empty-hint{font-size:12.5px;color:#9BA0A6;line-height:1.5;}
+  .ia-summary{font-size:13px;color:var(--paper);line-height:1.5;margin-bottom:10px;}
+  .ia-timeline{display:flex;flex-direction:column;gap:0;}
+  .ia-tl-item{display:flex;gap:14px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.1);}
+  .ia-tl-item:last-child{border-bottom:none;}
+  .ia-tl-time{width:52px;flex:none;font-size:12px;color:#9BA0A6;font-weight:500;padding-top:2px;}
+  .ia-tl-bar{width:3px;border-radius:3px;flex:none;background:rgba(255,255,255,0.25);}
+  .ia-tl-bar.proposal{background:transparent;border-left:2px dashed #9BA0A6;width:0;}
+  .ia-tl-body{flex:1;display:flex;flex-direction:column;gap:3px;}
+  .ia-tl-title{font-size:13.5px;font-weight:600;color:var(--paper);}
+  .ia-tag{font-size:10.5px;font-weight:600;padding:1px 7px;border-radius:6px;background:rgba(255,255,255,0.12);color:#D7D9DC;margin-left:6px;}
+  .ia-tag.proposal{background:rgba(255,255,255,0.06);border:1px dashed rgba(255,255,255,0.3);}
+  .ia-tl-tag{font-size:11px;color:#9BA0A6;}
+  .ia-tl-actions{display:flex;gap:6px;margin-top:5px;}
+  .ia-mini-btn{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:var(--paper);font-size:11.5px;padding:5px 10px;border-radius:7px;cursor:pointer;}
+  .ia-mini-btn:hover{background:rgba(255,255,255,0.2);}
+  .ia-mini-btn:disabled{opacity:.5;cursor:not-allowed;}
+  .ia-mini-ghost{background:transparent;border:none;color:#9BA0A6;font-size:11.5px;padding:5px 6px;cursor:pointer;}
+  .ia-mini-ghost:hover{color:var(--paper);}
+  .ia-week-day{margin-bottom:14px;}
+  .ia-week-day h4{font-size:12.5px;font-weight:600;margin:0 0 6px;color:#D7D9DC;}
+  .ia-chat-form{margin-top:16px;display:flex;gap:8px;}
+  .ia-chat-form input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);border-radius:9px;padding:9px 12px;color:var(--paper);font-size:13px;}
+  .ia-chat-form input::placeholder{color:#9BA0A6;}
+  .ia-chat-form input:focus{outline:2px solid rgba(255,255,255,0.3);}
+  .ia-chat-log{margin-top:12px;display:flex;flex-direction:column;gap:10px;}
+  .ia-chat-msg{font-size:13px;line-height:1.5;}
+  .ia-chat-msg .q{color:#9BA0A6;font-weight:500;margin-bottom:3px;}
+  .ia-chat-msg .a{color:var(--paper);}
+  .ia-applied-list{margin:6px 0 0;padding-left:18px;font-size:12px;color:#9BA0A6;}
+  .ia-applied-list li{margin-bottom:2px;}
+  .rubik-ia-card{background:var(--ink);color:var(--paper);border-radius:var(--radius);padding:18px 20px;margin-top:12px;display:flex;flex-direction:column;gap:10px;}
+  .rubik-ia-card h4{margin:0;font-size:14px;color:var(--paper);}
+  .rubik-ia-card .rc-motivo{font-size:12.5px;color:#9BA0A6;line-height:1.4;}
+  .rubik-ia-card ul{margin:0;padding-left:18px;font-size:13px;line-height:1.6;}
+
+  /* Tarjetas de áreas (Inicio) */
+  .areas{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+  .area-card{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px;display:flex;flex-direction:column;gap:8px;min-height:92px;
+    cursor:pointer;text-align:left;transition:border-color .15s ease;
+  }
+  .area-card:hover{border-color:var(--ink-soft);}
+  .area-card .ic{width:28px;height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;}
+  .area-card .name{font-size:13px;font-weight:600;}
+  .area-card .status{font-size:11.5px;color:var(--ink-soft);}
+  .area-card[data-c="cole"] .ic{background:var(--cole-bg);color:var(--cole);}
+  .area-card[data-c="cesi"] .ic{background:var(--cesi-bg);color:var(--cesi);}
+  .area-card[data-c="rubik"] .ic{background:var(--rubik-bg);color:var(--rubik);}
+  .area-card[data-c="casa"] .ic{background:var(--casa-bg);color:var(--casa);}
+  .area-card[data-c="compras"] .ic{background:var(--compras-bg);color:var(--compras);}
+  .area-card[data-c="vacaciones"] .ic{background:var(--vacaciones-bg);color:var(--vacaciones);}
+
+  /* Timeline "Plan de hoy" */
+  .timeline{display:flex;flex-direction:column;gap:0;}
+  .tl-item{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);}
+  .tl-item:last-child{border-bottom:none;}
+  .tl-time{width:56px;flex:none;font-size:12px;color:var(--ink-soft);font-weight:500;padding-top:2px;}
+  .tl-bar{width:3px;border-radius:3px;flex:none;}
+  .tl-body{flex:1;display:flex;flex-direction:column;gap:2px;}
+  .tl-title{font-size:13.5px;font-weight:600;}
+  .tl-tag{font-size:11px;color:var(--ink-soft);}
+
+  /* ---------- Cabecera de área ---------- */
+  .area-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:30px;}
+  .area-head-l{display:flex;align-items:center;gap:14px;}
+  .area-head .ic{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;flex:none;}
+  .area-head h1{font-size:24px;font-weight:600;margin:0;}
+  .area-head p{font-size:13px;color:var(--ink-soft);margin:2px 0 0;}
+  .area-head[data-c="cole"] .ic{background:var(--cole-bg);color:var(--cole);}
+  .area-head[data-c="cesi"] .ic{background:var(--cesi-bg);color:var(--cesi);}
+  .area-head[data-c="rubik"] .ic{background:var(--rubik-bg);color:var(--rubik);}
+  .area-head[data-c="casa"] .ic{background:var(--casa-bg);color:var(--casa);}
+  .area-head[data-c="compras"] .ic{background:var(--compras-bg);color:var(--compras);}
+  .area-head[data-c="vacaciones"] .ic{background:var(--vacaciones-bg);color:var(--vacaciones);}
+
+  .btn{
+    background:var(--surface);border:1px solid var(--line);color:var(--ink);
+    font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:9px;cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .btn:hover{border-color:var(--ink-soft);}
+  .btn-dark{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .btn-dark:hover{opacity:.9;}
+  .btn-ghost{background:transparent;border:none;color:var(--ink-soft);padding:6px 8px;}
+  .btn-ghost:hover{color:var(--ink);}
+  .btn-sm{padding:5px 9px;font-size:11.5px;border-radius:7px;}
+
+  /* Listas de tareas y eventos */
+  .item-list{display:flex;flex-direction:column;gap:8px;}
+  .task-row, .event-row{
+    background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;display:flex;align-items:flex-start;gap:12px;
+  }
+  .task-row.done{opacity:.55;}
+  .task-row.done .task-title{text-decoration:line-through;}
+  .checkbox{
+    width:19px;height:19px;border-radius:6px;border:1.5px solid var(--line);
+    flex:none;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    background:var(--surface);font-size:12px;color:var(--surface);
+  }
+  .checkbox.checked{background:var(--ink);border-color:var(--ink);color:var(--paper);}
+  .row-body{flex:1;min-width:0;}
+  .row-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .task-title, .event-title{font-size:13.5px;font-weight:600;}
+  .row-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:11.5px;color:var(--ink-soft);}
+  .priority-dot{width:8px;height:8px;border-radius:50%;flex:none;}
+  .row-notes{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.4;}
+  .row-actions{display:flex;gap:2px;flex:none;}
+
+  .area-tag{
+    font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;
+  }
+  .area-tag.cole{background:var(--cole-bg);color:var(--cole);}
+  .area-tag.cesi{background:var(--cesi-bg);color:var(--cesi);}
+  .area-tag.rubik{background:var(--rubik-bg);color:var(--rubik);}
+  .area-tag.casa{background:var(--casa-bg);color:var(--casa);}
+  .area-tag.compras{background:var(--compras-bg);color:var(--compras);}
+  .area-tag.vacaciones{background:var(--vacaciones-bg);color:var(--vacaciones);}
+
+  /* ---------- Ajustes (placeholder, fase 2b) ---------- */
+  .settings-list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .settings-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);font-size:13.5px;}
+  .settings-row:last-child{border-bottom:none;}
+  .settings-row .left{display:flex;align-items:center;gap:12px;}
+  .settings-row .ic-sm{width:26px;height:26px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;}
+  .toggle{width:34px;height:20px;border-radius:20px;background:var(--line);position:relative;flex:none;cursor:pointer;border:none;padding:0;transition:background .15s ease;}
+  .toggle.on{background:var(--ink);}
+  .toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:var(--surface);transition:left .15s ease;}
+  .toggle.on::after{left:16px;}
+  .settings-row .row-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .settings-row .left.stack{flex-direction:column;align-items:flex-start;gap:2px;}
+  .settings-row.select-row{gap:14px;}
+  .settings-row select{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;color:var(--ink);background:var(--surface);}
+  .settings-row select:focus{outline:2px solid var(--ink);outline-offset:1px;}
+
+  /* ---------- Horarios personalizados ---------- */
+  .schedule-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);gap:12px;cursor:pointer;}
+  .schedule-row:last-child{border-bottom:none;}
+  .schedule-row:hover{background:var(--paper);}
+  .schedule-row .sched-main{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .schedule-row .sched-name{font-size:13.5px;font-weight:600;}
+  .schedule-row .sched-meta{font-size:11.5px;color:var(--ink-soft);}
+  .schedule-row .sched-time{font-size:12.5px;color:var(--ink-soft);font-weight:500;flex:none;}
+  .day-pills{display:flex;gap:6px;flex-wrap:wrap;}
+  .day-pill{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease,border-color .15s ease;}
+  .day-pill.on{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  .add-schedule-btn{display:block;width:100%;text-align:left;padding:14px 18px;border:none;background:transparent;color:var(--ink-soft);font-size:13px;font-weight:500;cursor:pointer;}
+  .add-schedule-btn:hover{background:var(--paper);color:var(--ink);}
+  .btn-danger{border-color:var(--alta);color:var(--alta);}
+  .btn-danger:hover{background:var(--alta);color:var(--surface);}
+  .settings-actions{display:flex;flex-wrap:wrap;gap:10px;}
+  .app-info-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;font-size:13px;color:var(--ink-soft);line-height:1.6;}
+  .app-info-box strong{color:var(--ink);}
+  .hour-row{display:flex;align-items:center;gap:10px;}
+  .hour-row select{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;}
+
+  /* ---------- Calendario ---------- */
+  .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+  .cal-head h1{font-size:22px;font-weight:600;margin:0;}
+  .cal-nav{display:flex;gap:6px;align-items:center;}
+  .cal-nav button{
+    width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);
+    cursor:pointer;color:var(--ink);font-size:14px;display:flex;align-items:center;justify-content:center;
+  }
+  .cal-nav button:hover{border-color:var(--ink-soft);}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:26px;}
+  .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
+  .cal-cell{
+    background:var(--surface);border:1px solid var(--line);border-radius:10px;
+    min-height:74px;padding:7px;cursor:pointer;display:flex;flex-direction:column;gap:5px;
+    transition:border-color .15s ease;
+  }
+  .cal-cell:hover{border-color:var(--ink-soft);}
+  .cal-cell.empty{background:transparent;border-color:transparent;cursor:default;}
+  .cal-cell.today{border-color:var(--ink);border-width:1.5px;}
+  .cal-cell.selected{background:var(--paper);}
+  .cal-daynum{font-size:12px;font-weight:600;}
+  .cal-dots{display:flex;flex-wrap:wrap;gap:3px;}
+  .cal-dot{width:6px;height:6px;border-radius:50%;}
+  .cal-more{font-size:9.5px;color:var(--ink-soft);}
+  .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+  .day-panel-head h2{font-size:14.5px;font-weight:600;margin:0;}
+  .day-panel-actions{display:flex;gap:8px;}
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(27,31,35,0.4);
+    display:none;align-items:flex-start;justify-content:center;
+    padding:60px 20px;overflow-y:auto;z-index:100;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-box{
+    background:var(--surface);border-radius:16px;padding:26px 26px 22px;
+    width:100%;max-width:420px;
+  }
+  .modal-box h3{font-size:16px;font-weight:600;margin:0 0 18px;}
+  .form-group{margin-bottom:14px;}
+  .form-group label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .form-group input, .form-group select, .form-group textarea{
+    width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;
+    font-size:13.5px;color:var(--ink);background:var(--surface);
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus{outline:2px solid var(--ink);outline-offset:1px;}
+  .form-row-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;}
+  .form-check{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;}
+  .form-check input{width:auto;}
+  .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px;}
+  .modal-actions .right{display:flex;gap:8px;}
+
+  /* ---------- Columna derecha ---------- */
+  aside{border-left:1px solid var(--line);padding:40px 26px;display:flex;flex-direction:column;gap:30px;}
+  aside h3{font-size:12px;font-weight:600;margin:0 0 12px;color:var(--ink-soft);}
+  .side-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
+  .side-empty{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
+  .side-item{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:6px 0;}
+  .side-item:not(:last-child){border-bottom:1px solid var(--line);}
+  .side-dot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .side-item .sd-title{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .side-item .sd-when{color:var(--ink-soft);font-size:11px;flex:none;}
+
+  .toast{
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
+    background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:10px;
+    font-size:12.5px;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;z-index:200;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-4px);}
+
+  /* ---------- Aviso de actualización de la PWA ---------- */
+  .update-banner{
+    position:fixed;left:50%;bottom:-80px;transform:translateX(-50%);
+    display:flex;align-items:center;gap:14px;
+    background:var(--ink);color:var(--paper);padding:12px 16px 12px 18px;border-radius:12px;
+    font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,0.18);transition:bottom .25s ease;z-index:300;
+  }
+  .update-banner.show{bottom:22px;}
+  .update-banner button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.24);color:var(--paper);font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;}
+  .update-banner button:hover{background:rgba(255,255,255,0.22);}
+
+  /* ---------- Rubik ---------- */
+  .rubik-stats-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;}
+  .stat-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;display:flex;flex-direction:column;gap:4px;}
+  .stat-card .stat-label{font-size:11px;color:var(--ink-soft);font-weight:600;display:flex;align-items:center;gap:6px;}
+  .stat-card .stat-value{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;}
+  .stat-card .stat-sub{font-size:11px;color:var(--ink-soft);}
+  .stat-card.goal .stat-value{font-size:14px;font-weight:600;font-family:inherit;}
+
+  .preset-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;}
+  .preset-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:left;cursor:pointer;transition:border-color .15s ease;}
+  .preset-card:hover{border-color:var(--rubik);}
+  .preset-card .pc-title{font-size:13px;font-weight:600;margin-bottom:3px;}
+  .preset-card .pc-sub{font-size:11.5px;color:var(--ink-soft);}
+
+  .training-card{background:var(--rubik-bg);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;display:flex;flex-direction:column;gap:10px;}
+  .training-card.done{opacity:.7;}
+  .training-card .tc-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .training-card .tc-title{font-size:15px;font-weight:600;color:var(--rubik);}
+  .training-card .tc-meta{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-soft);}
+  .training-card .tc-notes{font-size:12.5px;color:var(--ink-soft);line-height:1.4;}
+  .training-card .tc-actions{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .solve-row{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;display:flex;align-items:center;gap:12px;}
+  .solve-time{font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;width:96px;flex:none;}
+  .solve-time.dnf{color:var(--alta);}
+  .solve-time.plus2::after{content:"+2";font-size:10px;font-weight:600;color:var(--media);margin-left:4px;vertical-align:super;}
+  .solve-meta{flex:1;min-width:0;font-size:11.5px;color:var(--ink-soft);display:flex;gap:10px;flex-wrap:wrap;}
+
+  .session-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer;transition:border-color .15s ease;}
+  .session-card:hover{border-color:var(--ink-soft);}
+  .session-card .sc-top{display:flex;align-items:center;justify-content:space-between;gap:10px;}
+  .session-card .sc-title{font-size:13.5px;font-weight:600;}
+  .session-card .sc-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-soft);margin-top:5px;}
+  .session-card .sc-badge{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;background:var(--rubik-bg);color:var(--rubik);}
+
+  .cube-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:12px;}
+  .cube-card .cube-ic{width:34px;height:34px;border-radius:9px;background:var(--rubik-bg);color:var(--rubik);display:flex;align-items:center;justify-content:center;font-size:16px;flex:none;}
+  .cube-card .cube-body{flex:1;min-width:0;}
+  .cube-card .cube-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;}
+  .cube-card .cube-sub{font-size:11.5px;color:var(--ink-soft);}
+  .main-badge{font-size:10px;font-weight:600;padding:1px 6px;border-radius:6px;background:var(--rubik);color:#fff;}
+
+  .chart-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;}
+  .chart-card .chart-title{font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:10px;}
+  .charts-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;}
+
+  @media (max-width:920px){
+    .app, .app.no-aside{grid-template-columns:minmax(0,1fr);}
+    aside{display:none;}
+    .areas{grid-template-columns:repeat(2,minmax(0,1fr));}
+    main{padding:70px 18px 50px;}
+    .form-row-2{grid-template-columns:1fr;}
+    .rubik-stats-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .preset-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .charts-grid{grid-template-columns:1fr;}
+
+    .menu-toggle{display:flex;}
+    .menu-backdrop.open{display:block;}
+    nav.rail{
+      position:fixed;top:0;left:0;height:100vh;
+      width:min(78vw,280px);
+      transform:translateX(-100%);
+      transition:transform .22s ease;
+      z-index:1000;
+      box-shadow:4px 0 22px rgba(0,0,0,0.18);
+      align-items:stretch;
+      padding:24px 14px;
+    }
+    nav.rail.open{transform:translateX(0);}
+    .rail-logo{align-self:flex-start;margin-left:6px;}
+    .rail-item{
+      width:100%;
+      flex-direction:row;
+      justify-content:flex-start;
+      gap:14px;
+      padding:12px 14px;
+      border-radius:10px;
+    }
+    .rail-item .ic{width:30px;height:30px;font-size:15px;flex:none;}
+    .rail-item .lb{font-size:14px;}
+    .rail-item.settings{margin-top:auto;}
+  }
+</style>
+</head>
+<body>
+
+<div class="app" id="app">
+
+  <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menú">☰</button>
+  <div class="menu-backdrop" id="menu-backdrop"></div>
+
+  <nav class="rail">
+    <div class="rail-logo">O</div>
+    <button class="rail-item active" data-view="inicio"><div class="ic">🏠︎</div><div class="lb">Inicio</div></button>
+    <button class="rail-item" data-view="calendario"><div class="ic">📅</div><div class="lb">Calend.</div></button>
+    <button class="rail-item" data-view="rubik" data-c="rubik"><div class="ic">🧊</div><div class="lb">Rubik</div></button>
+    <button class="rail-item" data-view="cesi" data-c="cesi"><div class="ic">🤝</div><div class="lb">CESI</div></button>
+    <button class="rail-item" data-view="casa" data-c="casa"><div class="ic">🏠</div><div class="lb">Casa</div></button>
+    <button class="rail-item" data-view="compras" data-c="compras"><div class="ic">🛒</div><div class="lb">Compras</div></button>
+    <button class="rail-item" data-view="vacaciones" data-c="vacaciones"><div class="ic">🌴</div><div class="lb">Vacac.</div></button>
+    <button class="rail-item" data-view="cole" data-c="cole"><div class="ic">🏫</div><div class="lb">Cole</div></button>
+    <button class="rail-item settings" data-view="ajustes"><div class="ic">⚙️</div><div class="lb">Ajustes</div></button>
+  </nav>
+
+  <main>
+
+    <!-- ===================== INICIO ===================== -->
+    <div class="view active" id="view-inicio">
+      <p class="greeting" id="greeting">Buenos días</p>
+      <h1 class="date"><span class="dow" id="dow">—</span> · <span id="fulldate">—</span></h1>
+
+      <section class="block">
+        <div class="block-head">
+          <h2>Plan de hoy</h2>
+          <span class="hint">Tareas y eventos de hoy, de todas las áreas</span>
+        </div>
+        <div id="plan-hoy"></div>
+      </section>
+
+      <section class="block">
+        <div class="ia-block" id="ia-block">
+          <div class="block-head">
+            <h2>🤖 Asistente ORGANIZATOR</h2>
+            <span class="hint">Analiza tus tareas, eventos y datos de Rubik reales — nunca se los inventa</span>
+          </div>
+          <div class="ia-actions">
+            <button class="ia-btn" id="ia-day-btn">✨ Organizar mi día</button>
+            <button class="ia-btn" id="ia-week-btn">✨ Organizar mi semana</button>
+          </div>
+          <div class="ia-status" id="ia-status"></div>
+          <div class="ia-response" id="ia-response">
+            <p class="empty-hint">Pulsa un botón o pregúntale algo abajo — solo usará información que ya tengas guardada en ORGANIZATOR.</p>
+          </div>
+          <form class="ia-chat-form" id="ia-chat-form">
+            <input type="text" id="ia-chat-input" placeholder="Ej. ¿qué tengo pendiente hoy?" autocomplete="off">
+            <button type="submit" class="ia-btn">Preguntar</button>
+          </form>
+          <div class="ia-chat-log" id="ia-chat-log"></div>
+        </div>
+      </section>
+
+      <section class="block">
+        <div class="block-head"><h2>Áreas</h2></div>
+        <div class="areas" id="areas-grid"></div>
+      </section>
+    </div>
+
+    <!-- ===================== CALENDARIO ===================== -->
+    <div class="view" id="view-calendario">
+      <div class="cal-head">
+        <h1 id="cal-title">—</h1>
+        <div class="cal-nav">
+          <button id="cal-prev">‹</button>
+          <button id="cal-today" class="btn btn-sm" style="width:auto;">Hoy</button>
+          <button id="cal-next">›</button>
+        </div>
+      </div>
+      <div class="cal-grid" id="cal-dow-row"></div>
+      <div class="cal-grid" id="cal-grid"></div>
+
+      <section class="block">
+        <div class="day-panel-head">
+          <h2 id="day-panel-title">Selecciona un día</h2>
+          <div class="day-panel-actions">
+            <button class="btn btn-sm" id="day-add-task">+ Tarea</button>
+            <button class="btn btn-sm" id="day-add-event">+ Evento</button>
+          </div>
+        </div>
+        <div id="day-panel-content"></div>
+      </section>
+    </div>
+
+    <!-- ===================== ÁREAS (genérico, se rellena por JS) ===================== -->
+    <div class="view" id="view-cole"></div>
+    <div class="view" id="view-cesi"></div>
+    <div class="view" id="view-rubik"></div>
+    <div class="view" id="view-casa"></div>
+    <div class="view" id="view-compras"></div>
+    <div class="view" id="view-vacaciones"></div>
+
+    <!-- ===================== AJUSTES (contenido generado por JS, ver renderAjustes()) ===================== -->
+    <div class="view" id="view-ajustes"></div>
+
+    <!-- input oculto para importar datos -->
+    <input type="file" id="import-file-input" accept="application/json" style="display:none;">
+
+  </main>
+
+  <aside id="sidebar">
+    <div>
+      <h3>Ahora / Siguiente</h3>
+      <div class="side-card" id="side-now"></div>
+    </div>
+    <div>
+      <h3>Próximos eventos</h3>
+      <div class="side-card" id="side-upcoming"></div>
+    </div>
+    <div>
+      <h3>Tareas pendientes</h3>
+      <div class="side-card" id="side-tasks"></div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- ===================== MODAL ===================== -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal-box" id="modal-box"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="update-banner" id="update-banner">
+  <span>Hay una nueva versión de ORGANIZATOR disponible.</span>
+  <button type="button" id="update-banner-btn">Actualizar</button>
+</div>
+
+<!-- Polyfill de window.storage con IndexedDB — debe cargarse ANTES del script
+     principal para que loadState() ya lo encuentre disponible fuera de Claude. -->
+<script src="/js/storage-polyfill.js"></script>
+
+<!-- Scheduler (algoritmo de huecos libres) y capa de acciones de IA
+     (Fase 7): deben cargarse antes del script principal para que
+     initIA() ya encuentre window.Scheduler y window.AIActions listos. -->
+<script src="/js/scheduler.js"></script>
+<script src="/js/ai-actions.js"></script>
+
+<script>
+/* ==================================================================
+   CONFIGURACIÓN
+   ================================================================== */
+const AREAS = {
+  cole:       { name:'Cole',                 icon:'🏫', hasTasks:true,  hasEvents:true,  taskLabel:'Tareas',            eventLabel:'Exámenes y eventos' },
+  cesi:       { name:'CESI',                 icon:'🤝', hasTasks:true,  hasEvents:true,  taskLabel:'Tareas',            eventLabel:'Próximas reuniones' },
+  rubik:      { name:'Rubik',                icon:'🧊', custom:true },
+  casa:       { name:'Casa',                 icon:'🏠', hasTasks:true,  hasEvents:true,  taskLabel:'Tareas domésticas', eventLabel:'Próximos eventos' },
+  compras:    { name:'Compras',              icon:'🛒', hasTasks:true,  hasEvents:false, taskLabel:'Lista de la compra', simplified:true },
+  vacaciones: { name:'Vacaciones / Festivos',icon:'🌴', hasTasks:false, hasEvents:true,  eventLabel:'Festivos y vacaciones' },
+};
+const AREA_IDS = Object.keys(AREAS);
+const PRIORITIES = {
+  alta:  { label:'Alta',  color:'var(--alta)'  },
+  media: { label:'Media', color:'var(--media)' },
+  baja:  { label:'Baja',  color:'var(--baja)'  },
+};
+const DOW_NAMES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const DOW_SHORT = ['L','M','X','J','V','S','D'];
+// Nombres completos en el mismo orden que DOW_SHORT (0=Lunes...6=Domingo), usados para el contexto de la IA
+const DOW_FULL_MONFIRST = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+/* ==================================================================
+   AJUSTES — valores por defecto
+   ================================================================== */
+const APP_NAME = 'ORGANIZATOR';
+const APP_VERSION = '1.6.1';
+// Secciones que se pueden activar/desactivar desde Ajustes.
+// Inicio y Ajustes quedan siempre disponibles para no romper la navegación.
+const TOGGLEABLE_SECTIONS = AREA_IDS; // ['cole','cesi','rubik','casa','compras','vacaciones'] según AREAS arriba
+function defaultSections(){
+  const d = {}; TOGGLEABLE_SECTIONS.forEach(id => d[id] = true); return d;
+}
+function defaultPrefs(){
+  return {
+    defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o un área activa
+    showCompletedTasks: true,     // mostrar tareas ya completadas en las listas de cada área
+    showPastEvents: true,         // mostrar eventos ya pasados en las listas de cada área
+    calendarView: 'month',        // vista de calendario predeterminada (de momento solo existe 'month')
+    dayStartHour: 8,              // primera hora del día, para futuras vistas por horas
+    dayEndHour: 22,               // última hora del día, para futuras vistas por horas
+  };
+}
+function defaultIA(){
+  return {
+    enabled: true, // futuras preferencias de IA se añadirán aquí sin romper compatibilidad
+  };
+}
+
+/* ==================================================================
+   ESTADO
+   ================================================================== */
+let state = {
+  tasks: [], events: [], rubikSolves: [], rubikSessions: [], rubikCubes: [], rubikTrainings: [], rubikGoal: '',
+  customSchedules: [],
+  sections: defaultSections(),
+  prefs: defaultPrefs(),
+  ia: defaultIA(),
+};
+let currentView = 'inicio';
+let cal = { year:0, month:0, selected:null };
+let rubikHistoryOpenSessionId = null;
+
+/* Entrenamientos predefinidos de Rubik (sin IA, fase 2b) */
+const RUBIK_PRESETS = [
+  { id:'warmup',    label:'Calentamiento',          icon:'🌤️', solveCount:5,  duration:10, goal:'Soltar dedos y coger ritmo' },
+  { id:'solves10',  label:'10 solves',              icon:'🔟', solveCount:10, duration:15, goal:'Consistencia' },
+  { id:'solves20',  label:'20 solves',              icon:'🧩', solveCount:20, duration:25, goal:'Volumen de práctica' },
+  { id:'speed',     label:'Práctica de velocidad',  icon:'⚡', solveCount:15, duration:20, goal:'Bajar la media' },
+  { id:'technique', label:'Práctica técnica',       icon:'🎯', solveCount:10, duration:20, goal:'Mejorar OLL / PLL' },
+  { id:'free',      label:'Sesión libre',           icon:'🕊️', solveCount:0,  duration:0,  goal:'' },
+];
+function rubikPreset(id){ return RUBIK_PRESETS.find(p=>p.id===id); }
+
+/* ==================================================================
+   UTILIDADES DE FECHA
+   ================================================================== */
+function pad(n){ return String(n).padStart(2,'0'); }
+function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function nowTimeStr(){ const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
+function parseYMD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y, m-1, d); }
+function humanDate(s){
+  if(!s) return '';
+  const d = parseYMD(s);
+  return `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
+}
+function humanDateShort(s){
+  if(!s) return '';
+  const d = parseYMD(s);
+  return `${DOW_SHORT[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
+}
+function isDateInRange(dateStr, start, end){
+  if(!end) return dateStr === start;
+  return dateStr >= start && dateStr <= end;
+}
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+
+/* ==================================================================
+   HORARIOS PERSONALIZADOS (bloques de rutina definidos por el usuario)
+   Cada bloque: { id, name, days:[0..6] (0=Lunes...6=Domingo, igual que DOW_SHORT), startTime:"HH:MM", endTime:"HH:MM" }
+   ================================================================== */
+async function addCustomSchedule(data){
+  state.customSchedules.push({ id: uid(), name: data.name, days: data.days, startTime: data.startTime, endTime: data.endTime, createdAt: Date.now() });
+  await saveCustomSchedules();
+}
+async function updateCustomSchedule(id, data){
+  const s = state.customSchedules.find(x=>x.id===id);
+  if(!s) return;
+  s.name = data.name; s.days = data.days; s.startTime = data.startTime; s.endTime = data.endTime;
+  await saveCustomSchedules();
+}
+async function deleteCustomSchedule(id){
+  state.customSchedules = state.customSchedules.filter(x=>x.id!==id);
+  await saveCustomSchedules();
+}
+function dowOfDate(dateStr){
+  // Convierte una fecha YYYY-MM-DD al mismo índice de día que usa DOW_SHORT (0=Lunes...6=Domingo)
+  return (parseYMD(dateStr).getDay() + 6) % 7;
+}
+function schedulesForDow(dow){
+  return state.customSchedules
+    .filter(s => Array.isArray(s.days) && s.days.includes(dow))
+    .sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+}
+
+/* ==================================================================
+   ALMACENAMIENTO (persistente, personal — no compartido)
+   ================================================================== */
+async function loadState(){
+  try{
+    const t = await window.storage.get('tasks', false);
+    state.tasks = t ? JSON.parse(t.value) : [];
+  }catch(e){ state.tasks = []; }
+  try{
+    const e = await window.storage.get('events', false);
+    state.events = e ? JSON.parse(e.value) : [];
+  }catch(e){ state.events = []; }
+  try{
+    const s = await window.storage.get('rubikSolves', false);
+    state.rubikSolves = s ? JSON.parse(s.value) : [];
+  }catch(e){ state.rubikSolves = []; }
+  try{
+    const s = await window.storage.get('rubikSessions', false);
+    state.rubikSessions = s ? JSON.parse(s.value) : [];
+  }catch(e){ state.rubikSessions = []; }
+  try{
+    const c = await window.storage.get('rubikCubes', false);
+    state.rubikCubes = c ? JSON.parse(c.value) : [];
+  }catch(e){ state.rubikCubes = []; }
+  try{
+    const tr = await window.storage.get('rubikTrainings', false);
+    state.rubikTrainings = tr ? JSON.parse(tr.value) : [];
+  }catch(e){ state.rubikTrainings = []; }
+  try{
+    const g = await window.storage.get('rubikGoal', false);
+    state.rubikGoal = g ? JSON.parse(g.value) : '';
+  }catch(e){ state.rubikGoal = ''; }
+  try{
+    const cs = await window.storage.get('customSchedules', false);
+    state.customSchedules = cs ? JSON.parse(cs.value) : [];
+  }catch(e){ state.customSchedules = []; }
+  // Ajustes: se cargan por separado y se combinan con los valores por defecto,
+  // así si en el futuro se añaden más claves no se rompe con datos antiguos.
+  try{
+    const s = await window.storage.get('settingsSections', false);
+    state.sections = s ? { ...defaultSections(), ...JSON.parse(s.value) } : defaultSections();
+  }catch(e){ state.sections = defaultSections(); }
+  try{
+    const p = await window.storage.get('settingsPrefs', false);
+    state.prefs = p ? { ...defaultPrefs(), ...JSON.parse(p.value) } : defaultPrefs();
+  }catch(e){ state.prefs = defaultPrefs(); }
+  try{
+    const ia = await window.storage.get('settingsIA', false);
+    state.ia = ia ? { ...defaultIA(), ...JSON.parse(ia.value) } : defaultIA();
+  }catch(e){ state.ia = defaultIA(); }
+}
+async function saveTasks(){
+  try{ await window.storage.set('tasks', JSON.stringify(state.tasks), false); }
+  catch(e){ console.error('No se pudieron guardar las tareas', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveEvents(){
+  try{ await window.storage.set('events', JSON.stringify(state.events), false); }
+  catch(e){ console.error('No se pudieron guardar los eventos', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveRubikSolves(){
+  try{ await window.storage.set('rubikSolves', JSON.stringify(state.rubikSolves), false); }
+  catch(e){ console.error('No se pudieron guardar los solves', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveRubikSessions(){
+  try{ await window.storage.set('rubikSessions', JSON.stringify(state.rubikSessions), false); }
+  catch(e){ console.error('No se pudieron guardar las sesiones', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveRubikCubes(){
+  try{ await window.storage.set('rubikCubes', JSON.stringify(state.rubikCubes), false); }
+  catch(e){ console.error('No se pudieron guardar los cubos', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveRubikTrainings(){
+  try{ await window.storage.set('rubikTrainings', JSON.stringify(state.rubikTrainings), false); }
+  catch(e){ console.error('No se pudieron guardar los entrenamientos', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveRubikGoal(){
+  try{ await window.storage.set('rubikGoal', JSON.stringify(state.rubikGoal), false); }
+  catch(e){ console.error('No se pudo guardar el objetivo', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveCustomSchedules(){
+  try{ await window.storage.set('customSchedules', JSON.stringify(state.customSchedules), false); }
+  catch(e){ console.error('No se pudieron guardar los horarios personalizados', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveSections(){
+  try{ await window.storage.set('settingsSections', JSON.stringify(state.sections), false); }
+  catch(e){ console.error('No se pudieron guardar las secciones activas', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function savePrefs(){
+  try{ await window.storage.set('settingsPrefs', JSON.stringify(state.prefs), false); }
+  catch(e){ console.error('No se pudieron guardar las preferencias', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveIA(){
+  try{ await window.storage.set('settingsIA', JSON.stringify(state.ia), false); }
+  catch(e){ console.error('No se pudo guardar la configuración de IA', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+
+/* ---------- Helpers de secciones activas ---------- */
+function isSectionEnabled(id){
+  return state.sections[id] !== false;
+}
+function enabledAreaIds(){
+  return AREA_IDS.filter(isSectionEnabled);
+}
+/* Aplica la visibilidad de las secciones desactivadas en la barra lateral */
+function applySectionVisibility(){
+  document.querySelectorAll('.rail-item[data-c]').forEach(btn=>{
+    const id = btn.dataset.c;
+    btn.style.display = isSectionEnabled(id) ? '' : 'none';
+  });
+}
+async function toggleSection(id){
+  state.sections[id] = !isSectionEnabled(id);
+  await saveSections();
+  applySectionVisibility();
+  // Si estábamos viendo un área que se acaba de desactivar, volvemos a Inicio
+  if(currentView === id && !isSectionEnabled(id)){
+    showView('inicio');
+  } else {
+    renderCurrentView();
+  }
+}
+
+/* ==================================================================
+   CRUD
+   ================================================================== */
+async function addTask(data){
+  state.tasks.push({ id:uid(), done:false, createdAt:Date.now(), ...data });
+  await saveTasks();
+}
+async function updateTask(id, data){
+  const t = state.tasks.find(x=>x.id===id);
+  if(t) Object.assign(t, data);
+  await saveTasks();
+}
+async function deleteTask(id){
+  state.tasks = state.tasks.filter(x=>x.id!==id);
+  await saveTasks();
+}
+async function toggleTask(id){
+  const t = state.tasks.find(x=>x.id===id);
+  if(t) t.done = !t.done;
+  await saveTasks();
+  renderCurrentView();
+}
+async function addEvent(data){
+  state.events.push({ id:uid(), createdAt:Date.now(), ...data });
+  await saveEvents();
+}
+async function updateEvent(id, data){
+  const e = state.events.find(x=>x.id===id);
+  if(e) Object.assign(e, data);
+  await saveEvents();
+}
+async function deleteEvent(id){
+  state.events = state.events.filter(x=>x.id!==id);
+  await saveEvents();
+}
+
+/* ---------- Rubik: cubos ---------- */
+async function addCube(data){
+  const cube = { id:uid(), createdAt:Date.now(), ...data };
+  if(cube.isMain) state.rubikCubes.forEach(c=>c.isMain=false);
+  if(state.rubikCubes.length===0) cube.isMain = true;
+  state.rubikCubes.push(cube);
+  await saveRubikCubes();
+  return cube;
+}
+async function updateCube(id, data){
+  if(data.isMain) state.rubikCubes.forEach(c=>c.isMain=false);
+  const c = state.rubikCubes.find(x=>x.id===id);
+  if(c) Object.assign(c, data);
+  await saveRubikCubes();
+}
+async function deleteCube(id){
+  state.rubikCubes = state.rubikCubes.filter(x=>x.id!==id);
+  await saveRubikCubes();
+}
+
+/* ---------- Rubik: sesiones ---------- */
+async function addRubikSession(data){
+  const session = { id:uid(), createdAt:Date.now(), status:'active', notes:'', ...data };
+  state.rubikSessions.push(session);
+  await saveRubikSessions();
+  return session;
+}
+async function updateRubikSession(id, data){
+  const s = state.rubikSessions.find(x=>x.id===id);
+  if(s) Object.assign(s, data);
+  await saveRubikSessions();
+}
+async function deleteRubikSession(id, {deleteSolves=false}={}){
+  state.rubikSessions = state.rubikSessions.filter(x=>x.id!==id);
+  if(deleteSolves){
+    state.rubikSolves = state.rubikSolves.filter(x=>x.sessionId!==id);
+    await saveRubikSolves();
+  } else {
+    state.rubikSolves.forEach(s=>{ if(s.sessionId===id) s.sessionId=null; });
+    await saveRubikSolves();
+  }
+  await saveRubikSessions();
+}
+
+/* ---------- Rubik: solves ---------- */
+async function addRubikSolve(data){
+  const solve = { id:uid(), createdAt:Date.now(), sessionId:null, penalty:'none', notes:'', ...data };
+  state.rubikSolves.push(solve);
+  await saveRubikSolves();
+  return solve;
+}
+async function updateRubikSolve(id, data){
+  const s = state.rubikSolves.find(x=>x.id===id);
+  if(s) Object.assign(s, data);
+  await saveRubikSolves();
+}
+async function deleteRubikSolve(id){
+  state.rubikSolves = state.rubikSolves.filter(x=>x.id!==id);
+  await saveRubikSolves();
+}
+
+/* ---------- Rubik: entrenamiento del día ---------- */
+async function addRubikTraining(data){
+  const training = { id:uid(), createdAt:Date.now(), status:'pending', notes:'', sessionId:null, ...data };
+  state.rubikTrainings.push(training);
+  await saveRubikTrainings();
+  return training;
+}
+async function updateRubikTraining(id, data){
+  const t = state.rubikTrainings.find(x=>x.id===id);
+  if(t) Object.assign(t, data);
+  await saveRubikTrainings();
+}
+async function deleteRubikTraining(id){
+  state.rubikTrainings = state.rubikTrainings.filter(x=>x.id!==id);
+  await saveRubikTrainings();
+}
+function getTrainingForDate(dateStr){
+  return state.rubikTrainings.find(t=>t.date===dateStr) || null;
+}
+
+/* ---------- Rubik: cálculo de estadísticas ---------- */
+function solveEffectiveMs(solve){
+  if(solve.penalty==='dnf') return Infinity;
+  return solve.time + (solve.penalty==='+2' ? 2000 : 0);
+}
+function fmtTime(ms){
+  if(ms===Infinity || ms==null) return 'DNF';
+  return (ms/1000).toFixed(2);
+}
+function solvesChronological(solves){
+  return [...solves].sort((a,b)=> (a.createdAt||0)-(b.createdAt||0));
+}
+function calcAverageOfN(solvesChrono, n){
+  if(solvesChrono.length < n) return null;
+  const set = solvesChrono.slice(-n);
+  const trim = n>=50 ? Math.max(1, Math.round(n*0.05)) : 1;
+  const withEff = set.map(s=>({ eff: solveEffectiveMs(s) }));
+  const sorted = [...withEff].sort((a,b)=>a.eff-b.eff);
+  const kept = sorted.slice(trim, sorted.length-trim);
+  if(kept.some(s=>s.eff===Infinity)) return Infinity;
+  const sum = kept.reduce((a,s)=>a+s.eff,0);
+  return sum/kept.length;
+}
+function bestAverageOfN(solvesChrono, n){
+  if(solvesChrono.length < n) return null;
+  let best = null;
+  for(let i=n; i<=solvesChrono.length; i++){
+    const avg = calcAverageOfN(solvesChrono.slice(0,i), n);
+    if(avg!=null && avg!==Infinity && (best===null || avg<best)) best = avg;
+  }
+  return best;
+}
+function computeRubikStats(solves){
+  const chrono = solvesChronological(solves);
+  const valid = chrono.filter(s=>s.penalty!=='dnf');
+  if(chrono.length===0){
+    return { count:0, best:null, worst:null, avg:null, ao5:null, ao12:null, ao50:null, ao100:null, bestAo5:null, bestAo12:null };
+  }
+  const effs = valid.map(solveEffectiveMs);
+  const best = effs.length ? Math.min(...effs) : null;
+  const worst = effs.length ? Math.max(...effs) : null;
+  const avg = effs.length ? effs.reduce((a,b)=>a+b,0)/effs.length : null;
+  return {
+    count: chrono.length,
+    best, worst, avg,
+    ao5: calcAverageOfN(chrono,5),
+    ao12: calcAverageOfN(chrono,12),
+    ao50: calcAverageOfN(chrono,50),
+    ao100: calcAverageOfN(chrono,100),
+    bestAo5: bestAverageOfN(chrono,5),
+    bestAo12: bestAverageOfN(chrono,12),
+  };
+}
+
+/* ==================================================================
+   TOAST
+   ================================================================== */
+let toastTimer;
+function showToast(msg){
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>el.classList.remove('show'), 2200);
+}
+
+/* ==================================================================
+   NAVEGACIÓN
+   ================================================================== */
+const app = document.getElementById('app');
+const sidebar = document.getElementById('sidebar');
+
+function showView(name){
+  // Nunca navegar a un área que el usuario ha desactivado desde Ajustes.
+  if(AREAS[name] && !isSectionEnabled(name)) name = 'inicio';
+  currentView = name;
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  document.querySelectorAll('.rail-item').forEach(r => r.classList.toggle('active', r.dataset.view === name));
+  if(name === 'inicio'){ app.classList.remove('no-aside'); sidebar.style.display=''; }
+  else { app.classList.add('no-aside'); sidebar.style.display='none'; }
+  applySectionVisibility();
+  window.scrollTo(0,0);
+  renderCurrentView();
+}
+function renderCurrentView(){
+  if(currentView === 'inicio') renderInicio();
+  else if(currentView === 'calendario') renderCalendar();
+  else if(currentView === 'ajustes') renderAjustes();
+  else if(currentView === 'rubik') renderRubikView();
+  else if(AREAS[currentView]) renderAreaView(currentView);
+}
+
+document.querySelectorAll('.rail-item').forEach(item => {
+  item.addEventListener('click', () => { showView(item.dataset.view); closeMobileMenu(); });
+});
+
+/* ---------- Menú móvil (hamburguesa) ---------- */
+const menuToggleBtn = document.getElementById('menu-toggle');
+const menuBackdropEl = document.getElementById('menu-backdrop');
+const railNavEl = document.querySelector('nav.rail');
+function closeMobileMenu(){
+  if(railNavEl) railNavEl.classList.remove('open');
+  if(menuBackdropEl) menuBackdropEl.classList.remove('open');
+}
+function toggleMobileMenu(){
+  if(railNavEl) railNavEl.classList.toggle('open');
+  if(menuBackdropEl) menuBackdropEl.classList.toggle('open');
+}
+if(menuToggleBtn) menuToggleBtn.addEventListener('click', toggleMobileMenu);
+if(menuBackdropEl) menuBackdropEl.addEventListener('click', closeMobileMenu);
+
+/* ==================================================================
+   RENDER: INICIO
+   ================================================================== */
+function computeAreaStatus(areaId){
+  const cfg = AREAS[areaId];
+  const today = todayStr();
+  if(areaId==='rubik'){
+    const parts = [];
+    const training = getTrainingForDate(today);
+    if(training) parts.push(training.status==='completed' ? 'Entreno de hoy completado' : 'Entreno de hoy pendiente');
+    if(state.rubikSolves.length>0) parts.push(`${state.rubikSolves.length} solves`);
+    return parts.length ? parts.join(' · ') : 'Sin datos todavía';
+  }
+  const parts = [];
+  if(cfg.hasTasks){
+    const pending = state.tasks.filter(t=>t.area===areaId && !t.done).length;
+    if(pending>0) parts.push(cfg.simplified ? `${pending} en la lista` : `${pending} ${pending===1?'tarea':'tareas'}`);
+  }
+  if(cfg.hasEvents){
+    const upcoming = state.events.filter(e=>e.area===areaId && (e.endDate ? e.endDate>=today : e.date>=today)).length;
+    if(upcoming>0) parts.push(`${upcoming} ${upcoming===1?'evento':'eventos'}`);
+  }
+  return parts.length ? parts.join(' · ') : 'Sin datos todavía';
+}
+
+function renderInicio(){
+  const today = todayStr();
+  const now = nowTimeStr();
+
+  // Saludo
+  const h = new Date().getHours();
+  document.getElementById('greeting').textContent = h<12?'Buenos días':(h<20?'Buenas tardes':'Buenas noches');
+  const d = new Date();
+  document.getElementById('dow').textContent = DOW_NAMES[d.getDay()];
+  document.getElementById('fulldate').textContent = `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
+
+  // Plan de hoy (solo de secciones activas)
+  // Una tarea puede tener dueDate (su fecha límite) distinta de
+  // scheduledDate (el día en que Scheduler decidió que se hace realmente);
+  // para "hoy" nos importa dónde está programada, no cuándo vence.
+  const items = [];
+  state.tasks.filter(t=>!t.done && (t.scheduledDate||t.dueDate)===today && isSectionEnabled(t.area)).forEach(t=>{
+    const time = t.scheduledStart || t.dueTime || '';
+    items.push({ type:'task', id:t.id, area:t.area, title:t.title, sortKey:time||'23:59', timeLabel:time, warning:t.schedulingWarning||'' });
+  });
+  state.events.filter(e=>isDateInRange(today, e.date, e.endDate) && isSectionEnabled(e.area)).forEach(e=>{
+    items.push({ type:'event', id:e.id, area:e.area, title:e.title, sortKey:(e.allDay?'00:00':(e.startTime||'00:00')), timeLabel: e.allDay?'Todo el día':(e.startTime||'') });
+  });
+  const todayTraining = isSectionEnabled('rubik') ? getTrainingForDate(today) : null;
+  if(todayTraining && todayTraining.status!=='completed'){
+    const preset = rubikPreset(todayTraining.presetId);
+    const label = preset ? preset.label : 'Entrenamiento libre';
+    const sub = todayTraining.solveCount>0 ? `${todayTraining.solveCount} solves` : (todayTraining.goal||'');
+    items.push({ type:'rubikTraining', id:todayTraining.id, area:'rubik', title:`Entrenamiento de Rubik — ${label}`, sortKey:(todayTraining.scheduledTime||'23:58'), timeLabel: todayTraining.scheduledTime||'', sub });
+  }
+  items.sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+
+  const planEl = document.getElementById('plan-hoy');
+  if(items.length===0){
+    planEl.innerHTML = `<div class="empty-state">Todavía no hay nada programado para hoy.<br><strong>Aquí aparecerá tu día</strong> como una línea de tiempo: exámenes, reuniones, entrenos y tareas, cada uno con el color de su sección.</div>`;
+  } else {
+    planEl.innerHTML = `<div class="timeline">${items.map(it=>`
+      <div class="tl-item">
+        <div class="tl-time">${it.timeLabel||'—'}</div>
+        <div class="tl-bar" style="background:var(--${it.area});"></div>
+        <div class="tl-body">
+          <div class="tl-title">${esc(it.title)}</div>
+          <div class="tl-tag">${it.type==='rubikTraining' ? (it.sub?esc(it.sub):'entrenamiento') : AREAS[it.area].name+(it.type==='task'?' · tarea':'')}${it.warning?` · <span style="color:var(--alta);">${esc(it.warning)}</span>`:''}</div>
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
+  // Bloque de IA: se oculta por completo si el usuario la ha desactivado en Ajustes
+  const iaBlock = document.getElementById('ia-block');
+  if(iaBlock) iaBlock.style.display = state.ia.enabled ? '' : 'none';
+
+  // Tarjetas de áreas (solo las secciones activas)
+  const grid = document.getElementById('areas-grid');
+  grid.innerHTML = enabledAreaIds().map(id => `
+    <button class="area-card" data-c="${id}" data-goto="${id}">
+      <div class="ic">${AREAS[id].icon}</div>
+      <div class="name">${AREAS[id].name}</div>
+      <div class="status">${esc(computeAreaStatus(id))}</div>
+    </button>`).join('');
+  grid.querySelectorAll('[data-goto]').forEach(card => card.addEventListener('click', ()=>showView(card.dataset.goto)));
+
+  // Sidebar: Ahora / Siguiente
+  const todayEvents = state.events
+    .filter(e=>!e.allDay && e.date===today && e.startTime && isSectionEnabled(e.area))
+    .sort((a,b)=>a.startTime.localeCompare(b.startTime));
+  const current = todayEvents.find(e => e.startTime<=now && (!e.endTime || e.endTime>=now));
+  const next = todayEvents.find(e => e.startTime>now);
+  const nowEl = document.getElementById('side-now');
+  if(current){
+    nowEl.innerHTML = `<p class="side-empty"><strong style="color:var(--ink);">Ahora:</strong> ${esc(current.title)} <span class="area-tag ${current.area}">${AREAS[current.area].name}</span></p>` +
+      (next?`<p class="side-empty" style="margin-top:8px;"><strong style="color:var(--ink);">Siguiente:</strong> ${esc(next.title)} · ${next.startTime}</p>`:'');
+  } else if(next){
+    nowEl.innerHTML = `<p class="side-empty"><strong style="color:var(--ink);">Siguiente:</strong> ${esc(next.title)} · ${next.startTime} <span class="area-tag ${next.area}">${AREAS[next.area].name}</span></p>`;
+  } else {
+    nowEl.innerHTML = `<p class="side-empty">Cuando añadas eventos con hora, aquí verás lo que toca ahora y lo siguiente en tu agenda.</p>`;
+  }
+
+  // Sidebar: Próximos eventos
+  const upcoming = state.events
+    .filter(e => (e.endDate ? e.endDate>=today : e.date>=today) && isSectionEnabled(e.area))
+    .sort((a,b)=> a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''))
+    .slice(0,5);
+  const upEl = document.getElementById('side-upcoming');
+  upEl.innerHTML = upcoming.length ? upcoming.map(e=>`
+    <div class="side-item">
+      <div class="side-dot" style="background:var(--${e.area});"></div>
+      <div class="sd-title">${esc(e.title)}</div>
+      <div class="sd-when">${humanDate(e.date)}</div>
+    </div>`).join('') : `<p class="side-empty">Exámenes, reuniones de CESI, festivos y vacaciones aparecerán aquí ordenados por fecha.</p>`;
+
+  // Sidebar: Tareas pendientes
+  const counts = enabledAreaIds().filter(id=>AREAS[id].hasTasks).map(id=>({id, n: state.tasks.filter(t=>t.area===id && !t.done).length})).filter(x=>x.n>0);
+  const tEl = document.getElementById('side-tasks');
+  tEl.innerHTML = counts.length ? counts.map(c=>`
+    <div class="side-item">
+      <div class="side-dot" style="background:var(--${c.id});"></div>
+      <div class="sd-title">${AREAS[c.id].name}</div>
+      <div class="sd-when">${c.n}</div>
+    </div>`).join('') : `<p class="side-empty">Un recuento rápido de lo que tienes abierto en Cole, Casa y CESI.</p>`;
+}
+
+function esc(s){
+  return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ==================================================================
+   RENDER: PÁGINA DE ÁREA
+   ================================================================== */
+function renderAreaView(areaId){
+  const cfg = AREAS[areaId];
+  const el = document.getElementById('view-'+areaId);
+  const today = todayStr();
+
+  let html = `
+    <div class="area-head" data-c="${areaId}">
+      <div class="area-head-l">
+        <div class="ic">${cfg.icon}</div>
+        <div><h1>${cfg.name}</h1><p>${esc(computeAreaStatus(areaId))}</p></div>
+      </div>
+    </div>`;
+
+  if(cfg.hasTasks){
+    const tasks = state.tasks.filter(t=>t.area===areaId && (state.prefs.showCompletedTasks || !t.done)).sort((a,b)=>{
+      if(a.done!==b.done) return a.done?1:-1;
+      const ad=a.dueDate||'9999', bd=b.dueDate||'9999';
+      if(ad!==bd) return ad.localeCompare(bd);
+      const order={alta:0,media:1,baja:2};
+      return (order[a.priority]??3)-(order[b.priority]??3);
+    });
+    html += `
+      <section class="block">
+        <div class="block-head"><h2>${cfg.taskLabel}</h2><button class="btn" data-action="add-task" data-area="${areaId}">+ Añadir ${cfg.simplified?'producto':'tarea'}</button></div>
+        ${tasks.length===0 ? `<div class="empty-state">Todavía no hay ${cfg.simplified?'productos en la lista':'tareas guardadas en '+cfg.name}.</div>` : `
+        <div class="item-list">${tasks.map(t=>taskRowHTML(t, cfg)).join('')}</div>`}
+      </section>`;
+  }
+
+  if(cfg.hasEvents){
+    const events = state.events.filter(e=>e.area===areaId && (state.prefs.showPastEvents || (e.endDate||e.date) >= today)).sort((a,b)=> a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''));
+    html += `
+      <section class="block">
+        <div class="block-head"><h2>${cfg.eventLabel}</h2><button class="btn" data-action="add-event" data-area="${areaId}">+ Añadir evento</button></div>
+        ${events.length===0 ? `<div class="empty-state">${areaId==='vacaciones' ? 'Los festivos y periodos de vacaciones que añadas aparecerán aquí ordenados por fecha.' : 'Los eventos de '+cfg.name+' aparecerán aquí ordenados por fecha.'}</div>` : `
+        <div class="item-list">${events.map(e=>eventRowHTML(e, cfg)).join('')}</div>`}
+      </section>`;
+  }
+
+  el.innerHTML = html;
+
+  el.querySelectorAll('[data-action="add-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({area:b.dataset.area})));
+  el.querySelectorAll('[data-action="add-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({area:b.dataset.area})));
+  el.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTask(b.dataset.id)));
+  el.querySelectorAll('[data-action="edit-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({area:b.dataset.area, taskId:b.dataset.id})));
+  el.querySelectorAll('[data-action="delete-task"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar esta tarea?')){ deleteTask(b.dataset.id).then(renderCurrentView); } }));
+  el.querySelectorAll('[data-action="edit-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({area:b.dataset.area, eventId:b.dataset.id})));
+  el.querySelectorAll('[data-action="delete-event"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar este evento?')){ deleteEvent(b.dataset.id).then(renderCurrentView); } }));
+}
+
+/* ==================================================================
+   RENDER: AJUSTES
+   ================================================================== */
+const SECTION_META = {
+  cole:      { icon:'🏫', bg:'var(--cole-bg)',       color:'var(--cole)' },
+  cesi:      { icon:'🤝', bg:'var(--cesi-bg)',       color:'var(--cesi)' },
+  rubik:     { icon:'🧊', bg:'var(--rubik-bg)',      color:'var(--rubik)' },
+  casa:      { icon:'🏠', bg:'var(--casa-bg)',       color:'var(--casa)' },
+  compras:   { icon:'🛒', bg:'var(--compras-bg)',    color:'var(--compras)' },
+  vacaciones:{ icon:'🌴', bg:'var(--vacaciones-bg)', color:'var(--vacaciones)' },
+};
+
+function renderScheduleRows(){
+  const sorted = [...state.customSchedules].sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+  const rows = sorted.map(s=>{
+    const daysLabel = DOW_SHORT.map((lb,i)=> s.days.includes(i) ? `<strong>${lb}</strong>` : lb).join(' ');
+    return `<div class="schedule-row" data-schedule-id="${s.id}">
+      <div class="sched-main">
+        <div class="sched-name">${esc(s.name)}</div>
+        <div class="sched-meta">${daysLabel}</div>
+      </div>
+      <div class="sched-time">${esc(s.startTime)} – ${esc(s.endTime)}</div>
+    </div>`;
+  }).join('');
+  const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no has creado ningún bloque. Añade tu cole, tus horas de sueño, entrenamientos… lo que quieras que ORGANIZATOR conozca de tu rutina.</div>`;
+  return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-schedule">+ Añadir bloque de horario</button>`;
+}
+
+function renderAjustes(){
+  const el = document.getElementById('view-ajustes');
+
+  const sectionsRows = TOGGLEABLE_SECTIONS.map(id=>{
+    const m = SECTION_META[id] || {};
+    return `<div class="settings-row">
+      <div class="left"><div class="ic-sm" style="background:${m.bg};color:${m.color};">${m.icon}</div>${esc(AREAS[id].name)}</div>
+      <button type="button" class="toggle ${isSectionEnabled(id)?'on':''}" data-toggle-section="${id}" aria-label="Activar o desactivar ${esc(AREAS[id].name)}"></button>
+    </div>`;
+  }).join('');
+
+  const homeOptions = [{id:'inicio', name:'Inicio'}, ...enabledAreaIds().map(id=>({id, name:AREAS[id].name}))]
+    .map(o=>`<option value="${o.id}" ${state.prefs.defaultHome===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
+
+  const hourOptions = (selected)=> Array.from({length:24},(_,h)=>`<option value="${h}" ${Number(selected)===h?'selected':''}>${pad(h)}:00</option>`).join('');
+
+  el.innerHTML = `
+    <div class="area-head">
+      <div class="area-head-l">
+        <div class="ic" style="background:var(--paper);color:var(--ink);">⚙️</div>
+        <div><h1>Ajustes</h1><p>Preferencias generales de ORGANIZATOR</p></div>
+      </div>
+    </div>
+
+    <section class="block">
+      <div class="block-head"><h2>Secciones activas</h2><span class="hint">Desactivar una sección la oculta, pero nunca borra sus datos</span></div>
+      <div class="settings-list">${sectionsRows}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Preferencias de organización</h2></div>
+      <div class="settings-list">
+        <div class="settings-row select-row">
+          <div class="left">Inicio predeterminado</div>
+          <select id="pref-default-home">${homeOptions}</select>
+        </div>
+        <div class="settings-row">
+          <div class="left">Mostrar tareas completadas</div>
+          <button type="button" class="toggle ${state.prefs.showCompletedTasks?'on':''}" data-toggle-pref="showCompletedTasks" aria-label="Mostrar tareas completadas"></button>
+        </div>
+        <div class="settings-row">
+          <div class="left">Mostrar eventos pasados</div>
+          <button type="button" class="toggle ${state.prefs.showPastEvents?'on':''}" data-toggle-pref="showPastEvents" aria-label="Mostrar eventos pasados"></button>
+        </div>
+        <div class="settings-row select-row">
+          <div class="left">Vista de calendario predeterminada</div>
+          <select id="pref-calendar-view">
+            <option value="month" selected>Mensual</option>
+          </select>
+        </div>
+        <div class="settings-row select-row">
+          <div class="left">Horario del día</div>
+          <div class="hour-row">
+            <select id="pref-day-start">${hourOptions(state.prefs.dayStartHour)}</select>
+            <span class="hint">a</span>
+            <select id="pref-day-end">${hourOptions(state.prefs.dayEndHour)}</select>
+          </div>
+        </div>
+      </div>
+      <p class="hint" style="display:block;margin-top:8px;">La vista de calendario y el horario del día quedan preparados para próximas mejoras del calendario.</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Horarios personalizados</h2><span class="hint">Define los bloques fijos de tu rutina para que la IA los tenga en cuenta al planificar</span></div>
+      <div class="settings-list" id="schedules-list">${renderScheduleRows()}</div>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Organización con IA</h2></div>
+      <div class="settings-list">
+        <div class="settings-row">
+          <div class="left stack">
+            <div>Asistente de IA</div>
+            <div class="row-sub">${state.ia.enabled ? 'Activado — genera tu plan del día/semana y responde preguntas usando solo tus datos guardados' : 'Desactivado — no se envía ni se solicita nada a la IA'}</div>
+          </div>
+          <button type="button" class="toggle ${state.ia.enabled?'on':''}" id="toggle-ia" aria-label="Activar o desactivar la IA"></button>
+        </div>
+      </div>
+      <p class="hint" style="display:block;margin-top:8px;">La IA se usa para proponer un plan de tu día/semana y responder preguntas sobre tu agenda, usando únicamente las tareas, eventos y datos de Rubik que ya tienes guardados — nunca se inventa información. Al desactivarla, los botones de IA desaparecen y no se hace ninguna petición.</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Datos</h2></div>
+      <div class="settings-actions">
+        <button class="btn" id="btn-export-data">⬇️ Exportar datos</button>
+        <button class="btn" id="btn-import-data">⬆️ Importar datos</button>
+        <button class="btn btn-danger" id="btn-delete-data">🗑️ Borrar todos los datos</button>
+      </div>
+      <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con todos tus datos. Importar y borrar piden confirmación explícita antes de aplicarse.</p>
+    </section>
+
+    <section class="block">
+      <div class="block-head"><h2>Información de la aplicación</h2></div>
+      <div class="app-info-box">
+        <div><strong>${APP_NAME}</strong> · versión ${APP_VERSION}</div>
+        <div style="margin-top:6px;">Organización personal: tareas, eventos, Rubik y asistente de IA, guardado de forma privada en tu cuenta.</div>
+      </div>
+    </section>
+  `;
+
+  el.querySelectorAll('[data-toggle-section]').forEach(btn=>{
+    btn.addEventListener('click', ()=> toggleSection(btn.dataset.toggleSection));
+  });
+  el.querySelectorAll('[data-toggle-pref]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      const key = btn.dataset.togglePref;
+      state.prefs[key] = !state.prefs[key];
+      await savePrefs();
+      renderAjustes();
+    });
+  });
+  const homeSelect = el.querySelector('#pref-default-home');
+  if(homeSelect) homeSelect.addEventListener('change', async ()=>{
+    state.prefs.defaultHome = homeSelect.value;
+    await savePrefs();
+  });
+  const startSelect = el.querySelector('#pref-day-start');
+  const endSelect = el.querySelector('#pref-day-end');
+  if(startSelect) startSelect.addEventListener('change', async ()=>{
+    state.prefs.dayStartHour = Number(startSelect.value);
+    await savePrefs();
+  });
+  if(endSelect) endSelect.addEventListener('change', async ()=>{
+    state.prefs.dayEndHour = Number(endSelect.value);
+    await savePrefs();
+  });
+  const iaToggle = el.querySelector('#toggle-ia');
+  if(iaToggle) iaToggle.addEventListener('click', async ()=>{
+    state.ia.enabled = !state.ia.enabled;
+    await saveIA();
+    renderAjustes();
+    if(currentView==='inicio') renderInicio();
+  });
+
+  const addSchedBtn = el.querySelector('#btn-add-schedule');
+  if(addSchedBtn) addSchedBtn.addEventListener('click', ()=> openScheduleModal());
+  el.querySelectorAll('[data-schedule-id]').forEach(row=>{
+    row.addEventListener('click', ()=> openScheduleModal({ scheduleId: row.dataset.scheduleId }));
+  });
+
+  el.querySelector('#btn-export-data').addEventListener('click', exportData);
+  el.querySelector('#btn-import-data').addEventListener('click', ()=> document.getElementById('import-file-input').click());
+  el.querySelector('#btn-delete-data').addEventListener('click', deleteAllData);
+}
+
+/* ---------- Exportar / Importar / Borrar datos ---------- */
+function exportData(){
+  const payload = {
+    app: APP_NAME,
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: {
+      tasks: state.tasks,
+      events: state.events,
+      rubikSolves: state.rubikSolves,
+      rubikSessions: state.rubikSessions,
+      rubikCubes: state.rubikCubes,
+      rubikTrainings: state.rubikTrainings,
+      rubikGoal: state.rubikGoal,
+      customSchedules: state.customSchedules,
+      sections: state.sections,
+      prefs: state.prefs,
+      ia: state.ia,
+    }
+  };
+  try{
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `organizator-backup-${todayStr()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Datos exportados');
+  }catch(err){
+    console.error(err);
+    showToast('No se pudo exportar. Inténtalo de nuevo.');
+  }
+}
+
+function initSettingsDataIO(){
+  const input = document.getElementById('import-file-input');
+  if(!input) return;
+  input.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    input.value = '';
+    if(!file) return;
+    let parsed;
+    try{
+      const text = await file.text();
+      parsed = JSON.parse(text);
+    }catch(err){
+      showToast('El archivo no es un JSON válido');
+      return;
+    }
+    const data = (parsed && typeof parsed === 'object' && parsed.data) ? parsed.data : parsed;
+    if(!data || typeof data !== 'object'){
+      showToast('El archivo no tiene el formato esperado');
+      return;
+    }
+    const ok = confirm('Vas a reemplazar TODOS los datos actuales de ORGANIZATOR por los del archivo importado. Esta acción no se puede deshacer. ¿Quieres continuar?');
+    if(!ok) return;
+
+    state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    state.events = Array.isArray(data.events) ? data.events : [];
+    state.rubikSolves = Array.isArray(data.rubikSolves) ? data.rubikSolves : [];
+    state.rubikSessions = Array.isArray(data.rubikSessions) ? data.rubikSessions : [];
+    state.rubikCubes = Array.isArray(data.rubikCubes) ? data.rubikCubes : [];
+    state.rubikTrainings = Array.isArray(data.rubikTrainings) ? data.rubikTrainings : [];
+    state.rubikGoal = typeof data.rubikGoal === 'string' ? data.rubikGoal : '';
+    state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
+    state.sections = { ...defaultSections(), ...(data.sections||{}) };
+    state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
+    state.ia = { ...defaultIA(), ...(data.ia||{}) };
+
+    try{
+      await Promise.all([
+        saveTasks(), saveEvents(), saveRubikSolves(), saveRubikSessions(),
+        saveRubikCubes(), saveRubikTrainings(), saveRubikGoal(), saveCustomSchedules(),
+        saveSections(), savePrefs(), saveIA(),
+      ]);
+      showToast('Datos importados correctamente');
+      showView('inicio');
+    }catch(err){
+      console.error(err);
+      showToast('Hubo un problema guardando los datos importados');
+    }
+  });
+}
+
+async function deleteAllData(){
+  const ok1 = confirm('Esto borrará PERMANENTEMENTE todos tus datos de ORGANIZATOR (tareas, eventos, Rubik y ajustes). Esta acción no se puede deshacer. ¿Seguro que quieres continuar?');
+  if(!ok1) return;
+  const ok2 = confirm('Última confirmación: se van a borrar todos tus datos ahora mismo. ¿Confirmas el borrado?');
+  if(!ok2) return;
+
+  state.tasks = [];
+  state.events = [];
+  state.rubikSolves = [];
+  state.rubikSessions = [];
+  state.rubikCubes = [];
+  state.rubikTrainings = [];
+  state.rubikGoal = '';
+  state.customSchedules = [];
+  state.sections = defaultSections();
+  state.prefs = defaultPrefs();
+  state.ia = defaultIA();
+
+  try{
+    await Promise.all([
+      saveTasks(), saveEvents(), saveRubikSolves(), saveRubikSessions(),
+      saveRubikCubes(), saveRubikTrainings(), saveRubikGoal(), saveCustomSchedules(),
+      saveSections(), savePrefs(), saveIA(),
+    ]);
+    showToast('Todos los datos se han borrado');
+    showView('inicio');
+  }catch(err){
+    console.error(err);
+    showToast('Hubo un problema al borrar los datos');
+  }
+}
+
+/* ==================================================================
+   RENDER: RUBIK (Fase 2b)
+   ================================================================== */
+function cubeName(cubeId){
+  const c = state.rubikCubes.find(x=>x.id===cubeId);
+  return c ? c.name : null;
+}
+function mainCube(){
+  return state.rubikCubes.find(c=>c.isMain) || state.rubikCubes[0] || null;
+}
+function lastUsedCube(){
+  const chrono = solvesChronological(state.rubikSolves);
+  for(let i=chrono.length-1;i>=0;i--){
+    if(chrono[i].cubeId){ const c = state.rubikCubes.find(x=>x.id===chrono[i].cubeId); if(c) return c; }
+  }
+  return mainCube();
+}
+function recentEvolutionText(){
+  const chrono = solvesChronological(state.rubikSolves.filter(s=>s.penalty!=='dnf'));
+  if(chrono.length < 10) return 'Registra más solves para ver tu evolución.';
+  const last10 = chrono.slice(-10).map(solveEffectiveMs);
+  const prev10 = chrono.slice(-20,-10).map(solveEffectiveMs);
+  const avg = a=> a.reduce((x,y)=>x+y,0)/a.length;
+  const lastAvg = avg(last10);
+  if(prev10.length < 5) return `Media de tus últimos 10 solves: ${fmtTime(lastAvg)} s`;
+  const prevAvg = avg(prev10);
+  const diff = lastAvg - prevAvg;
+  const arrow = diff<0 ? '↓' : (diff>0 ? '↑' : '→');
+  return `${arrow} ${Math.abs(diff/1000).toFixed(2)}s frente a los 10 solves anteriores`;
+}
+
+function renderRubikView(){
+  const el = document.getElementById('view-rubik');
+  const today = todayStr();
+  const stats = computeRubikStats(state.rubikSolves);
+  const training = getTrainingForDate(today);
+
+  let html = `
+    <div class="area-head" data-c="rubik">
+      <div class="area-head-l">
+        <div class="ic">🧊</div>
+        <div><h1>Rubik</h1><p>${esc(computeAreaStatus('rubik'))}</p></div>
+      </div>
+      <button class="btn btn-dark" id="rubik-add-solve">+ Registrar solve</button>
+    </div>`;
+
+  // --- Dashboard ---
+  html += `<section class="block"><div class="block-head"><h2>Resumen</h2><span class="hint">Tu progreso general en el cubo</span></div>`;
+  if(stats.count===0){
+    html += `<div class="empty-state">Todavía no tienes solves guardados.<br><strong>Aquí verás tu mejor tiempo, tu media y tu evolución</strong> en cuanto registres tu primer solve.</div>`;
+  } else {
+    const evoCube = lastUsedCube();
+    html += `<div class="rubik-stats-grid">
+      <div class="stat-card"><div class="stat-label">🏆 Mejor tiempo</div><div class="stat-value">${fmtTime(stats.best)}</div><div class="stat-sub">segundos</div></div>
+      <div class="stat-card"><div class="stat-label">📊 Media general</div><div class="stat-value">${fmtTime(stats.avg)}</div><div class="stat-sub">segundos</div></div>
+      <div class="stat-card"><div class="stat-label">🔥 Solves</div><div class="stat-value">${stats.count}</div><div class="stat-sub">registrados en total</div></div>
+      <div class="stat-card"><div class="stat-label">📈 Evolución reciente</div><div class="stat-value" style="font-size:13px;font-weight:600;">${esc(recentEvolutionText())}</div></div>
+      <div class="stat-card"><div class="stat-label">🧊 Cubo utilizado</div><div class="stat-value" style="font-size:15px;">${evoCube?esc(evoCube.name):'Sin cubo asignado'}</div><div class="stat-sub">${evoCube?esc(evoCube.type||''):'Añade un cubo abajo'}</div></div>
+      <div class="stat-card goal"><div class="stat-label">🎯 Objetivo actual</div><div class="stat-value" id="rubik-goal-text">${state.rubikGoal?esc(state.rubikGoal):'Sin objetivo definido'}</div><button class="btn btn-sm" id="rubik-edit-goal" style="margin-top:4px;width:fit-content;">Editar</button></div>
+    </div>`;
+  }
+  html += `</section>`;
+
+  // --- Entrenamiento de hoy ---
+  html += `<section class="block"><div class="block-head"><h2>Entrenamiento de hoy</h2>${state.ia.enabled ? `<button class="btn btn-sm" id="rubik-ia-btn">✨ Recomendación IA</button>` : ''}</div>
+  <div id="rubik-ia-response"></div>`;
+  if(!training){
+    html += `<div class="preset-grid">${RUBIK_PRESETS.map(p=>`
+      <button class="preset-card" data-action="start-training" data-preset="${p.id}">
+        <div class="pc-title">${p.icon} ${p.label}</div>
+        <div class="pc-sub">${p.solveCount>0? p.solveCount+' solves · ':''}${p.duration>0?'~'+p.duration+' min':'Duración libre'}</div>
+      </button>`).join('')}</div>`;
+  } else {
+    const preset = rubikPreset(training.presetId);
+    html += `<div class="training-card ${training.status==='completed'?'done':''}">
+      <div class="tc-top">
+        <div class="tc-title">${preset?preset.icon:'🕊️'} ${preset?preset.label:'Entrenamiento libre'} ${training.status==='completed'?'· Completado ✓':''}</div>
+        <div class="tc-actions">
+          ${training.status!=='completed' ? `<button class="btn btn-sm btn-dark" data-action="complete-training" data-id="${training.id}">Marcar completado</button>` : ''}
+          <button class="btn btn-sm" data-action="edit-training" data-id="${training.id}">Editar</button>
+          <button class="btn btn-sm" data-action="delete-training" data-id="${training.id}">Quitar</button>
+        </div>
+      </div>
+      <div class="tc-meta">
+        ${training.solveCount>0?`<span>🔁 ${training.solveCount} solves</span>`:''}
+        ${training.goal?`<span>🎯 ${esc(training.goal)}</span>`:''}
+        ${training.duration>0?`<span>⏱️ ~${training.duration} min</span>`:''}
+        ${training.scheduledTime?`<span>🕐 ${training.scheduledTime}</span>`:''}
+      </div>
+      ${training.notes?`<div class="tc-notes">${esc(training.notes)}</div>`:''}
+    </div>`;
+  }
+  html += `</section>`;
+
+  // --- Solves recientes ---
+  const recentSolves = solvesChronological(state.rubikSolves).slice(-10).reverse();
+  html += `<section class="block"><div class="block-head"><h2>Solves recientes</h2><span class="hint">Últimos registrados</span></div>`;
+  html += recentSolves.length===0 ? `<div class="empty-state">Todavía no has registrado ningún solve.</div>` :
+    `<div class="item-list">${recentSolves.map(s=>solveRowHTML(s)).join('')}</div>`;
+  html += `</section>`;
+
+  // --- Estadísticas ---
+  if(stats.count>0){
+    html += `<section class="block"><div class="block-head"><h2>Estadísticas</h2></div>
+      <div class="rubik-stats-grid">
+        <div class="stat-card"><div class="stat-label">Mejor</div><div class="stat-value">${fmtTime(stats.best)}</div></div>
+        <div class="stat-card"><div class="stat-label">Peor</div><div class="stat-value">${fmtTime(stats.worst)}</div></div>
+        <div class="stat-card"><div class="stat-label">Media</div><div class="stat-value">${fmtTime(stats.avg)}</div></div>
+        <div class="stat-card"><div class="stat-label">Ao5</div><div class="stat-value">${stats.ao5!=null?fmtTime(stats.ao5):'—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Ao12</div><div class="stat-value">${stats.ao12!=null?fmtTime(stats.ao12):'—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Ao50</div><div class="stat-value">${stats.ao50!=null?fmtTime(stats.ao50):'—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Ao100</div><div class="stat-value">${stats.ao100!=null?fmtTime(stats.ao100):'—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Mejor Ao5</div><div class="stat-value">${stats.bestAo5!=null?fmtTime(stats.bestAo5):'—'}</div></div>
+        <div class="stat-card"><div class="stat-label">Mejor Ao12</div><div class="stat-value">${stats.bestAo12!=null?fmtTime(stats.bestAo12):'—'}</div></div>
+      </div>
+    </section>`;
+
+    // --- Gráficas ---
+    html += `<section class="block"><div class="block-head"><h2>Gráficas</h2><span class="hint">Evolución por sesión</span></div>
+      <div class="charts-grid">
+        <div class="chart-card"><div class="chart-title">Mejor tiempo por sesión</div>${rubikLineChart('best')}</div>
+        <div class="chart-card"><div class="chart-title">Media por sesión</div>${rubikLineChart('avg')}</div>
+      </div>
+    </section>`;
+  }
+
+  // --- Historial de sesiones ---
+  const sessions = [...state.rubikSessions].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  html += `<section class="block"><div class="block-head"><h2>Historial de sesiones</h2><button class="btn" id="rubik-add-session">+ Nueva sesión</button></div>`;
+  html += sessions.length===0 ? `<div class="empty-state">Tus sesiones de entrenamiento aparecerán aquí, con sus solves, mejor tiempo y media.</div>` :
+    `<div class="item-list">${sessions.map(s=>sessionCardHTML(s)).join('')}</div>`;
+  html += `</section>`;
+
+  // --- Cubos ---
+  html += `<section class="block"><div class="block-head"><h2>Cubos</h2><button class="btn" id="rubik-add-cube">+ Añadir cubo</button></div>`;
+  html += state.rubikCubes.length===0 ? `<div class="empty-state">Añade tus cubos para poder seleccionarlos al registrar solves y sesiones.</div>` :
+    `<div class="item-list">${state.rubikCubes.map(c=>cubeCardHTML(c)).join('')}</div>`;
+  html += `</section>`;
+
+  el.innerHTML = html;
+  wireRubikEvents(el);
+}
+
+function solveRowHTML(s){
+  const cube = cubeName(s.cubeId);
+  return `<div class="solve-row">
+    <div class="solve-time ${s.penalty==='dnf'?'dnf':''} ${s.penalty==='+2'?'plus2':''}">${s.penalty==='dnf'?'DNF':fmtTime(s.time)}</div>
+    <div class="solve-meta">
+      <span>${humanDateShort(s.date)}${s.timeOfDay?' · '+s.timeOfDay:''}</span>
+      ${cube?`<span>🧊 ${esc(cube)}</span>`:''}
+      ${s.notes?`<span>${esc(s.notes)}</span>`:''}
+    </div>
+    <div class="row-actions">
+      <button class="btn-ghost" data-action="edit-solve" data-id="${s.id}" title="Editar">✏️</button>
+      <button class="btn-ghost" data-action="delete-solve" data-id="${s.id}" title="Eliminar">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function sessionCardHTML(sess){
+  const solves = state.rubikSolves.filter(s=>s.sessionId===sess.id);
+  const sstats = computeRubikStats(solves);
+  const preset = rubikPreset(sess.presetId);
+  return `<div class="session-card" data-action="open-session" data-id="${sess.id}">
+    <div class="sc-top">
+      <div class="sc-title">${humanDateShort(sess.date)} ${preset?'· '+preset.label:(sess.presetId==='free'?'· Sesión libre':'')}</div>
+      <span class="sc-badge">${sess.status==='active'?'En curso':'Completada'}</span>
+    </div>
+    <div class="sc-meta">
+      <span>${solves.length} solves</span>
+      ${sstats.best!=null?`<span>Mejor ${fmtTime(sstats.best)}</span>`:''}
+      ${sstats.avg!=null?`<span>Media ${fmtTime(sstats.avg)}</span>`:''}
+      ${sess.cubeId?`<span>🧊 ${esc(cubeName(sess.cubeId)||'')}</span>`:''}
+      ${sess.durationMinutes?`<span>⏱️ ${sess.durationMinutes} min</span>`:''}
+    </div>
+  </div>`;
+}
+
+function cubeCardHTML(c){
+  return `<div class="cube-card">
+    <div class="cube-ic">🧊</div>
+    <div class="cube-body">
+      <div class="cube-name">${esc(c.name)} ${c.isMain?'<span class="main-badge">Principal</span>':''}</div>
+      <div class="cube-sub">${[c.type,c.brand,c.model].filter(Boolean).map(esc).join(' · ')||'Sin más detalles'}</div>
+    </div>
+    <div class="row-actions">
+      <button class="btn-ghost" data-action="edit-cube" data-id="${c.id}" title="Editar">✏️</button>
+      <button class="btn-ghost" data-action="delete-cube" data-id="${c.id}" title="Eliminar">🗑️</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- Gráficas SVG sencillas ---------- */
+function rubikLineChart(metric){
+  const sessions = [...state.rubikSessions].sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+  const points = [];
+  sessions.forEach(sess=>{
+    const solves = state.rubikSolves.filter(s=>s.sessionId===sess.id);
+    if(solves.length===0) return;
+    const st = computeRubikStats(solves);
+    const val = metric==='best' ? st.best : st.avg;
+    if(val!=null && val!==Infinity) points.push(val/1000);
+  });
+  if(points.length < 2){
+    return `<div class="empty-state small">Necesitas al menos 2 sesiones con solves para ver esta gráfica.</div>`;
+  }
+  const w = 260, h = 120, pad = 10;
+  const max = Math.max(...points), min = Math.min(...points);
+  const range = (max-min) || 1;
+  const stepX = (w-pad*2) / (points.length-1);
+  const coords = points.map((v,i)=>{
+    const x = pad + i*stepX;
+    const y = pad + (h-pad*2) * (1 - (v-min)/range);
+    return [x,y];
+  });
+  const path = coords.map((c,i)=> (i===0?'M':'L')+c[0].toFixed(1)+','+c[1].toFixed(1)).join(' ');
+  const dots = coords.map(c=>`<circle cx="${c[0].toFixed(1)}" cy="${c[1].toFixed(1)}" r="2.5" fill="#1E9E8C"></circle>`).join('');
+  return `<svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" xmlns="http://www.w3.org/2000/svg">
+    <path d="${path}" fill="none" stroke="#1E9E8C" stroke-width="2"></path>
+    ${dots}
+  </svg>
+  <div class="stat-sub" style="margin-top:4px;">De ${points[0].toFixed(2)}s a ${points[points.length-1].toFixed(2)}s</div>`;
+}
+
+function wireRubikEvents(el){
+  const addSolveBtn = document.getElementById('rubik-add-solve');
+  if(addSolveBtn) addSolveBtn.addEventListener('click', ()=>openSolveModal({}));
+
+  const rubikIaBtn = document.getElementById('rubik-ia-btn');
+  if(rubikIaBtn) rubikIaBtn.addEventListener('click', runRubikIA);
+
+  const editGoalBtn = document.getElementById('rubik-edit-goal');
+  if(editGoalBtn) editGoalBtn.addEventListener('click', async ()=>{
+    const val = prompt('Objetivo actual (ej. "Bajar de 15s en Ao5")', state.rubikGoal||'');
+    if(val!==null){ state.rubikGoal = val.trim(); await saveRubikGoal(); renderCurrentView(); }
+  });
+
+  el.querySelectorAll('[data-action="start-training"]').forEach(b=>b.addEventListener('click', ()=>openTrainingModal({presetId:b.dataset.preset})));
+  el.querySelectorAll('[data-action="complete-training"]').forEach(b=>b.addEventListener('click', async ()=>{
+    await updateRubikTraining(b.dataset.id, {status:'completed'});
+    showToast('Entrenamiento completado');
+    renderCurrentView();
+  }));
+  el.querySelectorAll('[data-action="edit-training"]').forEach(b=>b.addEventListener('click', ()=>openTrainingModal({trainingId:b.dataset.id})));
+  el.querySelectorAll('[data-action="delete-training"]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(confirm('¿Quitar el entrenamiento de hoy?')){ await deleteRubikTraining(b.dataset.id); renderCurrentView(); }
+  }));
+
+  el.querySelectorAll('[data-action="edit-solve"]').forEach(b=>b.addEventListener('click', ()=>openSolveModal({solveId:b.dataset.id})));
+  el.querySelectorAll('[data-action="delete-solve"]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(confirm('¿Eliminar este solve?')){ await deleteRubikSolve(b.dataset.id); renderCurrentView(); }
+  }));
+
+  const addSessionBtn = document.getElementById('rubik-add-session');
+  if(addSessionBtn) addSessionBtn.addEventListener('click', ()=>openSessionModal({}));
+  el.querySelectorAll('[data-action="open-session"]').forEach(b=>b.addEventListener('click', ()=>openSessionDetailModal(b.dataset.id)));
+
+  const addCubeBtn = document.getElementById('rubik-add-cube');
+  if(addCubeBtn) addCubeBtn.addEventListener('click', ()=>openCubeModal({}));
+  el.querySelectorAll('[data-action="edit-cube"]').forEach(b=>b.addEventListener('click', ()=>openCubeModal({cubeId:b.dataset.id})));
+  el.querySelectorAll('[data-action="delete-cube"]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(confirm('¿Eliminar este cubo?')){ await deleteCube(b.dataset.id); renderCurrentView(); }
+  }));
+}
+
+/* ---------- Modal: cubo option list helper ---------- */
+function cubeOptionsHTML(selectedId){
+  const opts = [`<option value="">Sin especificar</option>`];
+  state.rubikCubes.forEach(c=> opts.push(`<option value="${c.id}" ${selectedId===c.id?'selected':''}>${esc(c.name)}</option>`));
+  return opts.join('');
+}
+
+/* ---------- Modal: registrar/editar solve ---------- */
+function openSolveModal({solveId=null, sessionId=null}={}){
+  const editing = !!solveId;
+  const existing = editing ? state.rubikSolves.find(s=>s.id===solveId) : null;
+  const fixedSessionId = sessionId || (existing ? existing.sessionId : null);
+  const timeSeconds = existing ? (existing.time/1000).toFixed(2) : '';
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Registrar'} solve</h3>
+    <form id="solve-form">
+      <div class="form-row-2">
+        <div class="form-group"><label>Tiempo (segundos)</label>
+          <input type="text" name="time" required placeholder="Ej. 12.45" value="${timeSeconds}" inputmode="decimal">
+        </div>
+        <div class="form-group"><label>Penalización</label>
+          <select name="penalty">
+            <option value="none" ${(!existing||existing.penalty==='none')?'selected':''}>Sin penalización</option>
+            <option value="+2" ${existing&&existing.penalty==='+2'?'selected':''}>+2</option>
+            <option value="dnf" ${existing&&existing.penalty==='dnf'?'selected':''}>DNF</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Fecha</label>
+          <input type="date" name="date" value="${existing?existing.date:todayStr()}">
+        </div>
+        <div class="form-group"><label>Hora (opcional)</label>
+          <input type="time" name="timeOfDay" value="${existing?(existing.timeOfDay||''):nowTimeStr()}">
+        </div>
+      </div>
+      <div class="form-group"><label>Cubo</label>
+        <select name="cubeId">${cubeOptionsHTML(existing?existing.cubeId:(fixedSessionId ? (state.rubikSessions.find(s=>s.id===fixedSessionId)||{}).cubeId : lastUsedCube()?.id))}</select>
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="solve-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="solve-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  modalBox.querySelector('#solve-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#solve-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar este solve?')){ await deleteRubikSolve(solveId); closeModal(); renderCurrentView(); }
+    });
+  }
+  modalBox.querySelector('#solve-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const penalty = fd.get('penalty');
+    const rawTime = parseFloat(String(fd.get('time')).replace(',', '.'));
+    if(penalty!=='dnf' && (isNaN(rawTime) || rawTime<=0)){ showToast('Introduce un tiempo válido, ej. 12.45'); return; }
+    const data = {
+      time: isNaN(rawTime) ? 0 : Math.round(rawTime*1000),
+      penalty,
+      date: fd.get('date') || todayStr(),
+      timeOfDay: fd.get('timeOfDay') || '',
+      cubeId: fd.get('cubeId') || null,
+      notes: (fd.get('notes')||'').trim(),
+      sessionId: fixedSessionId || (existing?existing.sessionId:null),
+    };
+    if(editing) await updateRubikSolve(solveId, data); else await addRubikSolve(data);
+    closeModal();
+    showToast(editing?'Solve actualizado':'Solve registrado');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ---------- Modal: entrenamiento de hoy (crear/editar) ---------- */
+function openTrainingModal({presetId=null, trainingId=null}={}){
+  const editing = !!trainingId;
+  const existing = editing ? state.rubikTrainings.find(t=>t.id===trainingId) : null;
+  const preset = rubikPreset(existing ? existing.presetId : presetId) || RUBIK_PRESETS[RUBIK_PRESETS.length-1];
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Configurar'} entrenamiento de hoy</h3>
+    <form id="training-form">
+      <div class="form-group"><label>Tipo</label>
+        <select name="presetId">${RUBIK_PRESETS.map(p=>`<option value="${p.id}" ${preset.id===p.id?'selected':''}>${p.icon} ${p.label}</option>`).join('')}</select>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Nº de solves</label>
+          <input type="number" name="solveCount" min="0" value="${existing?existing.solveCount:preset.solveCount}">
+        </div>
+        <div class="form-group"><label>Duración aprox. (min)</label>
+          <input type="number" name="duration" min="0" value="${existing?existing.duration:preset.duration}">
+        </div>
+      </div>
+      <div class="form-group"><label>Objetivo</label>
+        <input type="text" name="goal" value="${existing?esc(existing.goal||''):esc(preset.goal||'')}" placeholder="Ej. Bajar la media">
+      </div>
+      <div class="form-group"><label>Hora programada (opcional)</label>
+        <input type="time" name="scheduledTime" value="${existing?(existing.scheduledTime||''):''}">
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div></div>
+        <div class="right">
+          <button type="button" class="btn" id="training-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  modalBox.querySelector('#training-cancel-btn').addEventListener('click', closeModal);
+  modalBox.querySelector('#training-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      date: existing?existing.date:todayStr(),
+      presetId: fd.get('presetId'),
+      solveCount: parseInt(fd.get('solveCount'))||0,
+      duration: parseInt(fd.get('duration'))||0,
+      goal: (fd.get('goal')||'').trim(),
+      scheduledTime: fd.get('scheduledTime')||'',
+      notes: (fd.get('notes')||'').trim(),
+    };
+    if(editing) await updateRubikTraining(trainingId, data); else await addRubikTraining(data);
+    closeModal();
+    showToast(editing?'Entrenamiento actualizado':'Entrenamiento programado');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ---------- Modal: sesión (crear/editar) ---------- */
+function openSessionModal({sessionId=null}={}){
+  const editing = !!sessionId;
+  const existing = editing ? state.rubikSessions.find(s=>s.id===sessionId) : null;
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Nueva'} sesión</h3>
+    <form id="session-form">
+      <div class="form-row-2">
+        <div class="form-group"><label>Fecha</label>
+          <input type="date" name="date" value="${existing?existing.date:todayStr()}">
+        </div>
+        <div class="form-group"><label>Tipo de entrenamiento</label>
+          <select name="presetId">${RUBIK_PRESETS.map(p=>`<option value="${p.id}" ${(existing?existing.presetId:'free')===p.id?'selected':''}>${p.icon} ${p.label}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Cubo</label>
+          <select name="cubeId">${cubeOptionsHTML(existing?existing.cubeId:lastUsedCube()?.id)}</select>
+        </div>
+        <div class="form-group"><label>Duración (min)</label>
+          <input type="number" name="durationMinutes" min="0" value="${existing?existing.durationMinutes||'':''}">
+        </div>
+      </div>
+      <div class="form-group"><label>Estado</label>
+        <select name="status">
+          <option value="active" ${(!existing||existing.status==='active')?'selected':''}>En curso</option>
+          <option value="completed" ${existing&&existing.status==='completed'?'selected':''}>Completada</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="session-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="session-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  modalBox.querySelector('#session-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#session-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar esta sesión? Los solves asociados se conservarán sin sesión.')){
+        await deleteRubikSession(sessionId); closeModal(); renderCurrentView();
+      }
+    });
+  }
+  modalBox.querySelector('#session-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      date: fd.get('date')||todayStr(),
+      presetId: fd.get('presetId'),
+      cubeId: fd.get('cubeId')||null,
+      durationMinutes: parseInt(fd.get('durationMinutes'))||0,
+      status: fd.get('status'),
+      notes: (fd.get('notes')||'').trim(),
+    };
+    if(editing) await updateRubikSession(sessionId, data); else await addRubikSession(data);
+    closeModal();
+    showToast(editing?'Sesión actualizada':'Sesión creada');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ---------- Modal: detalle de sesión (ver / registrar solves de la sesión) ---------- */
+function openSessionDetailModal(sessionId){
+  const sess = state.rubikSessions.find(s=>s.id===sessionId);
+  if(!sess) return;
+  const solves = solvesChronological(state.rubikSolves.filter(s=>s.sessionId===sessionId)).reverse();
+  const sstats = computeRubikStats(solves);
+  const preset = rubikPreset(sess.presetId);
+
+  modalBox.innerHTML = `
+    <h3>${humanDateShort(sess.date)} ${preset?'· '+preset.label:''}</h3>
+    <div class="row-meta" style="margin-bottom:12px;">
+      <span>${solves.length} solves</span>
+      ${sstats.best!=null?`<span>Mejor ${fmtTime(sstats.best)}</span>`:''}
+      ${sstats.avg!=null?`<span>Media ${fmtTime(sstats.avg)}</span>`:''}
+      ${sess.cubeId?`<span>🧊 ${esc(cubeName(sess.cubeId)||'')}</span>`:''}
+    </div>
+    <div class="item-list" id="session-detail-solves" style="max-height:280px;overflow-y:auto;margin-bottom:14px;">
+      ${solves.length===0 ? `<div class="empty-state small">Todavía no hay solves en esta sesión.</div>` : solves.map(s=>solveRowHTML(s)).join('')}
+    </div>
+    <div class="modal-actions">
+      <div><button type="button" class="btn" id="session-detail-edit">Editar sesión</button></div>
+      <div class="right">
+        <button type="button" class="btn" id="session-detail-close">Cerrar</button>
+        <button type="button" class="btn btn-dark" id="session-detail-add-solve">+ Registrar solve</button>
+      </div>
+    </div>`;
+
+  modalBox.querySelector('#session-detail-close').addEventListener('click', closeModal);
+  modalBox.querySelector('#session-detail-edit').addEventListener('click', ()=>openSessionModal({sessionId}));
+  modalBox.querySelector('#session-detail-add-solve').addEventListener('click', ()=>openSolveModal({sessionId}));
+  modalBox.querySelectorAll('[data-action="edit-solve"]').forEach(b=>b.addEventListener('click', ()=>openSolveModal({solveId:b.dataset.id, sessionId})));
+  modalBox.querySelectorAll('[data-action="delete-solve"]').forEach(b=>b.addEventListener('click', async ()=>{
+    if(confirm('¿Eliminar este solve?')){ await deleteRubikSolve(b.dataset.id); openSessionDetailModal(sessionId); renderCurrentView(); }
+  }));
+
+  overlay.classList.add('open');
+}
+
+/* ---------- Modal: cubo (crear/editar) ---------- */
+function openCubeModal({cubeId=null}={}){
+  const editing = !!cubeId;
+  const existing = editing ? state.rubikCubes.find(c=>c.id===cubeId) : null;
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} cubo</h3>
+    <form id="cube-form">
+      <div class="form-group"><label>Nombre</label>
+        <input type="text" name="name" required value="${existing?esc(existing.name):''}" placeholder="Ej. Mi 3x3 principal">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Tipo</label>
+          <input type="text" name="type" value="${existing?esc(existing.type||''):'3x3'}" placeholder="3x3, 2x2, 4x4…">
+        </div>
+        <div class="form-group"><label>Marca</label>
+          <input type="text" name="brand" value="${existing?esc(existing.brand||''):''}">
+        </div>
+      </div>
+      <div class="form-group"><label>Modelo (opcional)</label>
+        <input type="text" name="model" value="${existing?esc(existing.model||''):''}">
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="isMain" id="cube-main" ${existing&&existing.isMain?'checked':''}>
+        <label for="cube-main" style="margin:0;">Es mi cubo principal</label>
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="cube-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="cube-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  modalBox.querySelector('#cube-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#cube-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar este cubo?')){ await deleteCube(cubeId); closeModal(); renderCurrentView(); }
+    });
+  }
+  modalBox.querySelector('#cube-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      name: fd.get('name').trim(),
+      type: (fd.get('type')||'').trim(),
+      brand: (fd.get('brand')||'').trim(),
+      model: (fd.get('model')||'').trim(),
+      isMain: fd.get('isMain')==='on',
+      notes: (fd.get('notes')||'').trim(),
+      acquiredDate: existing?existing.acquiredDate:todayStr(),
+    };
+    if(!data.name) return;
+    if(editing) await updateCube(cubeId, data); else await addCube(data);
+    closeModal();
+    showToast(editing?'Cubo actualizado':'Cubo añadido');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+function taskRowHTML(t, cfg){
+  const overdue = t.dueDate && t.dueDate < todayStr() && !t.done;
+  return `
+    <div class="task-row ${t.done?'done':''}">
+      <div class="checkbox ${t.done?'checked':''}" data-action="toggle-task" data-id="${t.id}">${t.done?'✓':''}</div>
+      <div class="row-body">
+        <div class="row-top">
+          <span class="task-title">${esc(t.title)}</span>
+          ${!cfg.simplified && t.priority ? `<span class="priority-dot" style="background:${PRIORITIES[t.priority].color};" title="Prioridad ${PRIORITIES[t.priority].label}"></span>` : ''}
+        </div>
+        <div class="row-meta">
+          ${t.scheduledDate ? `<span>Programada: ${humanDateShort(t.scheduledDate)} · ${t.scheduledStart}-${t.scheduledEnd}</span>` : ''}
+          ${t.dueDate ? `<span style="${overdue?'color:var(--alta);font-weight:600;':''}">${t.scheduledDate?'Vence':''} ${humanDateShort(t.dueDate)}${(!t.scheduledDate && t.dueTime)?' · '+t.dueTime:''}</span>` : ''}
+          ${!cfg.simplified && t.priority ? `<span>Prioridad ${PRIORITIES[t.priority].label}</span>` : ''}
+          ${t.schedulingWarning ? `<span style="color:var(--alta);">${esc(t.schedulingWarning)}</span>` : ''}
+        </div>
+        ${t.notes ? `<div class="row-notes">${esc(t.notes)}</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <button class="btn-ghost" data-action="edit-task" data-id="${t.id}" data-area="${t.area}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-task" data-id="${t.id}" title="Eliminar">🗑️</button>
+      </div>
+    </div>`;
+}
+function eventRowHTML(e, cfg){
+  return `
+    <div class="event-row">
+      <div class="row-body">
+        <div class="row-top"><span class="event-title">${esc(e.title)}</span></div>
+        <div class="row-meta">
+          <span>${humanDateShort(e.date)}${e.endDate?' → '+humanDateShort(e.endDate):''}</span>
+          <span>${e.allDay?'Todo el día':(e.startTime||'')+(e.endTime?' - '+e.endTime:'')}</span>
+          ${e.location?`<span>${esc(e.location)}</span>`:''}
+        </div>
+        ${e.notes ? `<div class="row-notes">${esc(e.notes)}</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <button class="btn-ghost" data-action="edit-event" data-id="${e.id}" data-area="${e.area}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-event" data-id="${e.id}" title="Eliminar">🗑️</button>
+      </div>
+    </div>`;
+}
+
+/* ==================================================================
+   RENDER: CALENDARIO
+   ================================================================== */
+function renderCalendar(){
+  const dowRow = document.getElementById('cal-dow-row');
+  dowRow.innerHTML = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map(d=>`<div class="cal-dow">${d}</div>`).join('');
+
+  document.getElementById('cal-title').textContent = `${MONTH_NAMES[cal.month][0].toUpperCase()}${MONTH_NAMES[cal.month].slice(1)} ${cal.year}`;
+
+  const firstOfMonth = new Date(cal.year, cal.month, 1);
+  const startOffset = (firstOfMonth.getDay()+6)%7; // lunes=0
+  const daysInMonth = new Date(cal.year, cal.month+1, 0).getDate();
+  const today = todayStr();
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div class="cal-cell empty"></div>`;
+  for(let day=1; day<=daysInMonth; day++){
+    const dateStr = `${cal.year}-${pad(cal.month+1)}-${pad(day)}`;
+    const dayItems = [];
+    // Una tarea se pinta en el día donde va a HACERSE (scheduledDate si
+    // el Scheduler ya le asignó hueco), no necesariamente en su fecha límite.
+    state.tasks.forEach(t=>{ if((t.scheduledDate||t.dueDate)===dateStr) dayItems.push(t.area); });
+    state.events.forEach(e=>{ if(isDateInRange(dateStr, e.date, e.endDate)) dayItems.push(e.area); });
+    const uniqueAreas = [...new Set(dayItems)];
+    const shown = uniqueAreas.slice(0,4);
+    const extra = uniqueAreas.length - shown.length;
+    cells += `
+      <div class="cal-cell ${dateStr===today?'today':''} ${dateStr===cal.selected?'selected':''}" data-date="${dateStr}">
+        <div class="cal-daynum">${day}</div>
+        <div class="cal-dots">${shown.map(a=>`<div class="cal-dot" style="background:var(--${a});"></div>`).join('')}${extra>0?`<span class="cal-more">+${extra}</span>`:''}</div>
+      </div>`;
+  }
+  document.getElementById('cal-grid').innerHTML = cells;
+  document.getElementById('cal-grid').querySelectorAll('.cal-cell[data-date]').forEach(c=>{
+    c.addEventListener('click', ()=>{ cal.selected = c.dataset.date; renderCalendar(); });
+  });
+
+  renderDayPanel();
+}
+function renderDayPanel(){
+  const sel = cal.selected;
+  const title = document.getElementById('day-panel-title');
+  const content = document.getElementById('day-panel-content');
+  if(!sel){
+    title.textContent = 'Selecciona un día';
+    content.innerHTML = `<div class="empty-state small">Haz clic en un día del calendario para ver o añadir tareas y eventos.</div>`;
+    return;
+  }
+  title.textContent = humanDateShort(sel) + ' de ' + parseYMD(sel).getFullYear();
+  const dayTasks = state.tasks.filter(t=>(t.scheduledDate||t.dueDate)===sel);
+  const dayEvents = state.events.filter(e=>isDateInRange(sel, e.date, e.endDate));
+
+  if(dayTasks.length===0 && dayEvents.length===0){
+    content.innerHTML = `<div class="empty-state small">No hay nada guardado para este día todavía.</div>`;
+  } else {
+    content.innerHTML = `<div class="item-list">
+      ${dayEvents.map(e=>eventRowHTML(e, AREAS[e.area])).join('')}
+      ${dayTasks.map(t=>taskRowHTML(t, AREAS[t.area])).join('')}
+    </div>`;
+    content.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTask(b.dataset.id)));
+    content.querySelectorAll('[data-action="edit-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({area:b.dataset.area, taskId:b.dataset.id})));
+    content.querySelectorAll('[data-action="delete-task"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar esta tarea?')){ deleteTask(b.dataset.id).then(renderCurrentView); } }));
+    content.querySelectorAll('[data-action="edit-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({area:b.dataset.area, eventId:b.dataset.id})));
+    content.querySelectorAll('[data-action="delete-event"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar este evento?')){ deleteEvent(b.dataset.id).then(renderCurrentView); } }));
+  }
+}
+
+document.getElementById('cal-prev').addEventListener('click', ()=>{ cal.month--; if(cal.month<0){cal.month=11;cal.year--;} renderCalendar(); });
+document.getElementById('cal-next').addEventListener('click', ()=>{ cal.month++; if(cal.month>11){cal.month=0;cal.year++;} renderCalendar(); });
+document.getElementById('cal-today').addEventListener('click', ()=>{ const d=new Date(); cal.year=d.getFullYear(); cal.month=d.getMonth(); cal.selected=todayStr(); renderCalendar(); });
+document.getElementById('day-add-task').addEventListener('click', ()=>{ if(cal.selected) openTaskModal({date:cal.selected}); });
+document.getElementById('day-add-event').addEventListener('click', ()=>{ if(cal.selected) openEventModal({date:cal.selected}); });
+
+/* ==================================================================
+   MODAL: TAREA
+   ================================================================== */
+const overlay = document.getElementById('modal-overlay');
+const modalBox = document.getElementById('modal-box');
+function closeModal(){ overlay.classList.remove('open'); modalBox.innerHTML=''; }
+overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+function openTaskModal({area=null, taskId=null, date=null}={}){
+  const editing = !!taskId;
+  const existing = editing ? state.tasks.find(t=>t.id===taskId) : null;
+  const fixedArea = area && !editing ? area : (existing ? existing.area : area);
+  const taskAreas = AREA_IDS.filter(id=>AREAS[id].hasTasks);
+  const isSimplified = AREAS[fixedArea]?.simplified;
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} ${isSimplified ? 'producto' : 'tarea'}</h3>
+    <form id="task-form">
+      ${fixedArea ? `<input type="hidden" name="area" value="${fixedArea}">` : `
+      <div class="form-group"><label>Área</label>
+        <select name="area" id="task-area-select">${taskAreas.map(id=>`<option value="${id}">${AREAS[id].name}</option>`).join('')}</select>
+      </div>`}
+      <div class="form-group"><label>${isSimplified?'Producto':'Título'}</label>
+        <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="${isSimplified?'Ej. Leche':'Ej. Estudiar para el examen'}">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Fecha ${isSimplified?'(opcional)':'límite'}</label>
+          <input type="date" name="dueDate" value="${existing?existing.dueDate||'':(date||'')}">
+        </div>
+        <div class="form-group" id="task-time-group"><label>Hora (opcional)</label>
+          <input type="time" name="dueTime" value="${existing?existing.dueTime||'':''}">
+        </div>
+      </div>
+      <div class="form-group" id="task-priority-group"><label>Prioridad</label>
+        <select name="priority">
+          <option value="media" ${existing&&existing.priority==='media'?'selected':''}>Media</option>
+          <option value="alta" ${existing&&existing.priority==='alta'?'selected':''}>Alta</option>
+          <option value="baja" ${existing&&existing.priority==='baja'?'selected':''}>Baja</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="task-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="task-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  function refreshSimplifiedUI(){
+    const areaVal = fixedArea || modalBox.querySelector('#task-area-select')?.value;
+    const simp = AREAS[areaVal]?.simplified;
+    const pg = document.getElementById('task-priority-group');
+    if(pg) pg.style.display = simp ? 'none' : '';
+  }
+  refreshSimplifiedUI();
+  const areaSel = modalBox.querySelector('#task-area-select');
+  if(areaSel) areaSel.addEventListener('change', refreshSimplifiedUI);
+
+  modalBox.querySelector('#task-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#task-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar esta tarea?')){ await deleteTask(taskId); closeModal(); renderCurrentView(); }
+    });
+  }
+  modalBox.querySelector('#task-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      area: fd.get('area'),
+      title: fd.get('title').trim(),
+      dueDate: fd.get('dueDate') || '',
+      dueTime: fd.get('dueTime') || '',
+      priority: AREAS[fd.get('area')]?.simplified ? null : fd.get('priority'),
+      notes: fd.get('notes').trim(),
+    };
+    if(!data.title) return;
+    if(editing) await updateTask(taskId, data); else await addTask(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   MODAL: EVENTO
+   ================================================================== */
+function openEventModal({area=null, eventId=null, date=null}={}){
+  const editing = !!eventId;
+  const existing = editing ? state.events.find(x=>x.id===eventId) : null;
+  const fixedArea = area && !editing ? area : (existing ? existing.area : area);
+  const eventAreas = AREA_IDS.filter(id=>AREAS[id].hasEvents);
+  const allDay = existing ? !!existing.allDay : (fixedArea==='vacaciones');
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} evento</h3>
+    <form id="event-form">
+      ${fixedArea ? `<input type="hidden" name="area" value="${fixedArea}">` : `
+      <div class="form-group"><label>Área</label>
+        <select name="area">${eventAreas.map(id=>`<option value="${id}">${AREAS[id].name}</option>`).join('')}</select>
+      </div>`}
+      <div class="form-group"><label>Título</label>
+        <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Reunión de equipo">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Fecha</label>
+          <input type="date" name="date" required value="${existing?existing.date:(date||'')}">
+        </div>
+        <div class="form-group"><label>Fecha de fin (opcional)</label>
+          <input type="date" name="endDate" value="${existing?existing.endDate||'':''}">
+        </div>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="allDay" id="event-allday" ${allDay?'checked':''}>
+        <label for="event-allday" style="margin:0;">Todo el día</label>
+      </div>
+      <div class="form-row-2" id="event-time-row" style="${allDay?'display:none;':''}">
+        <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':''}"></div>
+        <div class="form-group"><label>Hora fin (opcional)</label><input type="time" name="endTime" value="${existing?existing.endTime||'':''}"></div>
+      </div>
+      <div class="form-group"><label>Ubicación (opcional)</label>
+        <input type="text" name="location" value="${existing?esc(existing.location||''):''}">
+      </div>
+      <div class="form-group"><label>Notas (opcional)</label>
+        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="event-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="event-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  const allDayCb = modalBox.querySelector('#event-allday');
+  allDayCb.addEventListener('change', ()=>{
+    document.getElementById('event-time-row').style.display = allDayCb.checked ? 'none' : '';
+  });
+
+  modalBox.querySelector('#event-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#event-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar este evento?')){ await deleteEvent(eventId); closeModal(); renderCurrentView(); }
+    });
+  }
+  modalBox.querySelector('#event-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const isAllDay = fd.get('allDay') === 'on';
+    const data = {
+      area: fd.get('area'),
+      title: fd.get('title').trim(),
+      date: fd.get('date'),
+      endDate: fd.get('endDate') || '',
+      allDay: isAllDay,
+      startTime: isAllDay ? '' : (fd.get('startTime')||''),
+      endTime: isAllDay ? '' : (fd.get('endTime')||''),
+      location: fd.get('location').trim(),
+      notes: fd.get('notes').trim(),
+    };
+    if(!data.title || !data.date) return;
+    if(editing) await updateEvent(eventId, data); else await addEvent(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   MODAL: HORARIO PERSONALIZADO
+   ================================================================== */
+function openScheduleModal({scheduleId=null}={}){
+  const editing = !!scheduleId;
+  const existing = editing ? state.customSchedules.find(s=>s.id===scheduleId) : null;
+  const selectedDays = existing ? existing.days : [];
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} bloque de horario</h3>
+    <form id="schedule-form">
+      <div class="form-group"><label>Nombre</label>
+        <input type="text" name="name" required value="${existing?esc(existing.name):''}" placeholder="Ej. Cole, Dormir, Entrenamiento…">
+      </div>
+      <div class="form-group"><label>Días</label>
+        <div class="day-pills" id="schedule-day-pills">
+          ${DOW_SHORT.map((lb,i)=>`<button type="button" class="day-pill ${selectedDays.includes(i)?'on':''}" data-day="${i}">${lb}</button>`).join('')}
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Hora inicio</label>
+          <input type="time" name="startTime" required value="${existing?existing.startTime:''}">
+        </div>
+        <div class="form-group"><label>Hora fin</label>
+          <input type="time" name="endTime" required value="${existing?existing.endTime:''}">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="schedule-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="schedule-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  let days = [...selectedDays];
+  modalBox.querySelectorAll('#schedule-day-pills .day-pill').forEach(pill=>{
+    pill.addEventListener('click', ()=>{
+      const d = Number(pill.dataset.day);
+      if(days.includes(d)){ days = days.filter(x=>x!==d); pill.classList.remove('on'); }
+      else { days.push(d); pill.classList.add('on'); }
+    });
+  });
+
+  modalBox.querySelector('#schedule-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#schedule-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar este bloque de horario?')){ await deleteCustomSchedule(scheduleId); closeModal(); renderAjustes(); }
+    });
+  }
+  modalBox.querySelector('#schedule-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      name: fd.get('name').trim(),
+      days: [...days].sort((a,b)=>a-b),
+      startTime: fd.get('startTime'),
+      endTime: fd.get('endTime'),
+    };
+    if(!data.name || !data.days.length || !data.startTime || !data.endTime) return;
+    if(editing) await updateCustomSchedule(scheduleId, data); else await addCustomSchedule(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderAjustes();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   IA — FASE 2c: ASISTENTE PERSONAL
+   ================================================================== */
+let iaProposals = [];      // propuestas activas de la última respuesta (día/semana/chat), transitorio
+let rubikIaProposal = null; // propuesta activa de entrenamiento Rubik, transitorio
+let iaChatHistory = [];    // historial de chat en memoria, no se guarda en window.storage
+
+function areaLabel(id){ return AREAS[id] ? AREAS[id].name : (id||''); }
+
+/* ---------- Llamada a la IA (Fase 6.5) ----------
+   El navegador NUNCA llama directamente a Anthropic ni conoce ninguna API key:
+   habla con nuestro propio endpoint serverless de Vercel (/api/ai), que es
+   quien reenvía la petición a Anthropic usando la clave secreta guardada
+   como variable de entorno del servidor. Aquí solo viaja el contexto real
+   de ORGANIZATOR (buildContext) y el prompt del sistema, nunca credenciales. */
+async function callAI(systemPrompt, userPrompt){
+  if(!state.ia.enabled){
+    // Segunda barrera de seguridad: aunque algo llegue a invocar callAI,
+    // nunca debe salir una petición de red si el usuario desactivó la IA en Ajustes.
+    throw new Error('La IA está desactivada en Ajustes');
+  }
+  let response;
+  try{
+    response = await fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: systemPrompt, prompt: userPrompt })
+    });
+  }catch(networkErr){
+    throw new Error('No se pudo contactar con el servidor de ORGANIZATOR');
+  }
+  let data = null;
+  try{ data = await response.json(); }catch(parseErr){ /* respuesta no-JSON, se maneja abajo */ }
+  if(!response.ok){
+    throw new Error((data && data.error) ? data.error : ('HTTP ' + response.status));
+  }
+  if(!data || !data.text) throw new Error('Respuesta vacía de la IA');
+  return data.text;
+}
+function parseAIJSON(text){
+  let clean = text.trim();
+  clean = clean.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
+  return JSON.parse(clean);
+}
+
+/* ---------- Contexto real de ORGANIZATOR (nunca se inventa nada) ---------- */
+function buildContext(scope){
+  const today = todayStr();
+  const pend = state.tasks.filter(t => !t.done);
+  const overdue = pend.filter(t => t.dueDate && t.dueDate < today);
+  const noDate = pend.filter(t => !t.dueDate);
+
+  let rangeEnd = today;
+  if(scope === 'week' || scope === 'chat'){
+    const d = parseYMD(today); d.setDate(d.getDate() + 6);
+    rangeEnd = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  }
+
+  const rangeTasks = pend.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= rangeEnd)
+    .sort((a,b) => (a.dueDate+(a.dueTime||'')).localeCompare(b.dueDate+(b.dueTime||'')));
+
+  const eventsInRange = state.events.filter(e => {
+    const end = e.endDate || e.date;
+    return end >= today && e.date <= rangeEnd;
+  }).sort((a,b) => a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''));
+
+  const lines = [];
+  lines.push(`FECHA ACTUAL: ${today} (${DOW_NAMES[new Date().getDay()]}), hora actual: ${nowTimeStr()}.`);
+  if(scope === 'week' || scope === 'chat') lines.push(`RANGO CONSIDERADO: ${today} a ${rangeEnd}.`);
+  lines.push('');
+  lines.push('TAREAS ATRASADAS (fecha límite ya pasada, sin completar):');
+  lines.push(overdue.length ? overdue.map(t => `- [${areaLabel(t.area)}] ${t.title} (vencía ${t.dueDate}${t.dueTime?' '+t.dueTime:''}, prioridad ${t.priority||'media'})`).join('\n') : '(ninguna)');
+  lines.push('');
+  lines.push(`TAREAS CON FECHA (${today} a ${rangeEnd}):`);
+  lines.push(rangeTasks.length ? rangeTasks.map(t => `- [${areaLabel(t.area)}] ${t.title} — vence ${t.dueDate}${t.scheduledDate ? `, YA PROGRAMADA el ${t.scheduledDate} de ${t.scheduledStart} a ${t.scheduledEnd}` : (t.dueTime?', HORA FIJA '+t.dueTime:', SIN HORA FIJA AÚN')}, prioridad ${t.priority||'media'}${t.notes?', notas: '+t.notes:''}`).join('\n') : '(ninguna)');
+  lines.push('');
+  lines.push('TAREAS SIN FECHA ASIGNADA (no se les puede suponer una fecha):');
+  lines.push(noDate.length ? noDate.map(t => `- [${areaLabel(t.area)}] ${t.title}${t.priority?' (prioridad '+t.priority+')':''}`).join('\n') : '(ninguna)');
+  lines.push('');
+  lines.push(`EVENTOS (${today} a ${rangeEnd}, con hora fija cuando existe):`);
+  lines.push(eventsInRange.length ? eventsInRange.map(e => `- [${areaLabel(e.area)}] ${e.title} — ${e.date}${e.endDate&&e.endDate!==e.date?' a '+e.endDate:''}${e.allDay?', TODO EL DÍA':(e.startTime?', HORA FIJA '+e.startTime+(e.endTime?'–'+e.endTime:''):', sin hora')}${e.location?', lugar: '+e.location:''}`).join('\n') : '(ninguno)');
+
+  lines.push('');
+  lines.push('HORARIO PERSONALIZADO DEL USUARIO (bloques fijos de su rutina, definidos por él mismo en Ajustes; se repiten cada semana los días indicados):');
+  if(!state.customSchedules.length){
+    lines.push('(el usuario todavía no ha definido ningún bloque de horario)');
+  } else if(scope === 'day'){
+    const dow = dowOfDate(today);
+    const todays = schedulesForDow(dow);
+    lines.push(todays.length
+      ? todays.map(s => `- ${s.name}: ${s.startTime}–${s.endTime}`).join('\n')
+      : '(el usuario no tiene bloques de horario para hoy)');
+  } else {
+    lines.push(state.customSchedules.map(s => `- ${s.name}: ${s.startTime}–${s.endTime} (se repite: ${s.days.map(d=>DOW_FULL_MONFIRST[d]).join(', ')})`).join('\n'));
+  }
+
+  const rstats = computeRubikStats(state.rubikSolves);
+  const todayTraining = getTrainingForDate(today);
+  lines.push('');
+  lines.push('RUBIK:');
+  if(rstats.count === 0){
+    lines.push('(sin solves registrados todavía)');
+  } else {
+    lines.push(`- Solves totales: ${rstats.count}. Mejor tiempo: ${fmtTime(rstats.best)}s. Media general: ${fmtTime(rstats.avg)}s.`);
+    lines.push(`- Ao5: ${rstats.ao5!=null?fmtTime(rstats.ao5)+'s':'—'}. Ao12: ${rstats.ao12!=null?fmtTime(rstats.ao12)+'s':'—'}. Ao50: ${rstats.ao50!=null?fmtTime(rstats.ao50)+'s':'—'}. Ao100: ${rstats.ao100!=null?fmtTime(rstats.ao100)+'s':'—'}.`);
+  }
+  lines.push(`- Objetivo actual definido por el usuario: ${state.rubikGoal || '(sin objetivo definido)'}`);
+  lines.push(`- Entrenamiento de hoy: ${todayTraining ? (rubikPreset(todayTraining.presetId)?.label || 'libre') + (todayTraining.status==='completed'?' (ya completado)':' (pendiente)') : '(no hay entrenamiento programado hoy)'}`);
+  if(scope === 'rubik'){
+    const recentTrainings = [...state.rubikTrainings].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,7);
+    lines.push('- Últimos entrenamientos: ' + (recentTrainings.length ? recentTrainings.map(t=>`${t.date} ${rubikPreset(t.presetId)?.label||'libre'}${t.status==='completed'?' (completado)':''}`).join('; ') : '(ninguno)'));
+    const recentSolves = solvesChronological(state.rubikSolves).slice(-15);
+    lines.push('- Últimos solves registrados (cronológico, en segundos): ' + (recentSolves.length ? recentSolves.map(s=>fmtTime(solveEffectiveMs(s))).join(', ') : '(ninguno)'));
+    lines.push('- Cubos: ' + (state.rubikCubes.length ? state.rubikCubes.map(c=>c.name+(c.isMain?' (principal)':'')).join(', ') : '(sin cubos añadidos)'));
+  }
+  return lines.join('\n');
+}
+
+const PLAN_ITEM_SCHEMA = `{
+  "sourceType": "existing" | "proposal",
+  "kind": "task" | "event" | "training" | "idea",
+  "time": string|null,
+  "title": string,
+  "area": "cole"|"cesi"|"casa"|"compras"|"vacaciones"|"rubik"|null,
+  "reason": string|null
+}`;
+
+const IA_RULES = `Eres el asistente de organización integrado en la app ORGANIZATOR. Recibes un contexto con información REAL del usuario: tareas, eventos, datos de Rubik y su horario personalizado (bloques fijos de rutina).
+
+Reglas estrictas, sin excepción:
+- No inventes tareas, eventos, horas ni estadísticas que no estén literalmente en el contexto.
+- Todo lo que venga del contexto (tareas y eventos existentes) debe marcarse "sourceType":"existing" y conservar su hora tal cual (o null si no tiene). Una tarea marcada "YA PROGRAMADA" ya tiene hueco asignado por el sistema: trátala como "existing" con esa hora, no la vuelvas a proponer ni le busques otra.
+- El HORARIO PERSONALIZADO del usuario (bloques como cole, dormir, estudiar, entrenar, etc.) representa tiempo ya ocupado en los días indicados: nunca propongas algo nuevo que se solape con esos bloques, y ten en cuenta esas franjas al elegir hora para una propuesta.
+- Si propones una hora para algo que no la tiene, o sugieres algo nuevo (estudiar, entrenar, descansar), márcalo "sourceType":"proposal" — nunca lo presentes como si ya existiera en la agenda.
+- Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, el objetivo de Rubik, una tarea atrasada, un hueco libre en su horario personalizado, etc.). Explica brevemente el motivo en "reason".
+- Si no hay información suficiente para un plan útil, dilo en "summary" y devuelve "planItems" vacío o muy reducido.
+- Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown ni bloques de código.`;
+
+function iaSetStatus(msg){ document.getElementById('ia-status').textContent = msg || ''; }
+function iaSetButtonsDisabled(disabled){
+  const d = document.getElementById('ia-day-btn'); if(d) d.disabled = disabled;
+  const w = document.getElementById('ia-week-btn'); if(w) w.disabled = disabled;
+}
+
+/* ---------- Render de un item de plan (existente o propuesta) ---------- */
+function renderIAItemHTML(it, dateForApply){
+  const areaOk = it.area && AREAS[it.area];
+  if(it.sourceType === 'existing'){
+    return `<div class="ia-tl-item">
+      <div class="ia-tl-time">${esc(it.time||'—')}</div>
+      <div class="ia-tl-bar" style="background:${areaOk?'var(--'+it.area+')':'rgba(255,255,255,0.25)'};"></div>
+      <div class="ia-tl-body">
+        <div class="ia-tl-title">${esc(it.title)}<span class="ia-tag">${areaOk?esc(AREAS[it.area].name):'en tu agenda'}</span></div>
+      </div>
+    </div>`;
+  }
+  const idx = iaProposals.length;
+  iaProposals.push({ ...it, applyDate: dateForApply });
+  return `<div class="ia-tl-item">
+    <div class="ia-tl-time">${esc(it.time||'—')}</div>
+    <div class="ia-tl-bar proposal"></div>
+    <div class="ia-tl-body">
+      <div class="ia-tl-title">${esc(it.title)}<span class="ia-tag proposal">propuesta IA</span></div>
+      ${it.reason ? `<div class="ia-tl-tag">${esc(it.reason)}</div>` : ''}
+      <div class="ia-tl-actions">
+        <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
+        <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+      </div>
+    </div>
+  </div>`;
+}
+function wireIAProposalButtons(container){
+  container.querySelectorAll('[data-ia-apply]').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      const it = iaProposals[Number(b.dataset.iaApply)];
+      if(!it || b.disabled) return;
+      b.disabled = true;
+      await applyIAProposal(it, it.applyDate || todayStr());
+      b.textContent = 'Añadido ✓';
+      showToast('Añadido al plan');
+    });
+  });
+  container.querySelectorAll('[data-ia-discard]').forEach(b=>{
+    b.addEventListener('click', ()=>{ b.closest('.ia-tl-item').remove(); });
+  });
+}
+async function applyIAProposal(it, date){
+  const area = (it.area && AREAS[it.area]) ? it.area : 'casa';
+  if(it.kind === 'training'){
+    await addRubikTraining({ date, presetId:'ai', goal: it.title, notes: it.reason||'', scheduledTime: it.time||'', solveCount:0, duration:0 });
+  } else if(it.time){
+    await addEvent({ area, title: it.title, date, endDate:'', allDay:false, startTime: it.time, endTime:'', location:'', notes: it.reason||'' });
+  } else {
+    await addTask({ area, title: it.title, dueDate: date, dueTime:'', priority:'media', notes: it.reason||'' });
+  }
+  if(currentView === 'inicio') renderInicio();
+}
+
+/* ---------- Organizar mi día ---------- */
+async function runIADay(){
+  iaSetButtonsDisabled(true);
+  iaSetStatus('Analizando tu día…');
+  document.getElementById('ia-response').innerHTML = '';
+  try{
+    const context = buildContext('day');
+    const system = IA_RULES + `\n\nGenera un plan SOLO para hoy. Esquema exacto:\n{\n  "summary": string,\n  "planItems": [${PLAN_ITEM_SCHEMA}]\n}\nOrdena planItems cronológicamente cuando tengan hora; los que no tengan hora van al final.`;
+    iaSetStatus('Generando planificación…');
+    const raw = await callAI(system, context);
+    const data = parseAIJSON(raw);
+    iaProposals = [];
+    const itemsHtml = (data.planItems||[]).map(it=>renderIAItemHTML(it, todayStr())).join('');
+    const el = document.getElementById('ia-response');
+    el.innerHTML = `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
+      (itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">No hay datos suficientes todavía para proponer un plan.</p>`);
+    wireIAProposalButtons(el);
+    iaSetStatus('');
+  }catch(err){
+    console.error(err);
+    document.getElementById('ia-response').innerHTML = `<p class="empty-hint">No se pudo generar la planificación (error de conexión con la IA). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`;
+    iaSetStatus('');
+  }finally{
+    iaSetButtonsDisabled(false);
+  }
+}
+
+/* ---------- Organizar mi semana ---------- */
+async function runIAWeek(){
+  iaSetButtonsDisabled(true);
+  iaSetStatus('Analizando tu semana…');
+  document.getElementById('ia-response').innerHTML = '';
+  try{
+    const context = buildContext('week');
+    const system = IA_RULES + `\n\nGenera un plan para los próximos 7 días (hoy incluido), agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": [].`;
+    iaSetStatus('Generando planificación semanal…');
+    const raw = await callAI(system, context);
+    const data = parseAIJSON(raw);
+    iaProposals = [];
+    const daysHtml = (data.days||[]).map(day=>{
+      const itemsHtml = (day.items||[]).map(it=>renderIAItemHTML(it, day.date || todayStr())).join('');
+      return `<div class="ia-week-day"><h4>${esc(day.label||day.date||'')}</h4>${itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">Sin novedades este día.</p>`}</div>`;
+    }).join('');
+    const el = document.getElementById('ia-response');
+    el.innerHTML = `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
+      (daysHtml || `<p class="empty-hint">No hay datos suficientes todavía para proponer una planificación semanal.</p>`);
+    wireIAProposalButtons(el);
+    iaSetStatus('');
+  }catch(err){
+    console.error(err);
+    document.getElementById('ia-response').innerHTML = `<p class="empty-hint">No se pudo generar la planificación semanal (error de conexión con la IA). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`;
+    iaSetStatus('');
+  }finally{
+    iaSetButtonsDisabled(false);
+  }
+}
+
+/* ---------- Chat con la IA ---------- */
+async function runIAChat(question){
+  const log = document.getElementById('ia-chat-log');
+  const msgEl = document.createElement('div');
+  msgEl.className = 'ia-chat-msg';
+  msgEl.innerHTML = `<div class="q">${esc(question)}</div><div class="a">Pensando…</div>`;
+  log.appendChild(msgEl);
+  try{
+    const context = buildContext('chat');
+    const system = IA_RULES + `\n\nResponde a la pregunta del usuario usando SOLO el contexto. Esquema exacto:\n{\n  "answer": string,\n  "proposals": [${PLAN_ITEM_SCHEMA}]\n}\n"answer" es una respuesta breve en texto plano (sin markdown). "proposals" es opcional: solo inclúyelo si tiene sentido ofrecer añadir algo concreto al plan (puede ser un array vacío).`;
+    const raw = await callAI(system, `PREGUNTA DEL USUARIO: ${question}\n\n${context}`);
+    const data = parseAIJSON(raw);
+    const proposalsHtml = (data.proposals||[]).map(it=>renderIAItemHTML(it, todayStr())).join('');
+    msgEl.querySelector('.a').innerHTML = esc(data.answer||'') + (proposalsHtml ? `<div class="ia-timeline" style="margin-top:8px;">${proposalsHtml}</div>` : '');
+    wireIAProposalButtons(msgEl);
+  }catch(err){
+    console.error(err);
+    msgEl.querySelector('.a').textContent = 'No se pudo contactar con la IA ahora mismo. Inténtalo de nuevo en un momento.';
+  }
+}
+
+/* ---------- Chat con la IA (Fase 7 — acciones aplicadas automáticamente) ----------
+   Sustituye a runIAChat() como manejador por defecto del formulario de chat:
+   en vez de solo responder texto y esperar que el usuario pulse "Añadir al
+   plan", usa AIActions.runIAAction() para crear/mover/cancelar directamente,
+   y para las tareas sin hora deja que Scheduler decida el hueco. runIAChat()
+   se deja intacta más arriba por si hace falta volver atrás. */
+async function runIAActionChat(question){
+  const log = document.getElementById('ia-chat-log');
+  const msgEl = document.createElement('div');
+  msgEl.className = 'ia-chat-msg';
+  msgEl.innerHTML = `<div class="q">${esc(question)}</div><div class="a">Pensando…</div>`;
+  log.appendChild(msgEl);
+  try{
+    const { answer, applied } = await AIActions.runIAAction(question);
+    const appliedHtml = applied.length
+      ? `<ul class="ia-applied-list">${applied.map(n => `<li>${esc(n)}</li>`).join('')}</ul>`
+      : '';
+    msgEl.querySelector('.a').innerHTML = esc(answer||'') + appliedHtml;
+  }catch(err){
+    console.error(err);
+    msgEl.querySelector('.a').textContent = 'No se pudo contactar con la IA ahora mismo. Inténtalo de nuevo en un momento.';
+  }
+}
+
+/* ---------- Rubik: recomendación de entrenamiento ---------- */
+async function runRubikIA(){
+  const btn = document.getElementById('rubik-ia-btn');
+  const target = document.getElementById('rubik-ia-response');
+  if(!target) return;
+  if(btn) btn.disabled = true;
+  target.innerHTML = `<div class="empty-state small">Analizando tus datos de Rubik…</div>`;
+  try{
+    const context = buildContext('rubik');
+    const system = `Eres el asistente de ORGANIZATOR especializado en Rubik. Usa SOLO los datos reales del contexto (solves, medias, Ao5/Ao12/Ao50/Ao100, objetivo, entrenamientos e historial). No inventes estadísticas ni resultados. Genera una recomendación de entrenamiento. Responde ÚNICAMENTE con JSON, sin texto adicional ni markdown, con este esquema exacto:\n{\n  "objetivo": string,\n  "propuesta": [string, ...],\n  "motivo": string\n}\nSi no hay suficientes solves registrados para una recomendación fundamentada, dilo en "motivo" y propón algo genérico de calentamiento en "propuesta".`;
+    const raw = await callAI(system, context);
+    const data = parseAIJSON(raw);
+    rubikIaProposal = data;
+    target.innerHTML = `<div class="rubik-ia-card">
+      <h4>🧊 Entrenamiento recomendado</h4>
+      <div><strong>Objetivo:</strong> ${esc(data.objetivo||'')}</div>
+      <ul>${(data.propuesta||[]).map(p=>`<li>${esc(p)}</li>`).join('')}</ul>
+      <div class="rc-motivo">${esc(data.motivo||'')}</div>
+      <div class="ia-tl-actions">
+        <button class="ia-mini-btn" id="rubik-ia-apply">Aplicar como entrenamiento de hoy</button>
+        <button class="ia-mini-ghost" id="rubik-ia-discard">Descartar</button>
+      </div>
+    </div>`;
+    document.getElementById('rubik-ia-apply').addEventListener('click', async ()=>{
+      await addRubikTraining({ date: todayStr(), presetId:'ai', goal: rubikIaProposal.objetivo||'', notes: (rubikIaProposal.propuesta||[]).join(' · '), scheduledTime:'', solveCount:0, duration:0 });
+      showToast('Entrenamiento añadido');
+      renderCurrentView();
+    });
+    document.getElementById('rubik-ia-discard').addEventListener('click', ()=>{ target.innerHTML=''; rubikIaProposal=null; });
+  }catch(err){
+    console.error(err);
+    target.innerHTML = `<div class="empty-state small">No se pudo generar la recomendación (error de conexión con la IA).</div>`;
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+/* ---------- Wiring inicial del bloque IA (bloque estático, se conecta una vez) ---------- */
+function initIA(){
+  const dayBtn = document.getElementById('ia-day-btn');
+  const weekBtn = document.getElementById('ia-week-btn');
+  const chatForm = document.getElementById('ia-chat-form');
+  if(dayBtn) dayBtn.addEventListener('click', runIADay);
+  if(weekBtn) weekBtn.addEventListener('click', runIAWeek);
+  if(chatForm) chatForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const input = document.getElementById('ia-chat-input');
+    const q = input.value.trim();
+    if(!q) return;
+    input.value = '';
+    runIAActionChat(q);
+  });
+}
+
+/* ==================================================================
+   PWA — registro del Service Worker y control de actualizaciones
+   (Fase 6). No toca window.storage ni ningún dato del usuario: solo
+   gestiona la caché del "shell" estático de la app.
+   ================================================================== */
+function initPWA(){
+  if(!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.register('/sw.js').then(reg=>{
+    // Si ya hay un SW esperando (por ejemplo, se abrió una pestaña nueva
+    // después de que otra ya descargara la actualización), avisamos ya.
+    if(reg.waiting && navigator.serviceWorker.controller){
+      showUpdateBanner(reg);
+    }
+    reg.addEventListener('updatefound', ()=>{
+      const installing = reg.installing;
+      if(!installing) return;
+      installing.addEventListener('statechange', ()=>{
+        // 'installed' + ya había un controller = es una actualización real,
+        // no la primera instalación de la PWA.
+        if(installing.state === 'installed' && navigator.serviceWorker.controller){
+          showUpdateBanner(reg);
+        }
+      });
+    });
+  }).catch(err=> console.warn('No se pudo registrar el Service Worker', err));
+
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(reloading) return;
+    reloading = true;
+    location.reload();
+  });
+}
+function showUpdateBanner(reg){
+  const banner = document.getElementById('update-banner');
+  const btn = document.getElementById('update-banner-btn');
+  if(!banner || !btn) return;
+  banner.classList.add('show');
+  btn.onclick = ()=>{
+    if(reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+    banner.classList.remove('show');
+  };
+}
+
+/* ==================================================================
+   INICIALIZACIÓN
+   ================================================================== */
+(async function init(){
+  document.getElementById('plan-hoy').innerHTML = `<div class="empty-state small">Cargando…</div>`;
+  const d = new Date();
+  cal.year = d.getFullYear(); cal.month = d.getMonth(); cal.selected = todayStr();
+  await loadState();
+  initIA();
+  initSettingsDataIO();
+  initPWA();
+  showView(state.prefs.defaultHome || 'inicio');
+})();
+</script>
+
+</body>
+</html>
