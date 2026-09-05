@@ -1,0 +1,386 @@
+From 6baf7b5fe6f30d7f93678f1e13e6b3f0168ec907 Mon Sep 17 00:00:00 2001
+From: claude <a@a.com>
+Date: Sat, 5 Sep 2026 20:44:13 +0000
+Subject: [PATCH] feat(auth): backend de registro/login con Neon Postgres + JWT
+
+---
+ api/auth/login.js    | 67 +++++++++++++++++++++++++++++++++++++++++
+ api/auth/logout.js   | 18 +++++++++++
+ api/auth/me.js       | 56 ++++++++++++++++++++++++++++++++++
+ api/auth/register.js | 72 ++++++++++++++++++++++++++++++++++++++++++++
+ lib/db.js            | 25 +++++++++++++++
+ lib/session.js       | 51 +++++++++++++++++++++++++++++++
+ package.json         | 11 +++++++
+ sql/001_users.sql    | 11 +++++++
+ 8 files changed, 311 insertions(+)
+ create mode 100644 api/auth/login.js
+ create mode 100644 api/auth/logout.js
+ create mode 100644 api/auth/me.js
+ create mode 100644 api/auth/register.js
+ create mode 100644 lib/db.js
+ create mode 100644 lib/session.js
+ create mode 100644 package.json
+ create mode 100644 sql/001_users.sql
+
+diff --git a/api/auth/login.js b/api/auth/login.js
+new file mode 100644
+index 0000000..cbc4404
+--- /dev/null
++++ b/api/auth/login.js
+@@ -0,0 +1,67 @@
++/**
++ * ORGANIZATOR — Inicio de sesión
++ *
++ * POST /api/auth/login   body: { email, password }
++ *   → 200 { user: { id, email, name } }  (+ cookie de sesión)
++ *   → 400/401/500 { error: string }
++ */
++
++const bcrypt = require('bcryptjs');
++const { getSql } = require('../../lib/db');
++const { buildSessionCookie, signSession } = require('../../lib/session');
++
++module.exports = async function handler(req, res) {
++  if (req.method !== 'POST') {
++    res.setHeader('Allow', 'POST');
++    return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
++  }
++
++  const jwtSecret = process.env.JWT_SECRET;
++  if (!jwtSecret) {
++    console.error('[api/auth/login] Falta la variable de entorno JWT_SECRET en Vercel');
++    return res.status(500).json({ error: 'El servidor no está configurado todavía.' });
++  }
++
++  let body = req.body;
++  if (typeof body === 'string') {
++    try { body = JSON.parse(body); } catch (e) { body = null; }
++  }
++
++  const email = body && typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
++  const password = body && body.password;
++
++  if (!email || typeof password !== 'string') {
++    return res.status(400).json({ error: 'Introduce tu email y contraseña.' });
++  }
++
++  let sql;
++  try {
++    sql = getSql();
++  } catch (err) {
++    console.error('[api/auth/login] Error de configuración de la base de datos:', err);
++    return res.status(500).json({ error: 'La base de datos no está configurada todavía.' });
++  }
++
++  try {
++    const rows = await sql`SELECT id, email, name, password_hash FROM users WHERE email = ${email}`;
++    const user = rows[0];
++
++    // Mismo mensaje tanto si el email no existe como si la contraseña falla,
++    // para no revelar qué emails están registrados.
++    if (!user) {
++      return res.status(401).json({ error: 'Email o contraseña incorrectos.' });
++    }
++
++    const ok = await bcrypt.compare(password, user.password_hash);
++    if (!ok) {
++      return res.status(401).json({ error: 'Email o contraseña incorrectos.' });
++    }
++
++    const token = signSession({ sub: user.id, email: user.email }, jwtSecret);
++    res.setHeader('Set-Cookie', buildSessionCookie(token));
++    return res.status(200).json({ user: { id: user.id, email: user.email, name: user.name } });
++  } catch (err) {
++    console.error('[api/auth/login] Error al iniciar sesión:', err);
++    return res.status(500).json({ error: 'No se pudo iniciar sesión. Inténtalo de nuevo.' });
++  }
++};
+diff --git a/api/auth/logout.js b/api/auth/logout.js
+new file mode 100644
+index 0000000..49bf37e
+--- /dev/null
++++ b/api/auth/logout.js
+@@ -0,0 +1,18 @@
++/**
++ * ORGANIZATOR — Cerrar sesión
++ *
++ * POST /api/auth/logout
++ *   → 200 { ok: true }   (borra la cookie de sesión)
++ */
++
++const { clearSessionCookie } = require('../../lib/session');
++
++module.exports = async function handler(req, res) {
++  if (req.method !== 'POST') {
++    res.setHeader('Allow', 'POST');
++    return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
++  }
++
++  res.setHeader('Set-Cookie', clearSessionCookie());
++  return res.status(200).json({ ok: true });
++};
+diff --git a/api/auth/me.js b/api/auth/me.js
+new file mode 100644
+index 0000000..a8a178f
+--- /dev/null
++++ b/api/auth/me.js
+@@ -0,0 +1,56 @@
++/**
++ * ORGANIZATOR — Comprobar sesión actual
++ *
++ * GET /api/auth/me
++ *   → 200 { user: { id, email, name } }
++ *   → 401 { error: string }   (sin sesión, token caducado, o cuenta borrada)
++ */
++
++const { getSql } = require('../../lib/db');
++const { SESSION_COOKIE, parseCookies, verifySession } = require('../../lib/session');
++
++module.exports = async function handler(req, res) {
++  if (req.method !== 'GET') {
++    res.setHeader('Allow', 'GET');
++    return res.status(405).json({ error: 'Método no permitido. Usa GET.' });
++  }
++
++  const jwtSecret = process.env.JWT_SECRET;
++  if (!jwtSecret) {
++    console.error('[api/auth/me] Falta la variable de entorno JWT_SECRET en Vercel');
++    return res.status(500).json({ error: 'El servidor no está configurado todavía.' });
++  }
++
++  const cookies = parseCookies(req.headers.cookie);
++  const token = cookies[SESSION_COOKIE];
++  if (!token) {
++    return res.status(401).json({ error: 'No has iniciado sesión.' });
++  }
++
++  let payload;
++  try {
++    payload = verifySession(token, jwtSecret);
++  } catch (err) {
++    return res.status(401).json({ error: 'Tu sesión ha caducado. Inicia sesión de nuevo.' });
++  }
++
++  let sql;
++  try {
++    sql = getSql();
++  } catch (err) {
++    console.error('[api/auth/me] Error de configuración de la base de datos:', err);
++    return res.status(500).json({ error: 'La base de datos no está configurada todavía.' });
++  }
++
++  try {
++    const rows = await sql`SELECT id, email, name FROM users WHERE id = ${payload.sub}`;
++    const user = rows[0];
++    if (!user) {
++      return res.status(401).json({ error: 'La cuenta ya no existe.' });
++    }
++    return res.status(200).json({ user });
++  } catch (err) {
++    console.error('[api/auth/me] Error al comprobar la sesión:', err);
++    return res.status(500).json({ error: 'No se pudo comprobar la sesión.' });
++  }
++};
+diff --git a/api/auth/register.js b/api/auth/register.js
+new file mode 100644
+index 0000000..fff68df
+--- /dev/null
++++ b/api/auth/register.js
+@@ -0,0 +1,72 @@
++/**
++ * ORGANIZATOR — Registro de usuario
++ *
++ * POST /api/auth/register   body: { email, password, name? }
++ *   → 201 { user: { id, email, name } }  (+ cookie de sesión)
++ *   → 400/409/500 { error: string }
++ */
++
++const bcrypt = require('bcryptjs');
++const { getSql } = require('../../lib/db');
++const { buildSessionCookie, signSession } = require('../../lib/session');
++
++const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
++
++module.exports = async function handler(req, res) {
++  if (req.method !== 'POST') {
++    res.setHeader('Allow', 'POST');
++    return res.status(405).json({ error: 'Método no permitido. Usa POST.' });
++  }
++
++  const jwtSecret = process.env.JWT_SECRET;
++  if (!jwtSecret) {
++    console.error('[api/auth/register] Falta la variable de entorno JWT_SECRET en Vercel');
++    return res.status(500).json({ error: 'El servidor no está configurado todavía.' });
++  }
++
++  let body = req.body;
++  if (typeof body === 'string') {
++    try { body = JSON.parse(body); } catch (e) { body = null; }
++  }
++
++  const email = body && typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
++  const password = body && body.password;
++  const name = body && typeof body.name === 'string' ? body.name.trim() : '';
++
++  if (!EMAIL_RE.test(email)) {
++    return res.status(400).json({ error: 'Introduce un email válido.' });
++  }
++  if (typeof password !== 'string' || password.length < 6) {
++    return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
++  }
++
++  let sql;
++  try {
++    sql = getSql();
++  } catch (err) {
++    console.error('[api/auth/register] Error de configuración de la base de datos:', err);
++    return res.status(500).json({ error: 'La base de datos no está configurada todavía.' });
++  }
++
++  try {
++    const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
++    if (existing.length > 0) {
++      return res.status(409).json({ error: 'Ya existe una cuenta con ese email.' });
++    }
++
++    const passwordHash = await bcrypt.hash(password, 10);
++    const rows = await sql`
++      INSERT INTO users (email, password_hash, name)
++      VALUES (${email}, ${passwordHash}, ${name || null})
++      RETURNING id, email, name
++    `;
++    const user = rows[0];
++
++    const token = signSession({ sub: user.id, email: user.email }, jwtSecret);
++    res.setHeader('Set-Cookie', buildSessionCookie(token));
++    return res.status(201).json({ user: { id: user.id, email: user.email, name: user.name } });
++  } catch (err) {
++    console.error('[api/auth/register] Error al crear el usuario:', err);
++    return res.status(500).json({ error: 'No se pudo crear la cuenta. Inténtalo de nuevo.' });
++  }
++};
+diff --git a/lib/db.js b/lib/db.js
+new file mode 100644
+index 0000000..d8001db
+--- /dev/null
++++ b/lib/db.js
+@@ -0,0 +1,25 @@
++/**
++ * ORGANIZATOR — Cliente de base de datos (Neon Postgres)
++ *
++ * Envuelve la conexión a Neon en una única función `getSql()` que
++ * reutiliza la misma instancia entre invocaciones de una misma función
++ * serverless. Lee `DATABASE_URL` de las variables de entorno de Vercel
++ * (nunca hay credenciales en el código).
++ */
++
++const { neon } = require('@neondatabase/serverless');
++
++let sql = null;
++
++function getSql() {
++  if (!sql) {
++    const url = process.env.DATABASE_URL;
++    if (!url) {
++      throw new Error('Falta la variable de entorno DATABASE_URL en Vercel');
++    }
++    sql = neon(url);
++  }
++  return sql;
++}
++
++module.exports = { getSql };
+diff --git a/lib/session.js b/lib/session.js
+new file mode 100644
+index 0000000..f44ef2e
+--- /dev/null
++++ b/lib/session.js
+@@ -0,0 +1,51 @@
++/**
++ * ORGANIZATOR — Sesión de usuario
++ *
++ * La sesión se guarda en una cookie httpOnly con un JWT firmado
++ * (variable de entorno JWT_SECRET, solo en el servidor). El navegador
++ * nunca ve ni manipula el contenido del token.
++ */
++
++const jwt = require('jsonwebtoken');
++
++const SESSION_COOKIE = 'organizator_session';
++const SESSION_DAYS = 30;
++
++function buildSessionCookie(token) {
++  const maxAge = SESSION_DAYS * 24 * 60 * 60;
++  return `${SESSION_COOKIE}=${token}; Max-Age=${maxAge}; Path=/; HttpOnly; Secure; SameSite=Lax`;
++}
++
++function clearSessionCookie() {
++  return `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`;
++}
++
++function parseCookies(header) {
++  const out = {};
++  if (!header) return out;
++  header.split(';').forEach((pair) => {
++    const idx = pair.indexOf('=');
++    if (idx === -1) return;
++    const key = pair.slice(0, idx).trim();
++    const value = pair.slice(idx + 1).trim();
++    if (key) out[key] = decodeURIComponent(value);
++  });
++  return out;
++}
++
++function signSession(payload, secret) {
++  return jwt.sign(payload, secret, { expiresIn: `${SESSION_DAYS}d` });
++}
++
++function verifySession(token, secret) {
++  return jwt.verify(token, secret);
++}
++
++module.exports = {
++  SESSION_COOKIE,
++  buildSessionCookie,
++  clearSessionCookie,
++  parseCookies,
++  signSession,
++  verifySession,
++};
+diff --git a/package.json b/package.json
+new file mode 100644
+index 0000000..cc8a21a
+--- /dev/null
++++ b/package.json
+@@ -0,0 +1,11 @@
++{
++  "name": "organizator",
++  "version": "1.0.0",
++  "private": true,
++  "description": "ORGANIZATOR — funciones serverless (auth + IA) para Vercel",
++  "dependencies": {
++    "@neondatabase/serverless": "^0.10.4",
++    "bcryptjs": "^2.4.3",
++    "jsonwebtoken": "^9.0.2"
++  }
++}
+diff --git a/sql/001_users.sql b/sql/001_users.sql
+new file mode 100644
+index 0000000..c5c01c8
+--- /dev/null
++++ b/sql/001_users.sql
+@@ -0,0 +1,11 @@
++-- ORGANIZATOR — Tabla de usuarios
++-- Ejecutar una sola vez en el SQL editor de Neon (https://console.neon.tech)
++-- antes de usar /api/auth/register.
++
++CREATE TABLE IF NOT EXISTS users (
++  id SERIAL PRIMARY KEY,
++  email TEXT UNIQUE NOT NULL,
++  password_hash TEXT NOT NULL,
++  name TEXT,
++  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
++);
+-- 
+2.43.0
+
