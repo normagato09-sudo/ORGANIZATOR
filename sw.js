@@ -13,7 +13,7 @@
  * que alguien se quede atascado con una versión vieja.
  */
 
-const CACHE_VERSION = 'v1.6.0';
+const CACHE_VERSION = 'v1.6.1';
 const CACHE_NAME = `organizator-shell-${CACHE_VERSION}`;
 
 // Recursos propios de la app que se pueden precachear con seguridad.
