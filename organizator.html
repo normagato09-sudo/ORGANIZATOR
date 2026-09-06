@@ -297,6 +297,34 @@
   .day-panel-head h2{font-size:14.5px;font-weight:600;margin:0;}
   .day-panel-actions{display:flex;gap:8px;}
 
+  /* ---------- Pantalla de acceso (login / registro) ---------- */
+  .auth-screen{
+    position:fixed;inset:0;background:var(--paper);
+    display:flex;align-items:center;justify-content:center;
+    padding:20px;z-index:1000;
+  }
+  .auth-screen.hidden{display:none;}
+  .auth-box{
+    background:var(--surface);border:1px solid var(--line);border-radius:18px;
+    padding:32px 30px 26px;width:100%;max-width:380px;
+  }
+  .auth-logo{
+    width:44px;height:44px;border-radius:12px;background:var(--ink);color:var(--paper);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Space Grotesk';font-weight:700;font-size:19px;margin-bottom:18px;
+  }
+  .auth-box h1{font-size:20px;font-weight:600;margin:0 0 4px;}
+  .auth-sub{font-size:13px;color:var(--ink-soft);margin:0 0 22px;}
+  .auth-error{
+    font-size:12.5px;color:var(--alta);background:#FBEAE8;border:1px solid var(--alta);
+    border-radius:9px;padding:9px 11px;margin-bottom:14px;display:none;
+  }
+  .auth-error.show{display:block;}
+  .auth-box form.hidden{display:none;}
+  .auth-submit{width:100%;margin-top:6px;}
+  .auth-switch{font-size:12.5px;color:var(--ink-soft);margin-top:16px;text-align:center;}
+  .auth-switch button{background:none;border:none;color:var(--ink);font-weight:600;cursor:pointer;padding:0;font-size:inherit;text-decoration:underline;}
+
   /* ---------- Modal ---------- */
   .modal-overlay{
     position:fixed;inset:0;background:rgba(27,31,35,0.4);
@@ -387,7 +415,51 @@
 </head>
 <body>
 
-<div class="app" id="app">
+<!-- ===================== PANTALLA DE ACCESO (login / registro) ===================== -->
+<div class="auth-screen" id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-logo">O</div>
+    <h1>ORGANIZATOR</h1>
+    <p class="auth-sub" id="auth-subtitle">Inicia sesión para ver tus tareas y tu calendario</p>
+
+    <div class="auth-error" id="auth-error"></div>
+
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-email">Email</label>
+        <input type="email" id="login-email" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="login-password">Contraseña</label>
+        <input type="password" id="login-password" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-dark auth-submit" id="login-submit">Iniciar sesión</button>
+    </form>
+
+    <form id="register-form" class="hidden">
+      <div class="form-group">
+        <label for="register-name">Nombre (opcional)</label>
+        <input type="text" id="register-name" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="register-email">Email</label>
+        <input type="email" id="register-email" required autocomplete="email">
+      </div>
+      <div class="form-group">
+        <label for="register-password">Contraseña (mínimo 6 caracteres)</label>
+        <input type="password" id="register-password" required minlength="6" autocomplete="new-password">
+      </div>
+      <button type="submit" class="btn btn-dark auth-submit" id="register-submit">Crear cuenta</button>
+    </form>
+
+    <div class="auth-switch">
+      <span id="auth-switch-text">¿No tienes cuenta?</span>
+      <button type="button" id="auth-switch-btn">Regístrate</button>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" style="display:none;">
 
   <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menú">☰</button>
   <div class="menu-backdrop" id="menu-backdrop"></div>
@@ -1224,6 +1296,19 @@ function renderAjustes(){
     </div>
 
     <section class="block">
+      <div class="block-head"><h2>Cuenta</h2></div>
+      <div class="settings-list">
+        <div class="settings-row">
+          <div class="left stack">
+            <div>${esc(currentUser && currentUser.email ? currentUser.email : 'Sesión no identificada')}</div>
+            ${currentUser && currentUser.name ? `<div class="row-sub">${esc(currentUser.name)}</div>` : ''}
+          </div>
+          <button class="btn btn-danger" id="btn-logout">Cerrar sesión</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="block">
       <div class="block-head"><h2>Horarios bloqueados</h2><span class="hint">Define los bloques fijos de tu rutina (escuela, trabajo, gimnasio…) para que la IA nunca te ponga nada encima</span></div>
       <div class="settings-list" id="schedules-list">${renderScheduleRows()}</div>
     </section>
@@ -1324,6 +1409,7 @@ function renderAjustes(){
     row.addEventListener('click', ()=> openScheduleModal({ scheduleId: row.dataset.scheduleId }));
   });
 
+  el.querySelector('#btn-logout').addEventListener('click', logout);
   el.querySelector('#btn-export-data').addEventListener('click', exportData);
   el.querySelector('#btn-import-data').addEventListener('click', ()=> document.getElementById('import-file-input').click());
   el.querySelector('#btn-delete-data').addEventListener('click', deleteAllData);
@@ -1759,9 +1845,129 @@ function showUpdateBanner(reg){
 }
 
 /* ==================================================================
+   AUTENTICACIÓN (registro / inicio de sesión)
+   Los datos (tareas, eventos…) se siguen guardando con window.storage
+   como siempre — esta pantalla solo controla quién puede abrir la app.
+   ================================================================== */
+let currentUser = null;
+
+async function fetchMe(){
+  try{
+    const res = await fetch('/api/auth/me', { credentials:'same-origin' });
+    if(!res.ok) return null;
+    const data = await res.json();
+    return data.user || null;
+  }catch(e){ return null; }
+}
+
+function showAuthScreen(){
+  document.getElementById('auth-screen').classList.remove('hidden');
+  document.getElementById('app').style.display = 'none';
+}
+function hideAuthScreen(){
+  document.getElementById('auth-screen').classList.add('hidden');
+  document.getElementById('app').style.display = '';
+}
+function setAuthError(msg){
+  const box = document.getElementById('auth-error');
+  if(!msg){ box.classList.remove('show'); box.textContent = ''; return; }
+  box.textContent = msg;
+  box.classList.add('show');
+}
+function setAuthMode(mode){
+  const loginForm = document.getElementById('login-form');
+  const registerForm = document.getElementById('register-form');
+  const switchText = document.getElementById('auth-switch-text');
+  const switchBtn = document.getElementById('auth-switch-btn');
+  setAuthError(null);
+  if(mode === 'register'){
+    loginForm.classList.add('hidden');
+    registerForm.classList.remove('hidden');
+    switchText.textContent = '¿Ya tienes cuenta?';
+    switchBtn.textContent = 'Inicia sesión';
+    switchBtn.dataset.mode = 'login';
+  } else {
+    registerForm.classList.add('hidden');
+    loginForm.classList.remove('hidden');
+    switchText.textContent = '¿No tienes cuenta?';
+    switchBtn.textContent = 'Regístrate';
+    switchBtn.dataset.mode = 'register';
+  }
+}
+
+function initAuthScreen(){
+  const loginForm = document.getElementById('login-form');
+  const registerForm = document.getElementById('register-form');
+  const switchBtn = document.getElementById('auth-switch-btn');
+
+  switchBtn.addEventListener('click', ()=> setAuthMode(switchBtn.dataset.mode || 'register'));
+
+  loginForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    setAuthError(null);
+    const email = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const btn = document.getElementById('login-submit');
+    btn.disabled = true; btn.textContent = 'Entrando…';
+    try{
+      const res = await fetch('/api/auth/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if(!res.ok){ setAuthError(data.error || 'No se pudo iniciar sesión.'); return; }
+      currentUser = data.user;
+      hideAuthScreen();
+      await startApp();
+    }catch(err){
+      console.error(err);
+      setAuthError('No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.');
+    }finally{
+      btn.disabled = false; btn.textContent = 'Iniciar sesión';
+    }
+  });
+
+  registerForm.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    setAuthError(null);
+    const name = document.getElementById('register-name').value.trim();
+    const email = document.getElementById('register-email').value.trim();
+    const password = document.getElementById('register-password').value;
+    const btn = document.getElementById('register-submit');
+    btn.disabled = true; btn.textContent = 'Creando cuenta…';
+    try{
+      const res = await fetch('/api/auth/register', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify({ name, email, password }),
+      });
+      const data = await res.json();
+      if(!res.ok){ setAuthError(data.error || 'No se pudo crear la cuenta.'); return; }
+      currentUser = data.user;
+      hideAuthScreen();
+      await startApp();
+    }catch(err){
+      console.error(err);
+      setAuthError('No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.');
+    }finally{
+      btn.disabled = false; btn.textContent = 'Crear cuenta';
+    }
+  });
+}
+
+async function logout(){
+  try{ await fetch('/api/auth/logout', { method:'POST', credentials:'same-origin' }); }
+  catch(e){ /* si falla igualmente recargamos, para forzar a comprobar la sesión de nuevo */ }
+  location.reload();
+}
+
+/* ==================================================================
    INICIALIZACIÓN
    ================================================================== */
-(async function init(){
+async function startApp(){
   document.getElementById('today-timeline').innerHTML = `<div class="empty-state small">Cargando…</div>`;
   const d = new Date();
   cal.year = d.getFullYear(); cal.month = d.getMonth(); cal.selected = todayStr();
@@ -1770,6 +1976,17 @@ function showUpdateBanner(reg){
   initSettingsDataIO();
   initPWA();
   showView(state.prefs.defaultHome || 'inicio');
+}
+
+(async function init(){
+  initAuthScreen();
+  currentUser = await fetchMe();
+  if(currentUser){
+    hideAuthScreen();
+    await startApp();
+  } else {
+    showAuthScreen();
+  }
 })();
 </script>
 
