@@ -269,9 +269,19 @@
       .map(t => t.id);
   }
 
+  /**
+   * Igual que getFreeSlots(), pero devuelve los huecos ya formateados en
+   * "HH:MM–HH:MM" (para mostrárselos en texto a la IA en buildContext,
+   * en vez de dejar que la IA calcule o adivine la disponibilidad).
+   */
+  function getFreeSlotsFormatted(dateStr, context, opts) {
+    return getFreeSlots(dateStr, context, opts).map(([s, e]) => `${minToTime(s)}–${minToTime(e)}`);
+  }
+
   global.Scheduler = {
     DEFAULTS,
     getFreeSlots,
+    getFreeSlotsFormatted,
     scheduleTask,
     autoSchedule,
     rescheduleTask,

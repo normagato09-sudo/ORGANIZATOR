@@ -1,0 +1,247 @@
+From b8d080e7b62cf17ce1cdbb753cc07c59b855789e Mon Sep 17 00:00:00 2001
+From: claude <a@a.com>
+Date: Sun, 6 Sep 2026 14:17:45 +0000
+Subject: [PATCH] feat(ia): planificacion real basada en huecos libres + agenda
+ 00-23h para Organizar mi dia
+
+---
+ js/scheduler.js  |  10 ++++
+ organizator.html | 145 +++++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 149 insertions(+), 6 deletions(-)
+
+diff --git a/js/scheduler.js b/js/scheduler.js
+index 99085e7..522ff49 100644
+--- a/js/scheduler.js
++++ b/js/scheduler.js
+@@ -269,9 +269,19 @@
+       .map(t => t.id);
+   }
+ 
++  /**
++   * Igual que getFreeSlots(), pero devuelve los huecos ya formateados en
++   * "HH:MM–HH:MM" (para mostrárselos en texto a la IA en buildContext,
++   * en vez de dejar que la IA calcule o adivine la disponibilidad).
++   */
++  function getFreeSlotsFormatted(dateStr, context, opts) {
++    return getFreeSlots(dateStr, context, opts).map(([s, e]) => `${minToTime(s)}–${minToTime(e)}`);
++  }
++
+   global.Scheduler = {
+     DEFAULTS,
+     getFreeSlots,
++    getFreeSlotsFormatted,
+     scheduleTask,
+     autoSchedule,
+     rescheduleTask,
+diff --git a/organizator.html b/organizator.html
+index c3db958..22334b6 100644
+--- a/organizator.html
++++ b/organizator.html
+@@ -171,6 +171,36 @@
+   .ia-mini-ghost:hover{color:var(--paper);}
+   .ia-week-day{margin-bottom:14px;}
+   .ia-week-day h4{font-size:12.5px;font-weight:600;margin:0 0 6px;color:#D7D9DC;}
++
++  /* ---------- Agenda visual 00:00–23:00 (solo "Organizar mi día") ---------- */
++  .ia-hourgrid{
++    display:flex;gap:0;margin:14px 0 6px;
++    max-height:420px;overflow-y:auto;-webkit-overflow-scrolling:touch;
++    border:1px solid rgba(255,255,255,0.12);border-radius:10px;
++    background:rgba(255,255,255,0.03);
++  }
++  .ia-hg-hours{flex:none;width:46px;display:flex;flex-direction:column;}
++  .ia-hg-hour{
++    height:44px;flex:none;box-sizing:border-box;
++    font-size:10.5px;color:#9BA0A6;padding:2px 6px 0 0;text-align:right;
++    border-top:1px solid rgba(255,255,255,0.08);
++  }
++  .ia-hg-hour:first-child{border-top:none;}
++  .ia-hg-lane{
++    position:relative;flex:1;
++    background-image:repeating-linear-gradient(to bottom, rgba(255,255,255,0.08) 0, rgba(255,255,255,0.08) 1px, transparent 1px, transparent 44px);
++    border-left:1px solid rgba(255,255,255,0.12);
++  }
++  .ia-hg-block{
++    position:absolute;left:4px;right:4px;
++    border-radius:6px;padding:3px 8px;overflow:hidden;
++    font-size:11px;line-height:1.3;color:var(--ink);
++    border-left:3px solid;
++  }
++  .ia-hg-block.proposal{background:rgba(255,255,255,0.06);border:1px dashed;color:var(--paper);}
++  .ia-hg-title{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
++  .ia-hg-time{display:block;font-size:9.5px;opacity:.75;}
++  .ia-hg-note{font-size:11px;color:#9BA0A6;margin:4px 0 0;}
+   .ia-chat-form{margin-top:16px;display:flex;gap:8px;}
+   .ia-chat-form input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);border-radius:9px;padding:9px 12px;color:var(--paper);font-size:13px;}
+   .ia-chat-form input::placeholder{color:#9BA0A6;}
+@@ -440,6 +470,11 @@
+       flex-wrap:wrap;
+       row-gap:8px;
+     }
++
++    /* Agenda 00:00–23:00: un poco más compacta en pantallas estrechas */
++    .ia-hourgrid{max-height:360px;}
++    .ia-hg-hours{width:38px;}
++    .ia-hg-hour{font-size:9.5px;padding-right:4px;}
+   }
+ </style>
+ </head>
+@@ -1637,6 +1672,19 @@ function buildContext(scope){
+     lines.push(state.customSchedules.map(s => `- ${s.name}: ${s.startTime}–${s.endTime} (se repite: ${s.days.map(d=>DOW_FULL_MONFIRST[d]).join(', ')})`).join('\n'));
+   }
+ 
++  lines.push('');
++  lines.push('HUECOS LIBRES REALES POR DÍA (calculados por el sistema restando horario bloqueado + eventos + tareas ya colocadas — usa ESTOS datos para decidir en qué día tiene sentido cada propuesta; NO calcules tú la disponibilidad ni inventes huecos):');
++  const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
++  const daysForSlots = (scope === 'day') ? [today] : (() => {
++    const out = []; const base = parseYMD(today);
++    for(let i=0;i<7;i++){ const d = new Date(base); d.setDate(d.getDate()+i); out.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`); }
++    return out;
++  })();
++  lines.push(daysForSlots.map(d => {
++    const slots = window.Scheduler ? window.Scheduler.getFreeSlotsFormatted(d, schedCtx) : [];
++    return `- ${d} (${DOW_FULL_MONFIRST[dowOfDate(d)]}): ${slots.length ? slots.join(', ') : '(sin huecos libres ese día)'}`;
++  }).join('\n'));
++
+   return lines.join('\n');
+ }
+ 
+@@ -1644,19 +1692,23 @@ const PLAN_ITEM_SCHEMA = `{
+   "sourceType": "existing" | "proposal",
+   "kind": "task" | "event" | "idea",
+   "time": string|null,
++  "durationMinutes": number|null,
++  "estimatedMinutes": number|null,
+   "title": string,
+   "reason": string|null
+ }`;
+ 
+-const IA_RULES = `Eres el asistente de organización integrado en la app ORGANIZATOR. Recibes un contexto con información REAL del usuario: tareas, eventos y su horario bloqueado (bloques fijos de rutina como la escuela, el trabajo o el gimnasio).
++const IA_RULES = `Eres el asistente de organización integrado en la app ORGANIZATOR. Recibes un contexto con información REAL del usuario: tareas, eventos, su horario bloqueado (bloques fijos de rutina como la escuela, el trabajo o el gimnasio) y los HUECOS LIBRES REALES ya calculados por el sistema para cada día.
+ 
+ Reglas estrictas, sin excepción:
+ - Responde SIEMPRE en español: los textos, los resúmenes, los motivos y, si generas nombres de días de la semana (label), usa los nombres en español (lunes, martes, miércoles, jueves, viernes, sábado, domingo), nunca en inglés.
+ - No inventes tareas, eventos ni horas que no estén literalmente en el contexto.
+-- Todo lo que venga del contexto (tareas y eventos existentes) debe marcarse "sourceType":"existing" y conservar su hora tal cual (o null si no tiene). Una tarea marcada "YA PROGRAMADA" ya tiene hueco asignado por el sistema: trátala como "existing" con esa hora, no la vuelvas a proponer ni le busques otra.
++- Todo lo que venga del contexto (tareas y eventos existentes) debe marcarse "sourceType":"existing" y conservar su hora tal cual (o null si no tiene). Una tarea marcada "YA PROGRAMADA" ya tiene hueco asignado por el sistema: trátala como "existing" con esa hora, no la vuelvas a proponer ni le busques otra. Si conoces la duración real de un "existing" (por ejemplo un evento con hora de inicio y fin), inclúyela en "durationMinutes"; si no la conoces, deja null (el sistema asumirá 60 minutos).
+ - El HORARIO BLOQUEADO del usuario representa tiempo ya ocupado en los días indicados: nunca propongas algo nuevo que se solape con esos bloques.
+-- Si propones una hora para algo que no la tiene, o sugieres algo nuevo (estudiar, repasar, descansar), márcalo "sourceType":"proposal" — nunca lo presentes como si ya existiera en la agenda.
+-- Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, una tarea atrasada, un hueco libre, etc.). Explica brevemente el motivo en "reason".
++- IMPORTANTE sobre las propuestas ("sourceType":"proposal"): NUNCA inventes ni calcules tú la hora exacta — deja siempre "time": null. El sistema es quien coloca cada propuesta en un hueco real, usando los HUECOS LIBRES REALES que te he dado. Tu trabajo es decidir QUÉ proponer, en QUÉ DÍA tiene sentido y CUÁNTOS MINUTOS necesita razonablemente ("estimatedMinutes", nunca menos de 20 ni más de 90 para una sola sesión).
++- Elige el día de cada propuesta mirando los HUECOS LIBRES REALES de ese día: si un día apenas tiene huecos, no le añadas más propuestas de las que puedan caber ahí.
++- Si detectas una tarea, examen o entrega con fecha límite lejana que requiere preparación, NO concentres todo el estudio el día anterior ni en un solo bloque larguísimo: reparte varias propuestas de estudio (por ejemplo, 2 a 4 sesiones de 30-60 minutos) en distintos días disponibles ANTES de la fecha límite, cada una como una propuesta independiente en el día que corresponda.
++- Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, una tarea atrasada, un hueco libre real, etc.). Explica brevemente el motivo en "reason".
+ - Si no hay información suficiente para un plan útil, dilo en "summary" y devuelve "planItems" vacío o muy reducido.
+ - Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown ni bloques de código.`;
+ 
+@@ -1666,6 +1718,80 @@ function iaSetButtonsDisabled(disabled){
+   const w = document.getElementById('ia-week-btn'); if(w) w.disabled = disabled;
+ }
+ 
++/* ---------- Resolución determinista de horas para propuestas ----------
++   La IA decide QUÉ proponer y en QUÉ DÍA; la hora exacta la calcula
++   SIEMPRE Scheduler (js/scheduler.js) a partir de los huecos libres
++   reales — nunca se confía en una hora que la IA pueda haber inventado.
++   `workingTasks` es una copia local (no se guarda en state) que va
++   acumulando las propuestas ya colocadas en esta misma pasada, para que
++   dos propuestas del mismo plan nunca se pisen entre sí. */
++function resolveProposalSlot(item, dateStr, workingTasks){
++  if(item.sourceType !== 'proposal') return item; // "existing": se deja tal cual venía del contexto real
++  const duration = (item.estimatedMinutes && item.estimatedMinutes > 0) ? item.estimatedMinutes : 45;
++  item.time = null;
++  if(!window.Scheduler) return item;
++  const ctx = { events: state.events, tasks: workingTasks, customSchedules: state.customSchedules };
++  const slots = window.Scheduler.getFreeSlots(dateStr, ctx);
++  const usable = slots.find(([s,e]) => (e - s) >= duration);
++  if(usable){
++    const start = window.Scheduler._internal.minToTime(usable[0]);
++    const end = window.Scheduler._internal.minToTime(usable[0] + duration);
++    item.time = start;
++    item._durationMinutes = duration;
++    item._endTime = end;
++    workingTasks.push({ id:`ia-tmp-${workingTasks.length}`, scheduledDate:dateStr, scheduledStart:start, scheduledEnd:end });
++  } else {
++    item.noSlot = true;
++    item.reason = (item.reason ? item.reason + ' ' : '') + '(sin hueco libre suficiente ese día — se añadirá sin hora fija)';
++  }
++  return item;
++}
++
++/* ---------- Agenda visual 00:00–23:00 (solo lectura) ----------
++   Se construye a partir de los mismos items ya resueltos (con hora y
++   duración reales); no decide nada, solo dibuja lo que ya se calculó.
++   No sustituye a la lista de propuestas: es un apoyo visual encima de
++   ella. Solo se usa en "Organizar mi día" (un día cabe bien en pantalla;
++   la semana sigue con el formato de lista agrupada por día). */
++function renderDayTimelineGrid(items){
++  const ROW = 44; // px por hora
++  const blocks = items
++    .filter(it => it.time)
++    .map(it => {
++      const [h,m] = it.time.split(':').map(Number);
++      const startMin = h*60 + (m||0);
++      const duration = it.sourceType === 'proposal'
++        ? (it._durationMinutes || it.estimatedMinutes || 45)
++        : (it.durationMinutes && it.durationMinutes > 0 ? it.durationMinutes : 60);
++      return { ...it, startMin, duration };
++    })
++    .sort((a,b) => a.startMin - b.startMin);
++
++  const hoursHtml = Array.from({length:24}, (_,h) => `<div class="ia-hg-hour">${pad(h)}:00</div>`).join('');
++
++  const laneHtml = blocks.map(b => {
++    const top = (b.startMin/60)*ROW;
++    const height = Math.max((b.duration/60)*ROW, 20);
++    const endMin = b.startMin + b.duration;
++    const endClock = `${pad(Math.floor(endMin/60)%24)}:${pad(endMin%60)}`;
++    const isProposal = b.sourceType === 'proposal';
++    const color = b.kind === 'event' ? 'var(--event)' : 'var(--task)';
++    const bg = b.kind === 'event' ? 'var(--event-bg)' : 'var(--task-bg)';
++    const style = isProposal ? `top:${top}px;height:${height}px;border-color:${color};` : `top:${top}px;height:${height}px;background:${bg};border-left-color:${color};`;
++    return `<div class="ia-hg-block${isProposal?' proposal':''}" style="${style}">
++      <span class="ia-hg-title">${esc(b.title)}</span>
++      <span class="ia-hg-time">${esc(b.time)}–${esc(endClock)}</span>
++    </div>`;
++  }).join('');
++
++  const noTimeCount = items.filter(it => !it.time).length;
++
++  return `<div class="ia-hourgrid">
++    <div class="ia-hg-hours">${hoursHtml}</div>
++    <div class="ia-hg-lane" style="height:${24*ROW}px;">${laneHtml}</div>
++  </div>${noTimeCount ? `<p class="ia-hg-note">${noTimeCount} elemento${noTimeCount>1?'s':''} sin hora fija (solo en la lista de abajo).</p>` : ''}`;
++}
++
+ /* ---------- Hilo único del asistente ----------
+    Tanto los botones "Organizar mi día/semana" como el chat libre escriben
+    en el mismo hilo (#ia-thread-messages): cada acción añade una burbuja
+@@ -1749,8 +1875,12 @@ async function runIADay(){
+     const raw = await callAI(system, context);
+     const data = parseAIJSON(raw);
+     iaProposals = [];
+-    const itemsHtml = (data.planItems||[]).map(it=>renderIAItemHTML(it, todayStr())).join('');
++    const workingTasks = state.tasks.slice();
++    const resolvedItems = (data.planItems||[]).map(it => resolveProposalSlot(it, todayStr(), workingTasks));
++    const gridHtml = renderDayTimelineGrid(resolvedItems);
++    const itemsHtml = resolvedItems.map(it=>renderIAItemHTML(it, todayStr())).join('');
+     iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
++      gridHtml +
+       (itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">No hay datos suficientes todavía para proponer un plan.</p>`));
+     wireIAProposalButtons(msgEl);
+     iaSetStatus('');
+@@ -1775,8 +1905,11 @@ async function runIAWeek(){
+     const raw = await callAI(system, context);
+     const data = parseAIJSON(raw);
+     iaProposals = [];
++    const workingTasks = state.tasks.slice();
+     const daysHtml = (data.days||[]).map(day=>{
+-      const itemsHtml = (day.items||[]).map(it=>renderIAItemHTML(it, day.date || todayStr())).join('');
++      const dateForDay = day.date || todayStr();
++      const resolved = (day.items||[]).map(it => resolveProposalSlot(it, dateForDay, workingTasks));
++      const itemsHtml = resolved.map(it=>renderIAItemHTML(it, dateForDay)).join('');
+       return `<div class="ia-week-day"><h4>${esc(day.label||day.date||'')}</h4>${itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">Sin novedades este día.</p>`}</div>`;
+     }).join('');
+     iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
+-- 
+2.43.0
+
