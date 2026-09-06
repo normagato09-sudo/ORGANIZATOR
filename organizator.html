@@ -410,6 +410,36 @@
     .rail-item .ic{width:30px;height:30px;font-size:15px;flex:none;}
     .rail-item .lb{font-size:14px;}
     .rail-item.settings{margin-top:auto;}
+
+    /* ---------- Legibilidad y tacto en móvil ---------- */
+    /* iOS hace zoom automático al enfocar cualquier input/select con
+       font-size menor de 16px: era la causa de tener que "reajustar" la
+       pantalla al escribir. Se sube a 16px SOLO en móvil (el escritorio
+       no cambia). */
+    .form-group input, .form-group select, .form-group textarea{font-size:16px;}
+    .ia-chat-form input{font-size:16px;}
+    .settings-row select{font-size:16px;}
+    .hour-row select{font-size:16px;}
+
+    /* Escala tipográfica algo menor, pensada para el ancho de un móvil
+       en vez de heredar tamaños pensados para escritorio. */
+    .date{font-size:24px;margin-bottom:22px;}
+    .area-head h1{font-size:20px;}
+    .cal-head h1{font-size:19px;}
+
+    /* Filas con contenido a ambos lados: si en una pantalla muy estrecha
+       (320–360px) no caben en una sola línea, que bajen de línea en vez
+       de forzar scroll horizontal. */
+    .area-head, .cal-head, .day-panel-head, .settings-row, .schedule-row,
+    .modal-actions{
+      flex-wrap:wrap;
+      row-gap:10px;
+    }
+    .update-banner{
+      max-width:calc(100vw - 32px);
+      flex-wrap:wrap;
+      row-gap:8px;
+    }
   }
 </style>
 </head>
