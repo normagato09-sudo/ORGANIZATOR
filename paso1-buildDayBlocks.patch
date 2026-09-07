@@ -1,0 +1,118 @@
+diff --git a/js/scheduler.js b/js/scheduler.js
+index 99085e7..7ef6db2 100644
+--- a/js/scheduler.js
++++ b/js/scheduler.js
+@@ -140,6 +140,105 @@
+     return free.filter(([s, e]) => e - s > 0);
+   }
+ 
++  /**
++   * Construye la agenda visual COMPLETA de un día concreto, dentro del
++   * rango [dayStart, dayEnd]: una lista ordenada y sin huecos de bloques
++   * "busy" (horario fijo + eventos + tareas ya programadas ese día, con
++   * su etiqueta) y bloques "free" (tiempo realmente disponible). Si la
++   * fecha es hoy, la parte de tiempo libre que ya pasó se marca aparte
++   * como "past" para no ofrecerla como disponible.
++   *
++   * Es una función de solo lectura: no decide dónde colocar nada, solo
++   * describe la realidad de la agenda con aritmética exacta (mismas
++   * reglas que getBusyIntervals/getFreeSlots), para que tanto la UI como
++   * la propia IA puedan apoyarse en un dato 100% fiable en vez de tener
++   * que deducir los huecos de una lista de texto.
++   */
++  function buildDayBlocks(dateStr, context, opts) {
++    const cfg = Object.assign({}, DEFAULTS, opts);
++    const dayStartMin = timeToMin(cfg.dayStart);
++    const dayEndMin = timeToMin(cfg.dayEnd);
++    const dow = dowOfDate(dateStr);
++    const isToday = dateStr === todayStr();
++    const nowFloor = isToday ? Math.min(Math.max(nowMin(), dayStartMin), dayEndMin) : null;
++
++    // 1) Recopilar bloques ocupados SIN fusionar todavía, conservando de
++    // dónde viene cada uno (para poder mostrar su nombre real).
++    const raw = [];
++    (context.customSchedules || [])
++      .filter(s => Array.isArray(s.days) && s.days.includes(dow) && s.startTime && s.endTime)
++      .forEach(s => raw.push({ start: timeToMin(s.startTime), end: timeToMin(s.endTime), label: s.name, kind: 'schedule' }));
++
++    (context.events || []).forEach(e => {
++      const start = e.date, end = e.endDate || e.date;
++      if (dateStr < start || dateStr > end) return;
++      if (e.allDay) { raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event' }); return; }
++      if (e.startTime) {
++        const s = timeToMin(e.startTime);
++        const en = e.endTime ? timeToMin(e.endTime) : s + 60;
++        raw.push({ start: s, end: en, label: e.title, kind: 'event' });
++      }
++    });
++
++    (context.tasks || []).forEach(t => {
++      if (opts && opts.excludeTaskId && t.id === opts.excludeTaskId) return;
++      if (t.scheduledDate === dateStr && t.scheduledStart && t.scheduledEnd) {
++        raw.push({ start: timeToMin(t.scheduledStart), end: timeToMin(t.scheduledEnd), label: t.title, kind: 'task' });
++      }
++    });
++
++    // 2) Fusionar los que se solapen (caso raro, pero posible), uniendo etiquetas.
++    const clipped = raw
++      .map(b => ({ start: Math.max(0, b.start), end: Math.min(24 * 60, b.end), label: b.label, kind: b.kind }))
++      .filter(b => b.end > b.start)
++      .sort((a, b) => a.start - b.start || a.end - b.end);
++
++    const merged = [];
++    clipped.forEach(b => {
++      const last = merged[merged.length - 1];
++      if (last && b.start < last.end) {
++        last.end = Math.max(last.end, b.end);
++        if (!last.labels.includes(b.label)) last.labels.push(b.label);
++        if (!last.kinds.includes(b.kind)) last.kinds.push(b.kind);
++      } else {
++        merged.push({ start: b.start, end: b.end, labels: [b.label], kinds: [b.kind] });
++      }
++    });
++
++    // 3) Recorrer [dayStart, dayEnd] intercalando bloques ocupados y libres.
++    const blocks = [];
++    const pushFree = (s, e) => {
++      if (e <= s) return;
++      if (nowFloor != null && e <= nowFloor) {
++        blocks.push({ type: 'past', start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: 'Ya pasó' });
++      } else if (nowFloor != null && s < nowFloor && nowFloor < e) {
++        blocks.push({ type: 'past', start: s, end: nowFloor, startTime: minToTime(s), endTime: minToTime(nowFloor), label: 'Ya pasó' });
++        blocks.push({ type: 'free', start: nowFloor, end: e, startTime: minToTime(nowFloor), endTime: minToTime(e), label: 'Tiempo libre' });
++      } else {
++        blocks.push({ type: 'free', start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: 'Tiempo libre' });
++      }
++    };
++    const pushBusy = (s, e, labels, kinds) => {
++      blocks.push({ type: 'busy', start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: labels.join(' + '), kinds });
++    };
++
++    let cursor = dayStartMin;
++    merged.forEach(b => {
++      const s = Math.max(b.start, dayStartMin);
++      const e = Math.min(b.end, dayEndMin);
++      if (e <= dayStartMin || s >= dayEndMin || e <= cursor) return;
++      if (s > cursor) pushFree(cursor, s);
++      pushBusy(Math.max(s, cursor), e, b.labels, b.kinds);
++      cursor = Math.max(cursor, e);
++    });
++    if (cursor < dayEndMin) pushFree(cursor, dayEndMin);
++
++    const totalFreeMinutes = blocks.filter(b => b.type === 'free').reduce((sum, b) => sum + (b.end - b.start), 0);
++    const totalBusyMinutes = blocks.filter(b => b.type === 'busy').reduce((sum, b) => sum + (b.end - b.start), 0);
++
++    return { date: dateStr, dayStart: cfg.dayStart, dayEnd: cfg.dayEnd, blocks, totalFreeMinutes, totalBusyMinutes };
++  }
++
+   /**
+    * Minutos de tareas (no eventos) ya colocados ese día — para respetar
+    * el tope diario (maxDailyTaskMinutes) y no sobrecargar un día.
+@@ -272,6 +371,7 @@
+   global.Scheduler = {
+     DEFAULTS,
+     getFreeSlots,
++    buildDayBlocks,
+     scheduleTask,
+     autoSchedule,
+     rescheduleTask,
