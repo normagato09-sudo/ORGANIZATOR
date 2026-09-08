@@ -201,6 +201,21 @@
   .ia-hg-title{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .ia-hg-time{display:block;font-size:9.5px;opacity:.75;}
   .ia-hg-note{font-size:11px;color:#9BA0A6;margin:4px 0 0;}
+
+  /* Agenda visual determinista (🔒 ocupado / 📚 propuesta / 🟢 libre),
+     construida a partir de Scheduler.buildDayBlocks + Scheduler.autoSchedule
+     (ver runIADay). Reutiliza los mismos tonos que .ia-tl-* para que
+     encaje con el resto del hilo del asistente. */
+  .ia-agenda{display:flex;flex-direction:column;gap:0;margin-bottom:4px;}
+  .ia-ag-row{display:flex;gap:12px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.08);}
+  .ia-ag-row:last-child{border-bottom:none;}
+  .ia-ag-time{width:100px;flex:none;font-size:11.5px;color:#9BA0A6;font-weight:500;padding-top:1px;white-space:nowrap;}
+  .ia-ag-icon{width:16px;flex:none;text-align:center;font-size:12.5px;padding-top:1px;}
+  .ia-ag-body{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .ia-ag-title{font-size:13px;font-weight:600;color:var(--paper);}
+  .ia-ag-free .ia-ag-title{color:#9BA0A6;font-weight:500;}
+  .ia-ag-past{opacity:.45;}
+  .ia-ag-proposal .ia-ag-title{color:var(--paper);}
   .ia-chat-form{margin-top:16px;display:flex;gap:8px;}
   .ia-chat-form input{flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.16);border-radius:9px;padding:9px 12px;color:var(--paper);font-size:13px;}
   .ia-chat-form input::placeholder{color:#9BA0A6;}
@@ -1792,6 +1807,60 @@ function renderDayTimelineGrid(items){
   </div>${noTimeCount ? `<p class="ia-hg-note">${noTimeCount} elemento${noTimeCount>1?'s':''} sin hora fija (solo en la lista de abajo).</p>` : ''}`;
 }
 
+/* ---------- Agenda visual determinista 🔒/📚/🟢 (solo "Organizar mi día") ----------
+   A diferencia de renderDayTimelineGrid (arriba, ya no se usa desde
+   runIADay pero se deja sin tocar hasta el paso de limpieza), esta vista
+   no dibuja SOLO los items que la IA decidió incluir: dibuja la agenda
+   COMPLETA del día calculada por Scheduler.buildDayBlocks (horario fijo +
+   eventos + tareas ya programadas = 🔒, huecos reales = 🟢, tiempo ya
+   pasado si es hoy) y le inserta encima, en su hueco real, las propuestas
+   ya colocadas por Scheduler.autoSchedule (📚). La IA nunca decide dónde
+   encaja cada cosa: solo qué proponer y cuánto dura aproximadamente. */
+function spliceProposalsIntoBlocks(blocks, placedProposals){
+  let result = blocks.slice();
+  placedProposals
+    .slice()
+    .sort((a, b) => a.start - b.start)
+    .forEach(p => {
+      const idx = result.findIndex(b => b.type === 'free' && b.start <= p.start && b.end >= p.end);
+      if(idx === -1){ p._noRoom = true; return; } // red de seguridad: no debería pasar, mismo contexto real
+      const b = result[idx];
+      const replacement = [];
+      if(b.start < p.start) replacement.push(Object.assign({}, b, { end: p.start, endTime: p.startTime }));
+      replacement.push({ type: 'proposal', start: p.start, end: p.end, startTime: p.startTime, endTime: p.endTime, title: p.title, reason: p.reason, kind: p.kind });
+      if(p.end < b.end) replacement.push(Object.assign({}, b, { start: p.end, startTime: p.endTime }));
+      result.splice(idx, 1, ...replacement);
+    });
+  return result;
+}
+function renderDayAgendaList(mergedBlocks, dateForApply){
+  const icon = { busy: '🔒', free: '🟢', past: '⏳', proposal: '📚' };
+  return `<div class="ia-agenda">${mergedBlocks.map(b => {
+    if(b.type === 'proposal'){
+      const idx = iaProposals.length;
+      iaProposals.push({ title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply });
+      return `<div class="ia-ag-row ia-ag-proposal">
+        <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
+        <div class="ia-ag-icon">${icon.proposal}</div>
+        <div class="ia-ag-body">
+          <div class="ia-ag-title">${esc(b.title)}<span class="ia-tag proposal">propuesta IA</span></div>
+          ${b.reason ? `<div class="ia-tl-tag">${esc(b.reason)}</div>` : ''}
+          <div class="ia-tl-actions">
+            <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    const label = b.type === 'busy' ? b.label : (b.type === 'past' ? 'Ya pasó' : 'Tiempo libre');
+    return `<div class="ia-ag-row ia-ag-${b.type}">
+      <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
+      <div class="ia-ag-icon">${icon[b.type]}</div>
+      <div class="ia-ag-body"><div class="ia-ag-title">${esc(label)}</div></div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
 /* ---------- Hilo único del asistente ----------
    Tanto los botones "Organizar mi día/semana" como el chat libre escriben
    en el mismo hilo (#ia-thread-messages): cada acción añade una burbuja
@@ -1863,7 +1932,14 @@ async function applyIAProposal(it, date){
   if(currentView === 'calendario') renderCalendar();
 }
 
-/* ---------- Organizar mi día ---------- */
+/* ---------- Organizar mi día ----------
+   Determinista: la IA solo decide QUÉ proponer y cuántos minutos necesita
+   aproximadamente ("estimatedMinutes"); dónde encaja cada propuesta lo
+   calcula SIEMPRE Scheduler.autoSchedule (misma lógica que el resto de la
+   app), y la agenda completa que se pinta (🔒 ocupado / 📚 propuesta /
+   🟢 libre) viene de Scheduler.buildDayBlocks, no de lo que la IA diga
+   que hay "existing" — así un fallo o una omisión de la IA nunca puede
+   hacer que se pinte un hueco como libre estando en realidad ocupado. */
 async function runIADay(){
   iaSetButtonsDisabled(true);
   iaSetStatus('Analizando tu día…');
@@ -1875,13 +1951,67 @@ async function runIADay(){
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
     iaProposals = [];
-    const workingTasks = state.tasks.slice();
-    const resolvedItems = (data.planItems||[]).map(it => resolveProposalSlot(it, todayStr(), workingTasks));
-    const gridHtml = renderDayTimelineGrid(resolvedItems);
-    const itemsHtml = resolvedItems.map(it=>renderIAItemHTML(it, todayStr())).join('');
-    iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
-      gridHtml +
-      (itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">No hay datos suficientes todavía para proponer un plan.</p>`));
+    const today = todayStr();
+
+    if(!window.Scheduler){
+      iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
+      iaSetStatus('');
+      return;
+    }
+
+    // 1) La IA solo aporta QUÉ proponer y cuánto dura; se ignoran los
+    // "existing" que pueda haber devuelto (la agenda real ya la da
+    // buildDayBlocks más abajo con aritmética exacta, sin depender de
+    // que la IA los haya copiado bien).
+    const proposalItems = (data.planItems || []).filter(it => it.sourceType === 'proposal');
+    const pseudoTasks = proposalItems.map((it, i) => ({
+      id: `ia-tmp-day-${i}`,
+      title: it.title,
+      reason: it.reason || null,
+      kind: it.kind || 'task',
+      dueDate: today, // acota autoSchedule a HOY: no tiene sentido moverla a otro día en "Organizar mi día"
+      priority: 'media',
+      estimatedMinutes: (it.estimatedMinutes && it.estimatedMinutes > 0) ? it.estimatedMinutes : 45,
+    }));
+
+    // 2) Colocación determinista de cada propuesta en un hueco real.
+    const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+    const scheduled = window.Scheduler.autoSchedule(pseudoTasks, schedCtx);
+    const placed = scheduled.filter(t => t.scheduledStart && t.scheduledEnd);
+    const unplaced = scheduled.filter(t => !t.scheduledStart);
+
+    // 3) Agenda real del día (sin propuestas) + se insertan las propuestas
+    // ya colocadas dentro de sus huecos libres reales.
+    const { timeToMin } = window.Scheduler._internal;
+    const dayBlocks = window.Scheduler.buildDayBlocks(today, schedCtx).blocks;
+    const placedForSplice = placed.map(t => ({
+      start: timeToMin(t.scheduledStart), end: timeToMin(t.scheduledEnd),
+      startTime: t.scheduledStart, endTime: t.scheduledEnd,
+      title: t.title, reason: t.reason, kind: t.kind,
+    }));
+    const mergedBlocks = spliceProposalsIntoBlocks(dayBlocks, placedForSplice);
+    const agendaHtml = renderDayAgendaList(mergedBlocks, today);
+
+    // 4) Propuestas que no encontraron hueco hoy: se muestran aparte,
+    // sin hora, con el motivo (se pueden añadir igualmente como tarea).
+    const unplacedHtml = unplaced.length ? `<div class="ia-timeline">${unplaced.map(t => {
+      const idx = iaProposals.length;
+      iaProposals.push({ title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today });
+      return `<div class="ia-tl-item">
+        <div class="ia-tl-time">—</div>
+        <div class="ia-tl-bar proposal"></div>
+        <div class="ia-tl-body">
+          <div class="ia-tl-title">${esc(t.title)}<span class="ia-tag proposal">propuesta IA</span></div>
+          <div class="ia-tl-tag">${esc(t.schedulingWarning || 'Sin hueco libre suficiente hoy — se añadirá sin hora fija.')}</div>
+          <div class="ia-tl-actions">
+            <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}</div>` : '';
+
+    iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` + agendaHtml + unplacedHtml);
     wireIAProposalButtons(msgEl);
     iaSetStatus('');
   }catch(err){
