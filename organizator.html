@@ -661,6 +661,14 @@
      principal para que loadState() ya lo encuentre disponible fuera de Claude. -->
 <script src="/js/storage-polyfill.js"></script>
 
+<!-- Duration Learning (aprendizaje de duración real de tareas): debe
+     cargarse antes que scheduler.js para que Scheduler.estimateDuration()
+     ya encuentre window.DurationLearning disponible como segunda fuente
+     de estimación (tras estimatedMinutes y antes del fallback por
+     prioridad). Si esta línea faltara o el script fallara al cargar,
+     Scheduler sigue funcionando igual que antes (detecta su ausencia). -->
+<script src="/js/duration-learning.js"></script>
+
 <!-- Scheduler (algoritmo de huecos libres) y capa de acciones de IA:
      deben cargarse antes del script principal para que initIA() ya
      encuentre window.Scheduler y window.AIActions listos. -->
@@ -833,9 +841,12 @@ async function deleteTask(id){
 }
 async function toggleTask(id){
   const t = state.tasks.find(x=>x.id===id);
-  if(t) t.done = !t.done;
+  if(!t) return;
+  const justCompleted = !t.done;
+  t.done = !t.done;
   await saveTasks();
   renderCurrentView();
+  if(justCompleted) openActualMinutesModal(id);
 }
 async function addEvent(data){
   state.events.push({ id:uid(), createdAt:Date.now(), ...data });
@@ -1019,6 +1030,9 @@ function taskRowHTML(t){
           ${t.scheduledDate ? `<span>Programada: ${humanDateShort(t.scheduledDate)} · ${t.scheduledStart}-${t.scheduledEnd}</span>` : ''}
           ${t.dueDate ? `<span style="${overdue?'color:var(--alta);font-weight:600;':''}">${t.scheduledDate?'Vence':''} ${humanDateShort(t.dueDate)}${(!t.scheduledDate && t.dueTime)?' · '+t.dueTime:''}</span>` : ''}
           ${t.priority ? `<span>Prioridad ${PRIORITIES[t.priority].label}</span>` : ''}
+          ${t.category ? `<span>${esc(t.category)}</span>` : ''}
+          ${t.estimatedMinutes ? `<span>⏱ Estimado: ${t.estimatedMinutes} min</span>` : ''}
+          ${(t.done && t.actualMinutes) ? `<span>Real: ${t.actualMinutes} min</span>` : ''}
           ${t.schedulingWarning ? `<span style="color:var(--alta);">${esc(t.schedulingWarning)}</span>` : ''}
         </div>
         ${t.notes ? `<div class="row-notes">${esc(t.notes)}</div>` : ''}
@@ -1152,6 +1166,15 @@ function openTaskModal({taskId=null, date=null}={}){
           <option value="baja" ${existing&&existing.priority==='baja'?'selected':''}>Baja</option>
         </select>
       </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Categoría (opcional)</label>
+          <input type="text" name="category" value="${existing?esc(existing.category||''):''}" placeholder="Ej. Estudio, Casa, Trabajo">
+        </div>
+        <div class="form-group"><label>Minutos estimados (opcional)</label>
+          <input type="number" name="estimatedMinutes" min="1" step="1" value="${existing&&existing.estimatedMinutes?existing.estimatedMinutes:''}" placeholder="Ej. 45">
+          <div class="duration-hint" id="duration-hint" style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;"></div>
+        </div>
+      </div>
       <div class="form-group"><label>Notas (opcional)</label>
         <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
       </div>
@@ -1164,6 +1187,34 @@ function openTaskModal({taskId=null, date=null}={}){
       </div>
     </form>`;
 
+  /* Sugerencia de duración (Paso 4B): usa DurationLearning para mostrar,
+     de forma puramente informativa, "normalmente esto te lleva unos X
+     minutos" cuando hay suficiente historial de tareas parecidas o de la
+     misma categoría. NUNCA rellena ni modifica estimatedMinutes: solo
+     texto de ayuda junto al campo. Si no hay datos suficientes, o el
+     módulo no está cargado, no se muestra nada (el hint queda vacío). */
+  function renderDurationHint(){
+    const hintEl = modalBox.querySelector('#duration-hint');
+    if(!hintEl) return;
+    hintEl.textContent = '';
+    if(!window.DurationLearning || !Array.isArray(state.tasks)) return;
+    const titleEl = modalBox.querySelector('[name="title"]');
+    const categoryEl = modalBox.querySelector('[name="category"]');
+    const draftTask = {
+      id: existing ? existing.id : null,
+      title: titleEl ? titleEl.value : '',
+      category: categoryEl ? categoryEl.value.trim() : '',
+    };
+    if(!draftTask.title || !draftTask.title.trim()) return;
+    const suggestion = window.DurationLearning.suggestDuration(draftTask, state.tasks);
+    if(suggestion && Number.isFinite(suggestion.suggestedMinutes) && suggestion.suggestedMinutes > 0){
+      hintEl.textContent = `💡 Normalmente esta tarea te lleva unos ${suggestion.suggestedMinutes} minutos.`;
+    }
+  }
+  renderDurationHint();
+  modalBox.querySelector('[name="title"]').addEventListener('input', renderDurationHint);
+  modalBox.querySelector('[name="category"]').addEventListener('input', renderDurationHint);
+
   modalBox.querySelector('#task-cancel-btn').addEventListener('click', closeModal);
   if(editing){
     modalBox.querySelector('#task-delete-btn').addEventListener('click', async ()=>{
@@ -1173,11 +1224,14 @@ function openTaskModal({taskId=null, date=null}={}){
   modalBox.querySelector('#task-form').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
+    const rawMinutes = parseInt(fd.get('estimatedMinutes'), 10);
     const data = {
       title: fd.get('title').trim(),
       dueDate: fd.get('dueDate') || '',
       dueTime: fd.get('dueTime') || '',
       priority: fd.get('priority'),
+      category: (fd.get('category')||'').trim(),
+      estimatedMinutes: (Number.isFinite(rawMinutes) && rawMinutes > 0) ? rawMinutes : null,
       notes: fd.get('notes').trim(),
     };
     if(!data.title) return;
@@ -1187,6 +1241,42 @@ function openTaskModal({taskId=null, date=null}={}){
     renderCurrentView();
   });
 
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
+   MODAL: MINUTOS REALES AL COMPLETAR UNA TAREA (opcional)
+   Se muestra justo después de marcar una tarea como hecha. No bloquea
+   nada: se puede omitir y la tarea queda completada igualmente.
+   ================================================================== */
+function openActualMinutesModal(taskId){
+  const t = state.tasks.find(x=>x.id===taskId);
+  if(!t) return;
+  modalBox.innerHTML = `
+    <h3>Tarea completada</h3>
+    <form id="actual-minutes-form">
+      <div class="form-group"><label>¿Cuántos minutos te ha llevado? (opcional)</label>
+        <input type="number" name="actualMinutes" min="1" step="1" autofocus
+          value="${(t.actualMinutes!=null)?t.actualMinutes:''}"
+          placeholder="${t.estimatedMinutes?('Estimado: '+t.estimatedMinutes+' min'):'Ej. 30'}">
+      </div>
+      <div class="modal-actions">
+        <div></div>
+        <div class="right">
+          <button type="button" class="btn" id="actual-minutes-skip-btn">Omitir</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+  modalBox.querySelector('#actual-minutes-skip-btn').addEventListener('click', closeModal);
+  modalBox.querySelector('#actual-minutes-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const raw = parseInt(fd.get('actualMinutes'), 10);
+    await updateTask(taskId, { actualMinutes: (Number.isFinite(raw) && raw > 0) ? raw : null });
+    closeModal();
+    renderCurrentView();
+  });
   overlay.classList.add('open');
 }
 
@@ -1359,6 +1449,124 @@ function renderScheduleRows(){
   return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-schedule">+ Añadir bloque de horario</button>`;
 }
 
+/* Paso 4D: filas de duración por categoría, usando SOLO categorías reales
+   que ya existen en las tareas (nunca se inventa una lista de categorías).
+   Cada fila usa DurationLearning.getStatsForCategory, y una categoría se
+   omite por completo si no llega a minSamples — nunca se muestra una
+   estadística poco fiable ni una categoría vacía. */
+function renderCategoryDurationRows(minSamples){
+  const categories = Array.from(new Set(
+    state.tasks
+      .map(t => (t && t.category) ? String(t.category).trim() : '')
+      .filter(c => c.length > 0)
+  )).sort((a, b) => a.localeCompare(b));
+
+  return categories
+    .map(cat => {
+      const stats = DurationLearning.getStatsForCategory(cat, state.tasks);
+      if(stats.count < minSamples) return null;
+      return `<div class="settings-row"><div class="left stack"><div>${esc(cat)}</div><div class="row-sub">${stats.count} muestras</div></div><div>Media ${stats.mean} min · Mediana ${stats.median} min</div></div>`;
+    })
+    .filter(Boolean)
+    .join('');
+}
+
+/* Paso 4C: sección de solo lectura con las estadísticas reales que
+   DurationLearning calcula a partir de las tareas completadas con
+   actualMinutes. No modifica ninguna tarea, no cambia el Scheduler y no
+   inventa datos: si no hay muestras suficientes, muestra un mensaje claro
+   en vez de una estadística poco fiable. */
+function renderDurationStatsSection(){
+  if(!window.DurationLearning || !Array.isArray(state.tasks)){
+    return `
+    <section class="block">
+      <div class="block-head"><h2>Estadísticas de duración</h2></div>
+      <p class="hint" style="display:block;">No hay datos de duración disponibles todavía.</p>
+    </section>`;
+  }
+  const minSamples = (DurationLearning.DEFAULTS && DurationLearning.DEFAULTS.minSamples) || 3;
+  const stats = DurationLearning.getStats(state.tasks, () => true);
+  if(stats.count < minSamples){
+    return `
+    <section class="block">
+      <div class="block-head"><h2>Estadísticas de duración</h2><span class="hint">Basadas en tareas completadas con tiempo real registrado</span></div>
+      <p class="hint" style="display:block;">Aún no hay tareas suficientes con tiempo real registrado para calcular estadísticas fiables (mínimo ${minSamples}, llevas ${stats.count}).</p>
+    </section>`;
+  }
+  const trendLabel = {
+    up: 'Al alza — últimamente tardas más',
+    down: 'A la baja — últimamente tardas menos',
+    stable: 'Estable',
+  }[stats.trend] || 'Sin datos suficientes todavía';
+  const categoryRows = renderCategoryDurationRows(minSamples);
+  const categoryBlock = categoryRows
+    ? `
+      <div class="block-head" style="margin-top:16px;"><h3 style="margin:0;font-size:14px;">Por categoría</h3></div>
+      <div class="settings-list">
+        ${categoryRows}
+      </div>`
+    : '';
+  return `
+    <section class="block">
+      <div class="block-head"><h2>Estadísticas de duración</h2><span class="hint">Basadas en tareas completadas con tiempo real registrado</span></div>
+      <div class="settings-list">
+        <div class="settings-row"><div class="left">⏱️ Tiempo real medio</div><div>${stats.mean} min</div></div>
+        <div class="settings-row"><div class="left">📊 Mediana</div><div>${stats.median} min</div></div>
+        <div class="settings-row"><div class="left">🔢 Número de muestras</div><div>${stats.count}</div></div>
+        <div class="settings-row"><div class="left">📈 Tendencia reciente</div><div>${trendLabel}</div></div>
+      </div>
+      ${categoryBlock}
+    </section>`;
+}
+
+/* Paso 4E: patrones generales calculados por DurationLearning a partir de
+   datos reales (scheduledDate/scheduledStart de tareas completadas,
+   category, y comparación estimatedMinutes vs actualMinutes). Cada
+   patrón se calcula y se muestra de forma INDEPENDIENTE: si uno no tiene
+   muestras suficientes, esa línea concreta simplemente no aparece (nunca
+   se inventa ni se rellena con datos aproximados). Si ningún patrón tiene
+   datos todavía, no se añade ninguna sección vacía. No modifica ninguna
+   tarea ni estimación, y no toca el Scheduler. */
+function renderGeneralPatternsSection(){
+  if(!window.DurationLearning || !Array.isArray(state.tasks)) return '';
+
+  const rows = [];
+
+  const busiestDays = DurationLearning.getBusiestDaysOfWeek(state.tasks);
+  if(busiestDays && busiestDays.length){
+    const top = busiestDays.slice(0, 3).map(d => `${esc(d.day)} (${d.count})`).join(', ');
+    rows.push(`<div class="settings-row"><div class="left">📅 Días con más tareas completadas</div><div>${top}</div></div>`);
+  }
+
+  const busyHours = DurationLearning.getBusyHourSlots(state.tasks);
+  if(busyHours && busyHours.length){
+    const top = busyHours.slice(0, 3).map(h => `${esc(h.slot)} (${h.count})`).join(', ');
+    rows.push(`<div class="settings-row"><div class="left">🕐 Franjas horarias habituales</div><div>${top}</div></div>`);
+  }
+
+  const slowestCategories = DurationLearning.getCategoryDurationRanking(state.tasks);
+  if(slowestCategories && slowestCategories.length){
+    const top = slowestCategories.slice(0, 3).map(c => `${esc(c.category)} (${c.mean} min)`).join(', ');
+    rows.push(`<div class="settings-row"><div class="left">📚 Categorías que suelen tardar más</div><div>${top}</div></div>`);
+  }
+
+  const overEstimate = DurationLearning.getTasksOverEstimate(state.tasks);
+  if(overEstimate && overEstimate.length){
+    const top = overEstimate.slice(0, 5).map(t => `${esc(t.title)} (+${t.overrunMinutes} min)`).join(', ');
+    rows.push(`<div class="settings-row"><div class="left">⚠️ Tareas que suelen tardar más de lo estimado</div><div>${top}</div></div>`);
+  }
+
+  if(!rows.length) return '';
+
+  return `
+    <section class="block">
+      <div class="block-head"><h2>Patrones generales</h2><span class="hint">Solo se muestran cuando hay suficientes datos reales</span></div>
+      <div class="settings-list">
+        ${rows.join('')}
+      </div>
+    </section>`;
+}
+
 function renderAjustes(){
   const el = document.getElementById('view-ajustes');
 
@@ -1442,6 +1650,9 @@ function renderAjustes(){
       </div>
       <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con todos tus datos. Importar y borrar piden confirmación explícita antes de aplicarse.</p>
     </section>
+
+    ${renderDurationStatsSection()}
+    ${renderGeneralPatternsSection()}
 
     <section class="block">
       <div class="block-head"><h2>Información de la aplicación</h2></div>
