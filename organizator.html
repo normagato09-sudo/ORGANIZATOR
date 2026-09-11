@@ -620,6 +620,27 @@
       </section>
     </div>
 
+    <!-- ===================== SEMANA (de momento solo cabecera de navegación, ver renderSemana()) ===================== -->
+    <div class="view" id="view-semana">
+      <div class="area-head">
+        <div class="area-head-l">
+          <div class="ic" style="background:var(--paper);color:var(--ink);">🗓️</div>
+          <div><h1>Semana</h1><p>Vista semanal (en construcción)</p></div>
+        </div>
+      </div>
+
+      <section class="block">
+        <div class="cal-head">
+          <h1 id="semana-title">—</h1>
+          <div class="cal-nav">
+            <button id="semana-prev" title="Semana anterior">‹</button>
+            <button id="semana-today" class="btn btn-sm" style="width:auto;">Hoy</button>
+            <button id="semana-next" title="Semana siguiente">›</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <!-- ===================== AJUSTES (contenido generado por JS, ver renderAjustes()) ===================== -->
     <div class="view" id="view-ajustes"></div>
 
@@ -1166,6 +1187,32 @@ document.getElementById('cal-next').addEventListener('click', ()=>{ cal.month++;
 document.getElementById('cal-today').addEventListener('click', ()=>{ const d=new Date(); cal.year=d.getFullYear(); cal.month=d.getMonth(); cal.selected=todayStr(); renderCalendar(); });
 document.getElementById('day-add-task').addEventListener('click', ()=>{ if(cal.selected) openTaskModal({date:cal.selected}); });
 document.getElementById('day-add-event').addEventListener('click', ()=>{ if(cal.selected) openEventModal({date:cal.selected}); });
+
+/* ==================================================================
+   RENDER: SEMANA (de momento solo la cabecera de navegación; los 7
+   días y su contenido se añadirán en un subpaso posterior)
+   ================================================================== */
+function weekRangeLabel(days){
+  // days: array de 7 fechas YYYY-MM-DD (lunes a domingo), de getWeekDays()
+  const start = parseYMD(days[0]);
+  const end = parseYMD(days[days.length-1]);
+  const sameMonth = start.getMonth()===end.getMonth() && start.getFullYear()===end.getFullYear();
+  if(sameMonth){
+    return `${start.getDate()} – ${end.getDate()} ${MONTH_NAMES[start.getMonth()]} ${start.getFullYear()}`;
+  }
+  const sameYear = start.getFullYear()===end.getFullYear();
+  if(sameYear){
+    return `${start.getDate()} ${MONTH_NAMES[start.getMonth()]} – ${end.getDate()} ${MONTH_NAMES[end.getMonth()]} ${start.getFullYear()}`;
+  }
+  return `${start.getDate()} ${MONTH_NAMES[start.getMonth()]} ${start.getFullYear()} – ${end.getDate()} ${MONTH_NAMES[end.getMonth()]} ${end.getFullYear()}`;
+}
+function renderSemana(){
+  const days = getWeekDays(week.anchorDate);
+  document.getElementById('semana-title').textContent = weekRangeLabel(days);
+}
+document.getElementById('semana-prev').addEventListener('click', ()=>{ weekGoBackward(); renderSemana(); });
+document.getElementById('semana-next').addEventListener('click', ()=>{ weekGoForward(); renderSemana(); });
+document.getElementById('semana-today').addEventListener('click', ()=>{ weekGoToToday(); renderSemana(); });
 
 /* ==================================================================
    MODAL: TAREA
