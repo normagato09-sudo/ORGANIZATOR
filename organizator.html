@@ -1226,17 +1226,25 @@ function renderSemana(){
 
   const today = todayStr();
   const grid = document.getElementById('semana-grid');
+  // Mismo contexto de solo lectura que usa el resto de la app (Inicio,
+  // "Organizar mi día/semana"): Semana NO recalcula nada, solo pide a
+  // Scheduler.buildDayBlocks() la agenda real de cada día y la pinta con
+  // el mismo renderer que ya usa la vista diaria (renderDayAgendaList).
+  const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
   grid.innerHTML = days.map((dateStr, i) => {
     const d = parseYMD(dateStr);
     const dayName = DOW_FULL_MONFIRST[i];
     const dayDate = `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
+    const agendaHtml = window.Scheduler
+      ? renderDayAgendaList(window.Scheduler.buildDayBlocks(dateStr, schedCtx).blocks, dateStr)
+      : `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación).</p>`;
     return `
       <div class="semana-day ${dateStr===today?'today':''}" data-date="${dateStr}">
         <div class="semana-day-head">
           <span class="semana-day-name">${dayName}</span>
           <span class="semana-day-date">${dayDate}</span>
         </div>
-        <div class="semana-day-body"></div>
+        <div class="semana-day-body">${agendaHtml}</div>
       </div>`;
   }).join('');
 }
