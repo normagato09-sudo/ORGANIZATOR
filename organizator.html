@@ -2064,6 +2064,17 @@ async function deleteAllData(){
 let iaProposals = [];      // propuestas activas de la última respuesta (día/semana/chat), transitorio
 let iaChatHistory = [];    // historial de chat en memoria, no se guarda en window.storage
 
+/* ---------- Generador de IDs únicos para propuestas de IA (5D-2.1) ----------
+   Contador interno en memoria, independiente de iaProposals.length, para que
+   cada propuesta pueda tener un identificador estable propio en pasos futuros.
+   De momento NO se usa en ningún sitio: solo queda preparado. No se persiste,
+   no modifica tareas/eventos ni el comportamiento actual de las propuestas. */
+let iaProposalSeq = 0;
+function nextIAProposalId(){
+  iaProposalSeq += 1;
+  return `ia-${iaProposalSeq}`;
+}
+
 /* ---------- Llamada a la IA ----------
    El navegador NUNCA llama directamente a Anthropic ni conoce ninguna API key:
    habla con nuestro propio endpoint serverless de Vercel (/api/ai), que es
