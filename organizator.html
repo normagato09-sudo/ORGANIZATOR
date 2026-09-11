@@ -349,8 +349,14 @@
      más de un origen (kinds.length>1) en el mismo bloque ocupado. */
   .semana-day-body .semana-ag-task{background:var(--task-bg);border-radius:8px;padding:4px 6px;}
   .semana-day-body .semana-ag-task .ia-ag-title{color:var(--task);}
-  .semana-day-body .semana-ag-conflict{background:#FBEAE8;border-radius:8px;padding:4px 6px;}
-  .semana-day-body .semana-ag-conflict .ia-ag-title{color:var(--alta);}
+  /* 5C-5: el conflicto ya se distinguía por color de fondo/texto; se
+     refuerza con una franja lateral y una etiqueta de texto ("conflicto")
+     para que sea legible de un vistazo, sin añadir ningún dato nuevo:
+     sigue mostrando exactamente label/horario/ids que ya calculaba
+     buildDayBlocks(). */
+  .semana-day-body .semana-ag-conflict{background:#FBEAE8;border-radius:8px;padding:4px 6px 4px 9px;border-left:3px solid var(--alta);}
+  .semana-day-body .semana-ag-conflict .ia-ag-title{color:var(--alta);font-weight:700;}
+  .semana-day-body .ia-tag.conflict{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(192,69,59,0.14);color:var(--alta);border:1px solid rgba(192,69,59,0.4);margin-left:6px;vertical-align:middle;}
   .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
   .cal-cell{
     background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -1277,11 +1283,15 @@ function renderSemanaAgenda(blocks){
       icon = isConflict ? '⚠️' : (isTask ? '📚' : '🔒');
       label = b.label;
     }
+    // Etiqueta de texto solo informativa ("conflicto"): no añade datos que
+    // buildDayBlocks() no haya calculado ya (mismo label/horario/ids), no
+    // indica cuál origen "gana" ni propone ninguna resolución.
+    const conflictTag = (b.type === 'busy' && b.ids && b.ids.length > 1) ? '<span class="ia-tag conflict">conflicto</span>' : '';
     const idsAttr = (b.ids && b.ids.length) ? ` data-block-ids="${esc(JSON.stringify(b.ids))}"` : '';
     return `<div class="ia-ag-row ${rowClass}"${idsAttr}>
       <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
       <div class="ia-ag-icon">${icon}</div>
-      <div class="ia-ag-body"><div class="ia-ag-title">${esc(label)}</div></div>
+      <div class="ia-ag-body"><div class="ia-ag-title">${esc(label)}${conflictTag}</div></div>
     </div>`;
   }).join('')}</div>`;
 }
