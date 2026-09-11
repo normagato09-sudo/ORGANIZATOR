@@ -1244,12 +1244,17 @@ function weekRangeLabel(days){
    duplicar estructura, pero es una función propia de Semana (no toca
    renderDayAgendaList ni su uso en Inicio) porque aquí necesitamos:
    1) distinguir dentro de los bloques "busy" cuáles son una tarea ya
-      planificada (📚, kinds=['task']) de un bloque fijo/evento (🔒), usando
-      el campo `kinds` que buildDayBlocks() YA calcula — no se inventa nada;
+      planificada (📚) de un bloque fijo/evento (🔒), usando el campo `kinds`
+      que buildDayBlocks() YA calcula — no se inventa nada;
    2) marcar como conflicto (⚠️) un bloque "busy" que buildDayBlocks() ya
-      fusionó a partir de más de un origen solapado (kinds.length>1) — esa
-      fusión ya la hace buildDayBlocks(), aquí solo se lee `kinds`, no se
-      crea ninguna regla de conflicto nueva;
+      fusionó a partir de MÁS DE UN ORIGEN solapado — esa fusión ya la hace
+      buildDayBlocks() y ya deja constancia en `ids`/`labels` (un id/label
+      por origen fusionado, en el mismo orden); `ids.length>1` es la señal
+      correcta de "más de un origen", no `kinds.length>1`: dos tareas
+      distintas solapadas entre sí comparten `kind:'task'` pero son dos
+      `ids` distintos, y también son un conflicto real (5C-4.4: detectado
+      al auditar la representación visual, corregido sin tocar
+      scheduler.js — se sigue leyendo únicamente lo que ya calculaba);
    3) conservar los `ids` de cada bloque como atributo data-block-ids, para
       poder identificar qué tarea/evento es cada fila en pasos futuros;
    Los tipos "free" y "past" se pintan exactamente igual que ya los pinta
@@ -1262,10 +1267,11 @@ function renderSemanaAgenda(blocks){
     } else if(b.type === 'past'){
       rowClass = 'ia-ag-past'; icon = '⏳'; label = 'Ya pasó';
     } else {
-      // 'busy': kinds ya viene de buildDayBlocks (schedule/event/task,
-      // puede haber más de uno si se fusionaron bloques solapados)
+      // 'busy': ids/labels vienen ya fusionados por buildDayBlocks (un
+      // id por origen solapado, aunque compartan el mismo kind); kinds
+      // solo distingue schedule/event/task, no cuántos orígenes hay.
       const kinds = b.kinds || [];
-      const isConflict = kinds.length > 1;
+      const isConflict = !!(b.ids && b.ids.length > 1);
       const isTask = !isConflict && kinds[0] === 'task';
       rowClass = 'ia-ag-busy' + (isConflict ? ' semana-ag-conflict' : (isTask ? ' semana-ag-task' : ''));
       icon = isConflict ? '⚠️' : (isTask ? '📚' : '🔒');
