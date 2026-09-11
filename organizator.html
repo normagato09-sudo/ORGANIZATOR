@@ -723,6 +723,7 @@ let state = {
 window.state = state; // necesario para que js/ai-actions.js (archivo aparte) pueda leer/escribir el mismo state
 let currentView = 'inicio';
 let cal = { year:0, month:0, selected:null };
+let week = { anchorDate: todayStr() }; // fecha ancla de la vista Semana (de momento solo lógica, sin UI todavía)
 
 /* ==================================================================
    UTILIDADES DE FECHA
@@ -773,6 +774,39 @@ function schedulesForDow(dow){
   return state.customSchedules
     .filter(s => Array.isArray(s.days) && s.days.includes(dow))
     .sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
+}
+
+/* ==================================================================
+   VISTA SEMANA — estado y cálculo de fechas (todavía sin interfaz)
+   Reutiliza parseYMD/pad/dowOfDate ya existentes; nada de esto pinta UI.
+   ================================================================== */
+function addDays(dateStr, n){
+  // Suma (o resta, con n negativo) días a una fecha YYYY-MM-DD sin problemas
+  // de zona horaria: parseYMD crea la fecha en horario local a medianoche,
+  // y Date#setDate ya gestiona correctamente los saltos de mes/año.
+  const d = parseYMD(dateStr);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+function getWeekMonday(dateStr){
+  // Lunes de la semana que contiene dateStr (dowOfDate: 0=Lunes...6=Domingo)
+  return addDays(dateStr, -dowOfDate(dateStr));
+}
+function getWeekDays(dateStr){
+  // Los 7 días (YYYY-MM-DD) de la semana de dateStr, de lunes a domingo
+  const monday = getWeekMonday(dateStr);
+  const days = [];
+  for(let i=0; i<7; i++) days.push(addDays(monday, i));
+  return days;
+}
+function weekGoForward(){
+  week.anchorDate = addDays(week.anchorDate, 7);
+}
+function weekGoBackward(){
+  week.anchorDate = addDays(week.anchorDate, -7);
+}
+function weekGoToToday(){
+  week.anchorDate = todayStr();
 }
 
 /* ==================================================================
