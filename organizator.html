@@ -117,6 +117,16 @@
   }
   .view{display:none;}
   .view.active{display:block;}
+  /* 5C-7: main max-width:820px está pensado para el feed de Inicio, pero
+     deja las 7 columnas de Semana innecesariamente apretadas en escritorio
+     (ej. 1366–1920px de ventana, donde sobra espacio de sobra a la derecha
+     del rail+aside). Se amplía SOLO cuando Semana es la vista activa,
+     reutilizando la misma clase .active que ya pone showView() — cuando
+     Inicio o Calendario están activos esta regla no aplica en absoluto,
+     así que su ancho/comportamiento no cambia ni un píxel. Navegadores sin
+     soporte de :has() simplemente no aplican esta línea y Semana conserva
+     el max-width:820px de siempre (degradación segura, no rotura). */
+  main:has(#view-semana.active){max-width:1400px;}
 
   .greeting{font-size:13px;color:var(--ink-soft);margin:0 0 2px;font-weight:500;}
   .date{font-size:30px;font-weight:600;margin:0 0 34px;}
@@ -327,7 +337,11 @@
 
   /* ---------- Semana (cuadrícula de 7 días, ver renderSemana()) ---------- */
   .semana-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;align-items:start;}
-  .semana-day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:120px;display:flex;flex-direction:column;gap:8px;}
+  /* min-width:0 evita que cada día (ítem de grid) se niegue a encogerse
+     por debajo de su min-content en anchuras intermedias (tablet): sin
+     esto, con 7 columnas apretadas, el contenido puede desbordar en vez
+     de encogerse — mismo patrón que minmax(0,1fr) ya usa en .app. */
+  .semana-day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:120px;min-width:0;display:flex;flex-direction:column;gap:8px;}
   .semana-day.today{border-color:var(--ink);border-width:1.5px;}
   .semana-day-head{display:flex;flex-direction:column;gap:1px;}
   .semana-day-name{font-size:12px;font-weight:600;}
@@ -338,10 +352,19 @@
      tiene fondo claro, así que solo se ajustan color/tamaño para mantener
      contraste — no se toca .ia-block ni el renderer de Inicio/Calendario. */
   .semana-day-body .ia-agenda{gap:0;}
-  .semana-day-body .ia-ag-row{border-bottom:1px solid var(--line);padding:6px 0;gap:6px;}
-  .semana-day-body .ia-ag-time{width:auto;white-space:normal;font-size:10px;color:var(--ink-soft);}
+  /* La fila original de .ia-ag-row (Inicio) pone horario+icono+título en
+     una sola línea horizontal; en una columna de 7 días eso deja al
+     título una franja mínima (pocos px) y cualquier palabra normal se
+     partía letra a letra. Con flex-wrap + el título a flex-basis:100%,
+     horario e icono comparten la primera línea (ambos son flex:none, muy
+     estrechos) y el título baja a su propia línea usando el ANCHO
+     COMPLETO de la tarjeta — sin tocar el marcado ni el .ia-ag-row base
+     que usa Inicio (esto solo aplica dentro de .semana-day-body). */
+  .semana-day-body .ia-ag-row{border-bottom:1px solid var(--line);padding:6px 0;gap:2px 6px;flex-wrap:wrap;}
+  .semana-day-body .ia-ag-time{width:auto;white-space:normal;font-size:10px;color:var(--ink-soft);overflow-wrap:anywhere;}
   .semana-day-body .ia-ag-icon{font-size:11px;}
-  .semana-day-body .ia-ag-title{font-size:11.5px;color:var(--ink);}
+  .semana-day-body .ia-ag-body{flex-basis:100%;}
+  .semana-day-body .ia-ag-title{font-size:11.5px;color:var(--ink);overflow-wrap:anywhere;}
   .semana-day-body .ia-ag-free .ia-ag-title{color:var(--ink-soft);font-weight:500;}
   .semana-day-body .ia-ag-past{opacity:.5;}
   /* Distinción adicional mínima: tarea ya planificada (📚) vs bloque
@@ -461,6 +484,25 @@
   .update-banner.show{bottom:22px;}
   .update-banner button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.24);color:var(--paper);font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;}
   .update-banner button:hover{background:rgba(255,255,255,0.22);}
+
+  /* ---------- 5C-7: Semana en tablet ----------
+     Entre el ancho de escritorio completo y el breakpoint móvil (920px,
+     donde ya se apila a 1 columna) hay un rango — portátiles estrechos,
+     tablets en horizontal — en el que .app SIGUE mostrando rail+aside y
+     las 7 columnas de Semana empiezan a quedar apretadas. Aquí solo se
+     compacta el propio bloque de Semana (gaps/paddings/tamaños de fuente)
+     para conservar legibilidad; se mantienen las 7 columnas, el rail y
+     el aside tal cual (no se toca .app, nav.rail ni aside). */
+  @media (min-width:921px) and (max-width:1180px){
+    .semana-grid{gap:6px;}
+    .semana-day{padding:7px;min-height:104px;gap:6px;}
+    .semana-day-name{font-size:11px;}
+    .semana-day-date{font-size:10px;}
+    .semana-day-body .ia-ag-row{padding:5px 0;gap:4px;}
+    .semana-day-body .ia-ag-time{font-size:9px;}
+    .semana-day-body .ia-ag-icon{font-size:10px;}
+    .semana-day-body .ia-ag-title{font-size:10.5px;}
+  }
 
   @media (max-width:920px){
     .app, .app.no-aside{grid-template-columns:minmax(0,1fr);}
