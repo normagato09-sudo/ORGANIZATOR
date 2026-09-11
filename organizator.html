@@ -2309,8 +2309,8 @@ function renderDayAgendaList(mergedBlocks, dateForApply){
   const icon = { busy: '🔒', free: '🟢', past: '⏳', proposal: '📚' };
   return `<div class="ia-agenda">${mergedBlocks.map(b => {
     if(b.type === 'proposal'){
-      const idx = iaProposals.length;
-      iaProposals.push({ id: nextIAProposalId(), source: 'day', status: 'pending', title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply });
+      const proposal = { id: nextIAProposalId(), source: 'day', status: 'pending', title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply };
+      iaProposals.push(proposal);
       return `<div class="ia-ag-row ia-ag-proposal">
         <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
         <div class="ia-ag-icon">${icon.proposal}</div>
@@ -2318,8 +2318,8 @@ function renderDayAgendaList(mergedBlocks, dateForApply){
           <div class="ia-ag-title">${esc(b.title)}<span class="ia-tag proposal">propuesta IA</span></div>
           ${b.reason ? `<div class="ia-tl-tag">${esc(b.reason)}</div>` : ''}
           <div class="ia-tl-actions">
-            <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
-            <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+            <button class="ia-mini-btn" data-ia-apply="${proposal.id}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${proposal.id}">Descartar</button>
           </div>
         </div>
       </div>`;
@@ -2364,8 +2364,8 @@ function renderIAItemHTML(it, dateForApply){
       </div>
     </div>`;
   }
-  const idx = iaProposals.length;
-  iaProposals.push({ ...it, id: nextIAProposalId(), source: 'week', status: 'pending', applyDate: dateForApply });
+  const proposal = { ...it, id: nextIAProposalId(), source: 'week', status: 'pending', applyDate: dateForApply };
+  iaProposals.push(proposal);
   return `<div class="ia-tl-item">
     <div class="ia-tl-time">${esc(it.time||'—')}</div>
     <div class="ia-tl-bar proposal"></div>
@@ -2373,8 +2373,8 @@ function renderIAItemHTML(it, dateForApply){
       <div class="ia-tl-title">${esc(it.title)}<span class="ia-tag proposal">propuesta IA</span></div>
       ${it.reason ? `<div class="ia-tl-tag">${esc(it.reason)}</div>` : ''}
       <div class="ia-tl-actions">
-        <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
-        <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+        <button class="ia-mini-btn" data-ia-apply="${proposal.id}">✓ Añadir al plan</button>
+        <button class="ia-mini-ghost" data-ia-discard="${proposal.id}">Descartar</button>
       </div>
     </div>
   </div>`;
@@ -2382,7 +2382,7 @@ function renderIAItemHTML(it, dateForApply){
 function wireIAProposalButtons(container){
   container.querySelectorAll('[data-ia-apply]').forEach(b=>{
     b.addEventListener('click', async ()=>{
-      const it = iaProposals[Number(b.dataset.iaApply)];
+      const it = getIAProposalById(b.dataset.iaApply);
       if(!it || b.disabled) return;
       b.disabled = true;
       await applyIAProposal(it, it.applyDate || todayStr());
@@ -2391,7 +2391,11 @@ function wireIAProposalButtons(container){
     });
   });
   container.querySelectorAll('[data-ia-discard]').forEach(b=>{
-    b.addEventListener('click', ()=>{ b.closest('.ia-tl-item').remove(); });
+    b.addEventListener('click', ()=>{
+      const it = getIAProposalById(b.dataset.iaDiscard);
+      if(!it) return;
+      b.closest('.ia-tl-item').remove();
+    });
   });
 }
 async function applyIAProposal(it, date){
@@ -2467,8 +2471,8 @@ async function runIADay(){
     // 4) Propuestas que no encontraron hueco hoy: se muestran aparte,
     // sin hora, con el motivo (se pueden añadir igualmente como tarea).
     const unplacedHtml = unplaced.length ? `<div class="ia-timeline">${unplaced.map(t => {
-      const idx = iaProposals.length;
-      iaProposals.push({ id: nextIAProposalId(), source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today });
+      const proposal = { id: nextIAProposalId(), source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today };
+      iaProposals.push(proposal);
       return `<div class="ia-tl-item">
         <div class="ia-tl-time">—</div>
         <div class="ia-tl-bar proposal"></div>
@@ -2476,8 +2480,8 @@ async function runIADay(){
           <div class="ia-tl-title">${esc(t.title)}<span class="ia-tag proposal">propuesta IA</span></div>
           <div class="ia-tl-tag">${esc(t.schedulingWarning || 'Sin hueco libre suficiente hoy — se añadirá sin hora fija.')}</div>
           <div class="ia-tl-actions">
-            <button class="ia-mini-btn" data-ia-apply="${idx}">✓ Añadir al plan</button>
-            <button class="ia-mini-ghost" data-ia-discard="${idx}">Descartar</button>
+            <button class="ia-mini-btn" data-ia-apply="${proposal.id}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${proposal.id}">Descartar</button>
           </div>
         </div>
       </div>`;
