@@ -2063,16 +2063,10 @@ async function deleteAllData(){
    ================================================================== */
 let iaProposals = [];      // propuestas activas de la última respuesta (día/semana/chat), transitorio
 let iaChatHistory = [];    // historial de chat en memoria, no se guarda en window.storage
-
-/* ---------- Generador de IDs únicos para propuestas de IA (5D-2.1) ----------
-   Contador interno en memoria, independiente de iaProposals.length, para que
-   cada propuesta pueda tener un identificador estable propio en pasos futuros.
-   De momento NO se usa en ningún sitio: solo queda preparado. No se persiste,
-   no modifica tareas/eventos ni el comportamiento actual de las propuestas. */
-let iaProposalSeq = 0;
+let iaProposalSeq = 0;     // contador interno para generar ids únicos de propuestas de IA
 function nextIAProposalId(){
   iaProposalSeq += 1;
-  return `ia-${iaProposalSeq}`;
+  return 'ia-' + iaProposalSeq;
 }
 
 /* ---------- Llamada a la IA ----------
@@ -2313,7 +2307,7 @@ function renderDayAgendaList(mergedBlocks, dateForApply){
   return `<div class="ia-agenda">${mergedBlocks.map(b => {
     if(b.type === 'proposal'){
       const idx = iaProposals.length;
-      iaProposals.push({ id: nextIAProposalId(), title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply });
+      iaProposals.push({ id: nextIAProposalId(), source: 'day', status: 'pending', title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply });
       return `<div class="ia-ag-row ia-ag-proposal">
         <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
         <div class="ia-ag-icon">${icon.proposal}</div>
@@ -2368,7 +2362,7 @@ function renderIAItemHTML(it, dateForApply){
     </div>`;
   }
   const idx = iaProposals.length;
-  iaProposals.push({ ...it, id: nextIAProposalId(), applyDate: dateForApply });
+  iaProposals.push({ ...it, id: nextIAProposalId(), source: 'week', status: 'pending', applyDate: dateForApply });
   return `<div class="ia-tl-item">
     <div class="ia-tl-time">${esc(it.time||'—')}</div>
     <div class="ia-tl-bar proposal"></div>
@@ -2471,7 +2465,7 @@ async function runIADay(){
     // sin hora, con el motivo (se pueden añadir igualmente como tarea).
     const unplacedHtml = unplaced.length ? `<div class="ia-timeline">${unplaced.map(t => {
       const idx = iaProposals.length;
-      iaProposals.push({ id: nextIAProposalId(), title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today });
+      iaProposals.push({ id: nextIAProposalId(), source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today });
       return `<div class="ia-tl-item">
         <div class="ia-tl-time">—</div>
         <div class="ia-tl-bar proposal"></div>
