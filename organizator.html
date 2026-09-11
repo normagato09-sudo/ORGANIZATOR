@@ -2068,6 +2068,12 @@ function nextIAProposalId(){
   iaProposalSeq += 1;
   return 'ia-' + iaProposalSeq;
 }
+let iaBatchSeq = 0;
+
+function nextIABatchId() {
+    iaBatchSeq += 1;
+    return `ia-batch-${iaBatchSeq}`;
+}
 function getIAProposalById(id) {
     return iaProposals.find(p => p.id === id) || null;
 }
