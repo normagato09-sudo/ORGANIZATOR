@@ -324,6 +324,15 @@
   }
   .cal-nav button:hover{border-color:var(--ink-soft);}
   .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:26px;}
+
+  /* ---------- Semana (cuadrícula de 7 días, ver renderSemana()) ---------- */
+  .semana-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;align-items:start;}
+  .semana-day{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;min-height:120px;display:flex;flex-direction:column;gap:8px;}
+  .semana-day.today{border-color:var(--ink);border-width:1.5px;}
+  .semana-day-head{display:flex;flex-direction:column;gap:1px;}
+  .semana-day-name{font-size:12px;font-weight:600;}
+  .semana-day-date{font-size:11px;color:var(--ink-soft);}
+  .semana-day-body{flex:1;}
   .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
   .cal-cell{
     background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -455,6 +464,8 @@
     .rail-item .ic{width:30px;height:30px;font-size:15px;flex:none;}
     .rail-item .lb{font-size:14px;}
     .rail-item.settings{margin-top:auto;}
+
+    .semana-grid{grid-template-columns:1fr;}
 
     /* ---------- Legibilidad y tacto en móvil ---------- */
     /* iOS hace zoom automático al enfocar cualquier input/select con
@@ -639,6 +650,7 @@
             <button id="semana-next" title="Semana siguiente">›</button>
           </div>
         </div>
+        <div class="semana-grid" id="semana-grid"></div>
       </section>
     </div>
 
@@ -1211,6 +1223,22 @@ function weekRangeLabel(days){
 function renderSemana(){
   const days = getWeekDays(week.anchorDate);
   document.getElementById('semana-title').textContent = weekRangeLabel(days);
+
+  const today = todayStr();
+  const grid = document.getElementById('semana-grid');
+  grid.innerHTML = days.map((dateStr, i) => {
+    const d = parseYMD(dateStr);
+    const dayName = DOW_FULL_MONFIRST[i];
+    const dayDate = `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
+    return `
+      <div class="semana-day ${dateStr===today?'today':''}" data-date="${dateStr}">
+        <div class="semana-day-head">
+          <span class="semana-day-name">${dayName}</span>
+          <span class="semana-day-date">${dayDate}</span>
+        </div>
+        <div class="semana-day-body"></div>
+      </div>`;
+  }).join('');
 }
 document.getElementById('semana-prev').addEventListener('click', ()=>{ weekGoBackward(); renderSemana(); });
 document.getElementById('semana-next').addEventListener('click', ()=>{ weekGoForward(); renderSemana(); });
