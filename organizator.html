@@ -349,6 +349,11 @@
      más de un origen (kinds.length>1) en el mismo bloque ocupado. */
   .semana-day-body .semana-ag-task{background:var(--task-bg);border-radius:8px;padding:4px 6px;}
   .semana-day-body .semana-ag-task .ia-ag-title{color:var(--task);}
+  /* 5C-6: tarea completada (task.done===true) — mismo bloque de tarea,
+     atenuado y con el título tachado, igual que .task-row.done en el
+     resto de la app; no cambia horario, label ni ids. */
+  .semana-day-body .semana-ag-task-done{opacity:.6;}
+  .semana-day-body .semana-ag-task-done .ia-ag-title{text-decoration:line-through;}
   /* 5C-5: el conflicto ya se distinguía por color de fondo/texto; se
      refuerza con una franja lateral y una etiqueta de texto ("conflicto")
      para que sea legible de un vistazo, sin añadir ningún dato nuevo:
@@ -1279,8 +1284,19 @@ function renderSemanaAgenda(blocks){
       const kinds = b.kinds || [];
       const isConflict = !!(b.ids && b.ids.length > 1);
       const isTask = !isConflict && kinds[0] === 'task';
-      rowClass = 'ia-ag-busy' + (isConflict ? ' semana-ag-conflict' : (isTask ? ' semana-ag-task' : ''));
-      icon = isConflict ? '⚠️' : (isTask ? '📚' : '🔒');
+      // 5C-6: task.done es la única fuente de verdad para "completada".
+      // Solo se consulta cuando el bloque es una única tarea sin conflicto
+      // (isTask ya excluye isConflict); un conflicto con varios ids sigue
+      // mostrándose como ⚠️ aunque alguna de las tareas implicadas esté
+      // hecha (no se oculta el conflicto). No se lee ni modifica ningún
+      // otro campo de la tarea.
+      let taskDone = false;
+      if(isTask && b.ids && b.ids.length === 1){
+        const t = state.tasks.find(t => t.id === b.ids[0]);
+        taskDone = !!(t && t.done === true);
+      }
+      rowClass = 'ia-ag-busy' + (isConflict ? ' semana-ag-conflict' : (isTask ? ' semana-ag-task' + (taskDone ? ' semana-ag-task-done' : '') : ''));
+      icon = isConflict ? '⚠️' : (isTask ? (taskDone ? '✅' : '📚') : '🔒');
       label = b.label;
     }
     // Etiqueta de texto solo informativa ("conflicto"): no añade datos que
