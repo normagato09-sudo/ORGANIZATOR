@@ -305,29 +305,29 @@
     const raw = [];
     (context.customSchedules || [])
       .filter(s => Array.isArray(s.days) && s.days.includes(dow) && s.startTime && s.endTime)
-      .forEach(s => raw.push({ start: timeToMin(s.startTime), end: timeToMin(s.endTime), label: s.name, kind: 'schedule' }));
+      .forEach(s => raw.push({ start: timeToMin(s.startTime), end: timeToMin(s.endTime), label: s.name, kind: 'schedule', id: s.id }));
 
     (context.events || []).forEach(e => {
       const start = e.date, end = e.endDate || e.date;
       if (dateStr < start || dateStr > end) return;
-      if (e.allDay) { raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event' }); return; }
+      if (e.allDay) { raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event', id: e.id }); return; }
       if (e.startTime) {
         const s = timeToMin(e.startTime);
         const en = e.endTime ? timeToMin(e.endTime) : s + 60;
-        raw.push({ start: s, end: en, label: e.title, kind: 'event' });
+        raw.push({ start: s, end: en, label: e.title, kind: 'event', id: e.id });
       }
     });
 
     (context.tasks || []).forEach(t => {
       if (opts && opts.excludeTaskId && t.id === opts.excludeTaskId) return;
       if (t.scheduledDate === dateStr && t.scheduledStart && t.scheduledEnd) {
-        raw.push({ start: timeToMin(t.scheduledStart), end: timeToMin(t.scheduledEnd), label: t.title, kind: 'task' });
+        raw.push({ start: timeToMin(t.scheduledStart), end: timeToMin(t.scheduledEnd), label: t.title, kind: 'task', id: t.id });
       }
     });
 
     // 2) Fusionar los que se solapen (caso raro, pero posible), uniendo etiquetas.
     const clipped = raw
-      .map(b => ({ start: Math.max(0, b.start), end: Math.min(24 * 60, b.end), label: b.label, kind: b.kind }))
+      .map(b => ({ start: Math.max(0, b.start), end: Math.min(24 * 60, b.end), label: b.label, kind: b.kind, id: b.id }))
       .filter(b => b.end > b.start)
       .sort((a, b) => a.start - b.start || a.end - b.end);
 
@@ -336,10 +336,13 @@
       const last = merged[merged.length - 1];
       if (last && b.start < last.end) {
         last.end = Math.max(last.end, b.end);
-        if (!last.labels.includes(b.label)) last.labels.push(b.label);
+        // `ids` se mantiene en paralelo con `labels`: se añade en el mismo
+        // momento y bajo la misma condición que la etiqueta, así
+        // ids[i] siempre corresponde a labels[i] (misma posición).
+        if (!last.labels.includes(b.label)) { last.labels.push(b.label); last.ids.push(b.id); }
         if (!last.kinds.includes(b.kind)) last.kinds.push(b.kind);
       } else {
-        merged.push({ start: b.start, end: b.end, labels: [b.label], kinds: [b.kind] });
+        merged.push({ start: b.start, end: b.end, labels: [b.label], kinds: [b.kind], ids: [b.id] });
       }
     });
 
@@ -356,8 +359,8 @@
         blocks.push({ type: 'free', start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: 'Tiempo libre' });
       }
     };
-    const pushBusy = (s, e, labels, kinds) => {
-      blocks.push({ type: 'busy', start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: labels.join(' + '), kinds });
+    const pushBusy = (s, e, labels, kinds, ids) => {
+      blocks.push({ type: 'busy', start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: labels.join(' + '), kinds, ids });
     };
 
     let cursor = dayStartMin;
@@ -366,7 +369,7 @@
       const e = Math.min(b.end, dayEndMin);
       if (e <= dayStartMin || s >= dayEndMin || e <= cursor) return;
       if (s > cursor) pushFree(cursor, s);
-      pushBusy(Math.max(s, cursor), e, b.labels, b.kinds);
+      pushBusy(Math.max(s, cursor), e, b.labels, b.kinds, b.ids);
       cursor = Math.max(cursor, e);
     });
     if (cursor < dayEndMin) pushFree(cursor, dayEndMin);
