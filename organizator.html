@@ -548,6 +548,7 @@
     <div class="rail-logo">O</div>
     <button class="rail-item active" data-view="inicio"><div class="ic">🏠︎</div><div class="lb">Inicio</div></button>
     <button class="rail-item" data-view="calendario"><div class="ic">📅</div><div class="lb">Calendario</div></button>
+    <button class="rail-item" data-view="semana"><div class="ic">🗓️</div><div class="lb">Semana</div></button>
     <button class="rail-item settings" data-view="ajustes"><div class="ic">⚙️</div><div class="lb">Ajustes</div></button>
   </nav>
 
@@ -948,6 +949,7 @@ function showView(name){
 function renderCurrentView(){
   if(currentView === 'inicio') renderInicio();
   else if(currentView === 'calendario') renderCalendar();
+  else if(currentView === 'semana') renderSemana();
   else if(currentView === 'ajustes') renderAjustes();
 }
 
