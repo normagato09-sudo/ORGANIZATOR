@@ -333,6 +333,24 @@
   .semana-day-name{font-size:12px;font-weight:600;}
   .semana-day-date{font-size:11px;color:var(--ink-soft);}
   .semana-day-body{flex:1;}
+  /* Reutiliza las filas .ia-ag-* de renderDayAgendaList() (Inicio), pero
+     ahí viven dentro de .ia-block con fondo oscuro; aquí .semana-day
+     tiene fondo claro, así que solo se ajustan color/tamaño para mantener
+     contraste — no se toca .ia-block ni el renderer de Inicio/Calendario. */
+  .semana-day-body .ia-agenda{gap:0;}
+  .semana-day-body .ia-ag-row{border-bottom:1px solid var(--line);padding:6px 0;gap:6px;}
+  .semana-day-body .ia-ag-time{width:auto;white-space:normal;font-size:10px;color:var(--ink-soft);}
+  .semana-day-body .ia-ag-icon{font-size:11px;}
+  .semana-day-body .ia-ag-title{font-size:11.5px;color:var(--ink);}
+  .semana-day-body .ia-ag-free .ia-ag-title{color:var(--ink-soft);font-weight:500;}
+  .semana-day-body .ia-ag-past{opacity:.5;}
+  /* Distinción adicional mínima: tarea ya planificada (📚) vs bloque
+     fijo/evento (🔒), y conflicto (⚠️) cuando buildDayBlocks() ya fusionó
+     más de un origen (kinds.length>1) en el mismo bloque ocupado. */
+  .semana-day-body .semana-ag-task{background:var(--task-bg);border-radius:8px;padding:4px 6px;}
+  .semana-day-body .semana-ag-task .ia-ag-title{color:var(--task);}
+  .semana-day-body .semana-ag-conflict{background:#FBEAE8;border-radius:8px;padding:4px 6px;}
+  .semana-day-body .semana-ag-conflict .ia-ag-title{color:var(--alta);}
   .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
   .cal-cell{
     background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -1220,6 +1238,47 @@ function weekRangeLabel(days){
   }
   return `${start.getDate()} ${MONTH_NAMES[start.getMonth()]} ${start.getFullYear()} – ${end.getDate()} ${MONTH_NAMES[end.getMonth()]} ${end.getFullYear()}`;
 }
+/* ---------- Semana: representación visual de los bloques de buildDayBlocks() ----------
+   Reutiliza el mismo marcado/clases que renderDayAgendaList() (.ia-agenda,
+   .ia-ag-row, .ia-ag-time, .ia-ag-icon, .ia-ag-body, .ia-ag-title) para no
+   duplicar estructura, pero es una función propia de Semana (no toca
+   renderDayAgendaList ni su uso en Inicio) porque aquí necesitamos:
+   1) distinguir dentro de los bloques "busy" cuáles son una tarea ya
+      planificada (📚, kinds=['task']) de un bloque fijo/evento (🔒), usando
+      el campo `kinds` que buildDayBlocks() YA calcula — no se inventa nada;
+   2) marcar como conflicto (⚠️) un bloque "busy" que buildDayBlocks() ya
+      fusionó a partir de más de un origen solapado (kinds.length>1) — esa
+      fusión ya la hace buildDayBlocks(), aquí solo se lee `kinds`, no se
+      crea ninguna regla de conflicto nueva;
+   3) conservar los `ids` de cada bloque como atributo data-block-ids, para
+      poder identificar qué tarea/evento es cada fila en pasos futuros;
+   Los tipos "free" y "past" se pintan exactamente igual que ya los pinta
+   renderDayAgendaList() (mismo icono, mismo texto). */
+function renderSemanaAgenda(blocks){
+  return `<div class="ia-agenda">${blocks.map(b => {
+    let rowClass, icon, label;
+    if(b.type === 'free'){
+      rowClass = 'ia-ag-free'; icon = '🟢'; label = 'Tiempo libre';
+    } else if(b.type === 'past'){
+      rowClass = 'ia-ag-past'; icon = '⏳'; label = 'Ya pasó';
+    } else {
+      // 'busy': kinds ya viene de buildDayBlocks (schedule/event/task,
+      // puede haber más de uno si se fusionaron bloques solapados)
+      const kinds = b.kinds || [];
+      const isConflict = kinds.length > 1;
+      const isTask = !isConflict && kinds[0] === 'task';
+      rowClass = 'ia-ag-busy' + (isConflict ? ' semana-ag-conflict' : (isTask ? ' semana-ag-task' : ''));
+      icon = isConflict ? '⚠️' : (isTask ? '📚' : '🔒');
+      label = b.label;
+    }
+    const idsAttr = (b.ids && b.ids.length) ? ` data-block-ids="${esc(JSON.stringify(b.ids))}"` : '';
+    return `<div class="ia-ag-row ${rowClass}"${idsAttr}>
+      <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
+      <div class="ia-ag-icon">${icon}</div>
+      <div class="ia-ag-body"><div class="ia-ag-title">${esc(label)}</div></div>
+    </div>`;
+  }).join('')}</div>`;
+}
 function renderSemana(){
   const days = getWeekDays(week.anchorDate);
   document.getElementById('semana-title').textContent = weekRangeLabel(days);
@@ -1229,14 +1288,15 @@ function renderSemana(){
   // Mismo contexto de solo lectura que usa el resto de la app (Inicio,
   // "Organizar mi día/semana"): Semana NO recalcula nada, solo pide a
   // Scheduler.buildDayBlocks() la agenda real de cada día y la pinta con
-  // el mismo renderer que ya usa la vista diaria (renderDayAgendaList).
+  // renderSemanaAgenda() (mismo marcado que renderDayAgendaList, adaptado
+  // al fondo claro de las tarjetas y con distinción visual adicional).
   const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
   grid.innerHTML = days.map((dateStr, i) => {
     const d = parseYMD(dateStr);
     const dayName = DOW_FULL_MONFIRST[i];
     const dayDate = `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
     const agendaHtml = window.Scheduler
-      ? renderDayAgendaList(window.Scheduler.buildDayBlocks(dateStr, schedCtx).blocks, dateStr)
+      ? renderSemanaAgenda(window.Scheduler.buildDayBlocks(dateStr, schedCtx).blocks)
       : `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación).</p>`;
     return `
       <div class="semana-day ${dateStr===today?'today':''}" data-date="${dateStr}">
