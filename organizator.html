@@ -2313,7 +2313,7 @@ function renderDayAgendaList(mergedBlocks, dateForApply){
   return `<div class="ia-agenda">${mergedBlocks.map(b => {
     if(b.type === 'proposal'){
       const idx = iaProposals.length;
-      iaProposals.push({ title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply });
+      iaProposals.push({ id: nextIAProposalId(), title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply });
       return `<div class="ia-ag-row ia-ag-proposal">
         <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
         <div class="ia-ag-icon">${icon.proposal}</div>
@@ -2368,7 +2368,7 @@ function renderIAItemHTML(it, dateForApply){
     </div>`;
   }
   const idx = iaProposals.length;
-  iaProposals.push({ ...it, applyDate: dateForApply });
+  iaProposals.push({ ...it, id: nextIAProposalId(), applyDate: dateForApply });
   return `<div class="ia-tl-item">
     <div class="ia-tl-time">${esc(it.time||'—')}</div>
     <div class="ia-tl-bar proposal"></div>
@@ -2471,7 +2471,7 @@ async function runIADay(){
     // sin hora, con el motivo (se pueden añadir igualmente como tarea).
     const unplacedHtml = unplaced.length ? `<div class="ia-timeline">${unplaced.map(t => {
       const idx = iaProposals.length;
-      iaProposals.push({ title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today });
+      iaProposals.push({ id: nextIAProposalId(), title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today });
       return `<div class="ia-tl-item">
         <div class="ia-tl-time">—</div>
         <div class="ia-tl-bar proposal"></div>
