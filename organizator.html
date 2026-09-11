@@ -2068,6 +2068,9 @@ function nextIAProposalId(){
   iaProposalSeq += 1;
   return 'ia-' + iaProposalSeq;
 }
+function getIAProposalById(id) {
+    return iaProposals.find(p => p.id === id) || null;
+}
 
 /* ---------- Llamada a la IA ----------
    El navegador NUNCA llama directamente a Anthropic ni conoce ninguna API key:
