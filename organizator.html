@@ -2114,6 +2114,19 @@ function validateIAProposalBatch(batchId) {
         p.status
     );
 }
+function getIAProposalBatchSummary(batchId) {
+    const proposals = getIAProposalBatch(batchId, {
+        statuses: ['pending', 'applied', 'discarded']
+    });
+
+    return {
+        batchId,
+        total: proposals.length,
+        pending: proposals.filter(p => p.status === 'pending').length,
+        applied: proposals.filter(p => p.status === 'applied').length,
+        discarded: proposals.filter(p => p.status === 'discarded').length
+    };
+}
 let iaBatchSeq = 0;        // contador interno para generar ids únicos de lotes de propuestas
 
 function nextIABatchId() {
