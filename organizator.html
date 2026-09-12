@@ -2420,6 +2420,107 @@ function planWeekProposals(days, today, weekEnd, schedCtx){
   return resultDays;
 }
 
+/* ---------- Validación de propuestas semanales antes de mostrarlas (5E-3) ----------
+   Segunda barrera de seguridad, NO un segundo Scheduler: planWeekProposals()
+   (5E-2) ya coloca cada propuesta en un hueco real dentro de la semana
+   llamando a Scheduler.autoSchedule(). Esta función solo COMPRUEBA, justo
+   antes de registrar/renderizar cada propuesta, que esa colocación sigue
+   siendo válida contra el estado REAL actual (tareas, eventos, horario
+   fijo) — no recalcula huecos, no reimplementa getFreeSlots/autoSchedule,
+   y reutiliza directamente `Scheduler._internal.getBusyIntervals` (para
+   comprobar de una vez invasión de eventos + tareas + horario fijo, sin
+   duplicar esa lógica) y `Scheduler.findConflicts` (contrato ya existente,
+   añadiendo la propuesta como pseudo-tarea temporal solo para la consulta).
+
+   Función pura: no toca `state`, no toca `iaProposals`, no llama a la IA
+   ni a Scheduler.autoSchedule/rescheduleTask, y no lanza excepciones — una
+   propuesta inválida es un resultado normal a reportar, no un error.
+
+   Parámetros:
+     - item: propuesta ya colocada por planWeekProposals (con sourceType
+       'proposal'; se espera time/_endTime/_durationMinutes/_finalDate si
+       Scheduler le encontró hueco, o noSlot:true si no).
+     - applyDate: fecha (YYYY-MM-DD) en la que se aplicaría esta propuesta
+       (normalmente item._finalDate).
+     - schedCtx: { events, tasks, customSchedules } — el mismo contexto
+       real que ya se usa en planWeekProposals/autoSchedule.
+     - weekStart, weekEnd: horizonte de la semana que se está planificando.
+     - deadline: fecha límite blanda de esta propuesta (el día que se le
+       pidió a la IA, ya usado como dueDate dentro de planWeekProposals);
+       si no se indica, se usa weekEnd.
+
+   Devuelve { valid: true } o { valid: false, reason: string }. */
+function validateWeeklyProposal(item, applyDate, schedCtx, weekStart, weekEnd, deadline){
+  // A) la propuesta tiene fecha de aplicación
+  if(!applyDate){
+    return { valid:false, reason:'La propuesta no tiene una fecha asignada.' };
+  }
+
+  // B) esa fecha cae dentro de la semana que se está planificando
+  if(applyDate < weekStart || applyDate > weekEnd){
+    return { valid:false, reason:'La fecha quedó fuera de la semana planificada.' };
+  }
+
+  // Comportamiento de 5E-2 (punto 7 de esta fase): si Scheduler no le
+  // encontró hueco, la propuesta ya se muestra sin hora y con su propio
+  // aviso — no hay hora/duración que validar aquí.
+  if(item.noSlot || !item.time){
+    return { valid:true };
+  }
+
+  if(!window.Scheduler || !window.Scheduler._internal){
+    // Mismo criterio defensivo que el resto del módulo IA: sin Scheduler
+    // no se puede validar nada más, pero no se bloquea la propuesta por
+    // ello (ya se mostraba igual en 5E-2 sin este módulo).
+    return { valid:true };
+  }
+  const { timeToMin, getBusyIntervals } = window.Scheduler._internal;
+
+  // C) hora asignada con formato válido
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if(!HHMM.test(item.time) || !item._endTime || !HHMM.test(item._endTime)){
+    return { valid:false, reason:'La hora asignada por Scheduler no tiene un formato válido.' };
+  }
+
+  const startMin = timeToMin(item.time);
+  const endMin = timeToMin(item._endTime);
+
+  // D) duración válida (coherente con el intervalo hora inicio/fin)
+  const duration = item._durationMinutes;
+  if(!(duration > 0) || endMin <= startMin || (endMin - startMin) !== duration){
+    return { valid:false, reason:'La duración calculada no es válida.' };
+  }
+
+  // E) no termina después de su fecha límite (el día pedido a la IA,
+  // o el fin de la semana si no se indicó uno más concreto)
+  const limitDate = deadline || weekEnd;
+  if(applyDate > limitDate){
+    return { valid:false, reason:'La propuesta quedaría después de su fecha límite.' };
+  }
+
+  // F + G + H) no invade ningún evento, tarea ya programada u horario
+  // fijo real ese día — getBusyIntervals ya fusiona las tres fuentes.
+  const busy = getBusyIntervals(applyDate, schedCtx);
+  const invades = busy.some(([bs, be]) => startMin < be && endMin > bs);
+  if(invades){
+    return { valid:false, reason:'Choca con un evento, una tarea o un horario fijo ya existente.' };
+  }
+
+  // I) conflicto temporal — se reutiliza Scheduler.findConflicts() tal
+  // cual, añadiendo la propuesta como pseudo-tarea temporal solo para
+  // esta consulta (no se guarda en ningún sitio).
+  const probeId = `ia-validate-probe-${applyDate}-${item.time}-${(item.title || '').slice(0,20)}`;
+  const probeTasks = (schedCtx.tasks || []).concat([{
+    id: probeId, scheduledDate: applyDate, scheduledStart: item.time, scheduledEnd: item._endTime,
+  }]);
+  const conflicts = window.Scheduler.findConflicts(applyDate, Object.assign({}, schedCtx, { tasks: probeTasks }));
+  if(conflicts.includes(probeId)){
+    return { valid:false, reason:'Se detectó un conflicto temporal con la agenda actual.' };
+  }
+
+  return { valid: true };
+}
+
 /* ---------- Agenda visual 00:00–23:00 (solo lectura) ----------
    Se construye a partir de los mismos items ya resueltos (con hora y
    duración reales); no decide nada, solo dibuja lo que ya se calculó.
@@ -2718,6 +2819,25 @@ async function runIAWeek(){
     // item ("_finalDate") es el que decide Scheduler, no el de la IA.
     const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
     const plannedDays = planWeekProposals(data.days || [], today, weekEnd, schedCtx);
+
+    // Validación (5E-3): segunda barrera de seguridad justo antes de
+    // registrar/renderizar cada propuesta — comprueba contra el estado
+    // real actual que la colocación de planWeekProposals sigue siendo
+    // válida. Si no lo es, NO se elimina ni se recoloca la propuesta
+    // (eso sería tarea de Scheduler, no de esta validación): se conserva
+    // pendiente tal cual, con un aviso explicando el motivo.
+    plannedDays.forEach(day => {
+      const deadlineForDay = day.date || today;
+      (day.items || []).forEach(it => {
+        if(it.sourceType !== 'proposal') return;
+        const applyDate = it._finalDate || deadlineForDay;
+        const check = validateWeeklyProposal(it, applyDate, schedCtx, today, weekEnd, deadlineForDay);
+        if(!check.valid){
+          it.schedulingWarning = check.reason;
+          it.reason = (it.reason ? it.reason + ' ' : '') + `(${check.reason})`;
+        }
+      });
+    });
 
     const daysHtml = plannedDays.map(day=>{
       const dateForDay = day.date || today;
