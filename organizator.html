@@ -2131,6 +2131,11 @@ function isIAProposalInBatch(id, batchId) {
     const proposal = getIAProposalById(id);
     return !!proposal && proposal.batchId === batchId;
 }
+function getIAProposalFromBatch(id, batchId) {
+    const proposal = getIAProposalById(id);
+    if (!proposal || proposal.batchId !== batchId) return null;
+    return proposal;
+}
 let iaBatchSeq = 0;        // contador interno para generar ids únicos de lotes de propuestas
 
 function nextIABatchId() {
