@@ -2071,6 +2071,9 @@ function nextIAProposalId(){
 function getIAProposalById(id) {
     return iaProposals.find(p => p.id === id) || null;
 }
+function getIAProposalsByBatchId(batchId) {
+    return iaProposals.filter(p => p.batchId === batchId);
+}
 let iaBatchSeq = 0;        // contador interno para generar ids únicos de lotes de propuestas
 
 function nextIABatchId() {
