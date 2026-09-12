@@ -2389,8 +2389,8 @@ function renderDayAgendaList(mergedBlocks, dateForApply, batchId){
           <div class="ia-ag-title">${esc(b.title)}<span class="ia-tag proposal">propuesta IA</span></div>
           ${b.reason ? `<div class="ia-tl-tag">${esc(b.reason)}</div>` : ''}
           <div class="ia-tl-actions">
-            <button class="ia-mini-btn" data-ia-apply="${proposal.id}">✓ Añadir al plan</button>
-            <button class="ia-mini-ghost" data-ia-discard="${proposal.id}">Descartar</button>
+            <button class="ia-mini-btn" data-ia-apply="${proposal.id}" data-ia-batch="${proposal.batchId}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${proposal.id}" data-ia-batch="${proposal.batchId}">Descartar</button>
           </div>
         </div>
       </div>`;
@@ -2444,8 +2444,8 @@ function renderIAItemHTML(it, dateForApply, batchId){
       <div class="ia-tl-title">${esc(it.title)}<span class="ia-tag proposal">propuesta IA</span></div>
       ${it.reason ? `<div class="ia-tl-tag">${esc(it.reason)}</div>` : ''}
       <div class="ia-tl-actions">
-        <button class="ia-mini-btn" data-ia-apply="${proposal.id}">✓ Añadir al plan</button>
-        <button class="ia-mini-ghost" data-ia-discard="${proposal.id}">Descartar</button>
+        <button class="ia-mini-btn" data-ia-apply="${proposal.id}" data-ia-batch="${proposal.batchId}">✓ Añadir al plan</button>
+        <button class="ia-mini-ghost" data-ia-discard="${proposal.id}" data-ia-batch="${proposal.batchId}">Descartar</button>
       </div>
     </div>
   </div>`;
@@ -2453,19 +2453,29 @@ function renderIAItemHTML(it, dateForApply, batchId){
 function wireIAProposalButtons(container){
   container.querySelectorAll('[data-ia-apply]').forEach(b=>{
     b.addEventListener('click', async ()=>{
-      const it = getIAProposalById(b.dataset.iaApply);
-      if(!it || b.disabled) return;
+      if(b.disabled) return;
+      const id = b.dataset.iaApply;
+      const batchId = b.dataset.iaBatch;
+      const it = batchId ? getIAProposalFromBatch(id, batchId) : getIAProposalById(id);
+      if(!it || !it.batchId) return;          // no existe o sin batch válido
+      if(it.status !== 'pending') return;     // ya aplicada o descartada: no repetir la acción
       b.disabled = true;
       await applyIAProposal(it, it.applyDate || todayStr());
+      setIAProposalStatus(it.id, 'applied');
       b.textContent = 'Añadido ✓';
       showToast('Añadido al plan');
     });
   });
   container.querySelectorAll('[data-ia-discard]').forEach(b=>{
     b.addEventListener('click', ()=>{
-      const it = getIAProposalById(b.dataset.iaDiscard);
-      if(!it) return;
-      b.closest('.ia-tl-item').remove();
+      const id = b.dataset.iaDiscard;
+      const batchId = b.dataset.iaBatch;
+      const it = batchId ? getIAProposalFromBatch(id, batchId) : getIAProposalById(id);
+      if(!it || !it.batchId) return;          // no existe o sin batch válido
+      if(it.status !== 'pending') return;     // solo se puede descartar una propuesta pendiente
+      setIAProposalStatus(it.id, 'discarded');
+      const row = b.closest('.ia-ag-row, .ia-tl-item');
+      if(row) row.remove();
     });
   });
 }
@@ -2552,8 +2562,8 @@ async function runIADay(){
           <div class="ia-tl-title">${esc(t.title)}<span class="ia-tag proposal">propuesta IA</span></div>
           <div class="ia-tl-tag">${esc(t.schedulingWarning || 'Sin hueco libre suficiente hoy — se añadirá sin hora fija.')}</div>
           <div class="ia-tl-actions">
-            <button class="ia-mini-btn" data-ia-apply="${proposal.id}">✓ Añadir al plan</button>
-            <button class="ia-mini-ghost" data-ia-discard="${proposal.id}">Descartar</button>
+            <button class="ia-mini-btn" data-ia-apply="${proposal.id}" data-ia-batch="${proposal.batchId}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${proposal.id}" data-ia-batch="${proposal.batchId}">Descartar</button>
           </div>
         </div>
       </div>`;
