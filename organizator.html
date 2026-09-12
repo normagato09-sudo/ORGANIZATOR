@@ -327,7 +327,7 @@
   /* ---------- Calendario ---------- */
   .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
   .cal-head h1{font-size:22px;font-weight:600;margin:0;}
-  .cal-nav{display:flex;gap:6px;align-items:center;}
+  .cal-nav{display:flex;gap:6px;align-items:center;flex-wrap:wrap;row-gap:6px;}
   .cal-nav button{
     width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--surface);
     cursor:pointer;color:var(--ink);font-size:14px;display:flex;align-items:center;justify-content:center;
@@ -385,6 +385,28 @@
   .semana-day-body .semana-ag-conflict{background:#FBEAE8;border-radius:8px;padding:4px 6px 4px 9px;border-left:3px solid var(--alta);}
   .semana-day-body .semana-ag-conflict .ia-ag-title{color:var(--alta);font-weight:700;}
   .semana-day-body .ia-tag.conflict{font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:6px;background:rgba(192,69,59,0.14);color:var(--alta);border:1px solid rgba(192,69,59,0.4);margin-left:6px;vertical-align:middle;}
+  /* 5E-4: propuestas IA semanales (source:'week', status:'pending') ya
+     colocadas por spliceProposalsIntoBlocks/renderSemanaAgenda en su hueco
+     real (o al final del día si no tienen hueco). Estilo claramente
+     distinguible de una tarea ya aplicada (semana-ag-task) y de un
+     conflicto (semana-ag-conflict): fondo de tarea pero con borde
+     discontinuo, igual que .ia-tag.proposal ya usa borde discontinuo en
+     Inicio. Si tiene schedulingWarning se refuerza con semana-ag-warning. */
+  .semana-day-body .semana-ag-proposal{background:var(--task-bg);border:1px dashed var(--task);border-radius:8px;padding:4px 6px;}
+  .semana-day-body .semana-ag-proposal .ia-ag-title{color:var(--task);}
+  .semana-day-body .semana-ag-warning{background:#FBEAE8;border:1px dashed var(--alta);}
+  .semana-day-body .semana-ag-warning .ia-ag-title{color:var(--alta);}
+  .semana-day-body .ia-tag.proposal{font-size:9.5px;padding:1px 6px;border-radius:6px;background:rgba(255,255,255,0.5);border:1px dashed var(--ink-soft);color:var(--ink-soft);margin-left:6px;vertical-align:middle;}
+  .semana-day-body .ia-tl-tag{font-size:10px;color:var(--ink-soft);}
+  /* Botones Aplicar/Descartar: mismo sistema de 5D (wireIAProposalButtons),
+     solo reescalados al ancho estrecho de una columna de Semana; flex-wrap
+     evita que rompan el layout de la tarjeta en pantallas pequeñas. */
+  .semana-day-body .ia-tl-actions{flex-wrap:wrap;margin-top:4px;}
+  .semana-day-body .ia-mini-btn{font-size:10.5px;padding:4px 7px;border-radius:6px;background:var(--surface);border:1px solid var(--line);color:var(--ink);}
+  .semana-day-body .ia-mini-btn:hover{background:var(--paper);}
+  .semana-day-body .ia-mini-btn:disabled{opacity:.5;}
+  .semana-day-body .ia-mini-ghost{font-size:10.5px;padding:4px 5px;color:var(--ink-soft);}
+  .semana-day-body .ia-mini-ghost:hover{color:var(--ink);}
   .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
   .cal-cell{
     background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -719,6 +741,8 @@
             <button id="semana-prev" title="Semana anterior">‹</button>
             <button id="semana-today" class="btn btn-sm" style="width:auto;">Hoy</button>
             <button id="semana-next" title="Semana siguiente">›</button>
+            <!-- 5E-4: reutiliza runIAWeek() ya existente (ver initIA()); no crea una segunda función de planificación. -->
+            <button id="semana-ia-week-btn" class="btn btn-sm btn-dark" style="width:auto;margin-left:6px;">✨ Planificar con IA</button>
           </div>
         </div>
         <div class="semana-grid" id="semana-grid"></div>
@@ -1314,11 +1338,26 @@ function weekRangeLabel(days){
    renderDayAgendaList() (mismo icono, mismo texto). */
 function renderSemanaAgenda(blocks){
   return `<div class="ia-agenda">${blocks.map(b => {
-    let rowClass, icon, label;
+    let rowClass, icon, label, bodyExtra = '';
     if(b.type === 'free'){
       rowClass = 'ia-ag-free'; icon = '🟢'; label = 'Tiempo libre';
     } else if(b.type === 'past'){
       rowClass = 'ia-ag-past'; icon = '⏳'; label = 'Ya pasó';
+    } else if(b.type === 'proposal'){
+      // 5E-4: propuesta IA semanal (source:'week', status:'pending') ya
+      // existente en iaProposals — b.id/b.batchId identifican la MISMA
+      // propuesta (spliceProposalsIntoBlocks los propaga tal cual desde
+      // buildSemanaDayAgendaBlocks, o vienen ya puestos en los bloques
+      // "sin hueco" añadidos al final del día). No se crea ninguna
+      // propuesta nueva aquí: esto es solo lectura + pintado.
+      rowClass = 'ia-ag-proposal semana-ag-proposal' + (b.schedulingWarning ? ' semana-ag-warning' : '');
+      icon = b.schedulingWarning ? '⚠️' : '📚';
+      label = b.title;
+      bodyExtra = `${b.reason ? `<div class="ia-tl-tag">${esc(b.reason)}</div>` : ''}
+          <div class="ia-tl-actions">
+            <button class="ia-mini-btn" data-ia-apply="${esc(b.id)}" data-ia-batch="${esc(b.batchId)}">✓ Añadir al plan</button>
+            <button class="ia-mini-ghost" data-ia-discard="${esc(b.id)}" data-ia-batch="${esc(b.batchId)}">Descartar</button>
+          </div>`;
     } else {
       // 'busy': ids/labels vienen ya fusionados por buildDayBlocks (un
       // id por origen solapado, aunque compartan el mismo kind); kinds
@@ -1345,13 +1384,54 @@ function renderSemanaAgenda(blocks){
     // buildDayBlocks() no haya calculado ya (mismo label/horario/ids), no
     // indica cuál origen "gana" ni propone ninguna resolución.
     const conflictTag = (b.type === 'busy' && b.ids && b.ids.length > 1) ? '<span class="ia-tag conflict">conflicto</span>' : '';
+    const proposalTag = (b.type === 'proposal') ? '<span class="ia-tag proposal">propuesta IA</span>' : '';
     const idsAttr = (b.ids && b.ids.length) ? ` data-block-ids="${esc(JSON.stringify(b.ids))}"` : '';
+    // Propuesta sin hueco (5E-4, punto 9): no se inventa una hora — se
+    // muestra "Sin hora fija" en vez de "null–null" (mismo dato que ya
+    // trae el bloque, solo un texto de respaldo para el hueco de tiempo).
+    const timeLabel = b.startTime ? `${esc(b.startTime)}–${esc(b.endTime)}` : 'Sin hora fija';
     return `<div class="ia-ag-row ${rowClass}"${idsAttr}>
-      <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
+      <div class="ia-ag-time">${timeLabel}</div>
       <div class="ia-ag-icon">${icon}</div>
-      <div class="ia-ag-body"><div class="ia-ag-title">${esc(label)}${conflictTag}</div></div>
+      <div class="ia-ag-body"><div class="ia-ag-title">${esc(label)}${conflictTag}${proposalTag}</div>${bodyExtra}</div>
     </div>`;
   }).join('')}</div>`;
+}
+
+/* ---------- 5E-4: propuestas IA semanales dentro de la vista Semana ----------
+   SOLO LECTURA sobre iaProposals: filtra las propuestas pendientes
+   (source:'week', status:'pending') cuyo applyDate cae en el día pedido,
+   y las coloca en su hueco real reutilizando spliceProposalsIntoBlocks
+   (el mismo motor que runIADay ya usa para las propuestas de un día) — no
+   se construye ningún motor de timeline nuevo. Nunca crea propuestas,
+   nunca cambia su status, nunca depende de índices de array: identifica
+   cada propuesta siempre por su `id` (ver getIAProposalById/FromBatch). */
+function getWeekIAProposalsForDate(dateStr){
+  return iaProposals.filter(p => p.source === 'week' && p.status === 'pending' && p.applyDate === dateStr);
+}
+function buildSemanaDayAgendaBlocks(dateStr, schedCtx){
+  const dayBlocks = window.Scheduler.buildDayBlocks(dateStr, schedCtx).blocks;
+  const pending = getWeekIAProposalsForDate(dateStr);
+  if(!pending.length) return dayBlocks;
+  const { timeToMin, minToTime } = window.Scheduler._internal;
+  // Con hora (colocada por planWeekProposals/Scheduler.autoSchedule): se
+  // inserta en su hueco real exacto, igual que hace runIADay.
+  const timed = pending.filter(p => p.time && !p.noSlot);
+  // Sin hora (noSlot, punto 9 de esta fase): no tienen dónde encajarlas en
+  // la línea de tiempo — se añaden aparte, al final del día, conservando
+  // su schedulingWarning tal cual (punto 10: sin inventar una solución).
+  const noSlot = pending.filter(p => !p.time || p.noSlot);
+  let result = dayBlocks;
+  if(timed.length){
+    const placedForSplice = timed.map(p => {
+      const start = timeToMin(p.time);
+      const end = p._endTime ? timeToMin(p._endTime) : start + (p._durationMinutes || 60);
+      return { start, end, startTime: p.time, endTime: p._endTime || minToTime(end), title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId };
+    });
+    result = spliceProposalsIntoBlocks(dayBlocks, placedForSplice);
+  }
+  const noSlotBlocks = noSlot.map(p => ({ type: 'proposal', startTime: null, endTime: null, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId, schedulingWarning: p.schedulingWarning }));
+  return result.concat(noSlotBlocks);
 }
 function renderSemana(){
   const days = getWeekDays(week.anchorDate);
@@ -1370,7 +1450,7 @@ function renderSemana(){
     const dayName = DOW_FULL_MONFIRST[i];
     const dayDate = `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
     const agendaHtml = window.Scheduler
-      ? renderSemanaAgenda(window.Scheduler.buildDayBlocks(dateStr, schedCtx).blocks)
+      ? renderSemanaAgenda(buildSemanaDayAgendaBlocks(dateStr, schedCtx))
       : `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación).</p>`;
     return `
       <div class="semana-day ${dateStr===today?'today':''}" data-date="${dateStr}">
@@ -1381,6 +1461,11 @@ function renderSemana(){
         <div class="semana-day-body">${agendaHtml}</div>
       </div>`;
   }).join('');
+  // 5E-4: cablea Aplicar/Descartar de las propuestas semanales recién
+  // pintadas con el sistema EXACTO de 5D (mismo wireIAProposalButtons que
+  // usa Inicio) — no crea ningún handler nuevo, solo lo aplica también
+  // sobre el grid de Semana.
+  wireIAProposalButtons(grid);
 }
 document.getElementById('semana-prev').addEventListener('click', ()=>{ weekGoBackward(); renderSemana(); });
 document.getElementById('semana-next').addEventListener('click', ()=>{ weekGoForward(); renderSemana(); });
@@ -2282,6 +2367,14 @@ function iaSetStatus(msg){ document.getElementById('ia-status').textContent = ms
 function iaSetButtonsDisabled(disabled){
   const d = document.getElementById('ia-day-btn'); if(d) d.disabled = disabled;
   const w = document.getElementById('ia-week-btn'); if(w) w.disabled = disabled;
+  // 5E-4, punto 12: reutiliza este mismo mecanismo de estado (ya existente
+  // para ia-day-btn/ia-week-btn) también para el botón de Semana — mínimo
+  // estado visual añadido: deshabilitado + texto mientras se planifica.
+  const sw = document.getElementById('semana-ia-week-btn');
+  if(sw){
+    sw.disabled = disabled;
+    sw.textContent = disabled ? '✨ Planificando…' : '✨ Planificar con IA';
+  }
 }
 
 /* ---------- Resolución determinista de horas para propuestas ----------
@@ -2586,7 +2679,13 @@ function spliceProposalsIntoBlocks(blocks, placedProposals){
       const b = result[idx];
       const replacement = [];
       if(b.start < p.start) replacement.push(Object.assign({}, b, { end: p.start, endTime: p.startTime }));
-      replacement.push({ type: 'proposal', start: p.start, end: p.end, startTime: p.startTime, endTime: p.endTime, title: p.title, reason: p.reason, kind: p.kind });
+      // id/batchId: opcionales, solo presentes cuando quien llama (5E-4,
+      // vista Semana) ya tiene una propuesta real de iaProposals que
+      // colocar en su hueco — permite identificarla sin crear ninguna
+      // nueva. runIADay (sin tocar) nunca los pasa, así que sigue
+      // generando la propuesta él mismo en renderDayAgendaList como hasta
+      // ahora (estos campos llegan como undefined y no afectan en nada).
+      replacement.push({ type: 'proposal', start: p.start, end: p.end, startTime: p.startTime, endTime: p.endTime, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId });
       if(p.end < b.end) replacement.push(Object.assign({}, b, { start: p.end, startTime: p.endTime }));
       result.splice(idx, 1, ...replacement);
     });
@@ -2680,6 +2779,12 @@ function wireIAProposalButtons(container){
       setIAProposalStatus(it.id, 'applied');
       b.textContent = 'Añadido ✓';
       showToast('Añadido al plan');
+      // 5E-4, punto 5: Semana se vuelve a renderizar tras aplicar, para que
+      // la propuesta deje de mostrarse como tal y aparezca el bloque real
+      // vía Scheduler.buildDayBlocks(). Se hace DESPUÉS de setIAProposalStatus
+      // (no dentro de applyIAProposal, que se ejecuta antes) para no pintar
+      // a la vez la propuesta todavía "pending" y el bloque real ya creado.
+      if(currentView === 'semana') renderSemana();
     });
   });
   container.querySelectorAll('[data-ia-discard]').forEach(b=>{
@@ -2850,6 +2955,12 @@ async function runIAWeek(){
     iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
       (daysHtml || `<p class="empty-hint">No hay datos suficientes todavía para proponer una planificación semanal.</p>`));
     wireIAProposalButtons(msgEl);
+    // 5E-4, punto 11: el botón "✨ Planificar con IA" de la vista Semana
+    // reutiliza este mismo runIAWeek() (ver initIA()); si Semana está
+    // visible, se vuelve a renderizar para que las propuestas recién
+    // registradas en iaProposals aparezcan también ahí, en su día/hora
+    // (renderSemana() las lee de iaProposals, no las crea de nuevo).
+    if(currentView === 'semana') renderSemana();
     iaSetStatus('');
   }catch(err){
     console.error(err);
@@ -2885,9 +2996,13 @@ async function runIAActionChat(question){
 function initIA(){
   const dayBtn = document.getElementById('ia-day-btn');
   const weekBtn = document.getElementById('ia-week-btn');
+  const semanaWeekBtn = document.getElementById('semana-ia-week-btn');
   const chatForm = document.getElementById('ia-chat-form');
   if(dayBtn) dayBtn.addEventListener('click', runIADay);
   if(weekBtn) weekBtn.addEventListener('click', runIAWeek);
+  // 5E-4, punto 11: mismo runIAWeek() de siempre, sin una segunda función
+  // de planificación ni una segunda llamada a la API.
+  if(semanaWeekBtn) semanaWeekBtn.addEventListener('click', runIAWeek);
   if(chatForm) chatForm.addEventListener('submit', (e)=>{
     e.preventDefault();
     const input = document.getElementById('ia-chat-input');
