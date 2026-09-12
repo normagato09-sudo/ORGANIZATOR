@@ -2068,14 +2068,14 @@ function nextIAProposalId(){
   iaProposalSeq += 1;
   return 'ia-' + iaProposalSeq;
 }
-let iaBatchSeq = 0;
+function getIAProposalById(id) {
+    return iaProposals.find(p => p.id === id) || null;
+}
+let iaBatchSeq = 0;        // contador interno para generar ids únicos de lotes de propuestas
 
 function nextIABatchId() {
     iaBatchSeq += 1;
     return `ia-batch-${iaBatchSeq}`;
-}
-function getIAProposalById(id) {
-    return iaProposals.find(p => p.id === id) || null;
 }
 
 /* ---------- Llamada a la IA ----------
@@ -2311,11 +2311,11 @@ function spliceProposalsIntoBlocks(blocks, placedProposals){
     });
   return result;
 }
-function renderDayAgendaList(mergedBlocks, dateForApply){
+function renderDayAgendaList(mergedBlocks, dateForApply, batchId){
   const icon = { busy: '🔒', free: '🟢', past: '⏳', proposal: '📚' };
   return `<div class="ia-agenda">${mergedBlocks.map(b => {
     if(b.type === 'proposal'){
-      const proposal = { id: nextIAProposalId(), source: 'day', status: 'pending', title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply };
+      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply };
       iaProposals.push(proposal);
       return `<div class="ia-ag-row ia-ag-proposal">
         <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
@@ -2359,7 +2359,7 @@ function iaThreadResolve(msgEl, html){
 }
 
 /* ---------- Render de un item de plan (existente o propuesta) ---------- */
-function renderIAItemHTML(it, dateForApply){
+function renderIAItemHTML(it, dateForApply, batchId){
   const barColor = it.kind==='event' ? 'var(--event)' : 'var(--task)';
   if(it.sourceType === 'existing'){
     return `<div class="ia-tl-item">
@@ -2370,7 +2370,7 @@ function renderIAItemHTML(it, dateForApply){
       </div>
     </div>`;
   }
-  const proposal = { ...it, id: nextIAProposalId(), source: 'week', status: 'pending', applyDate: dateForApply };
+  const proposal = { ...it, id: nextIAProposalId(), batchId, source: 'week', status: 'pending', applyDate: dateForApply };
   iaProposals.push(proposal);
   return `<div class="ia-tl-item">
     <div class="ia-tl-time">${esc(it.time||'—')}</div>
@@ -2472,12 +2472,13 @@ async function runIADay(){
       title: t.title, reason: t.reason, kind: t.kind,
     }));
     const mergedBlocks = spliceProposalsIntoBlocks(dayBlocks, placedForSplice);
-    const agendaHtml = renderDayAgendaList(mergedBlocks, today);
+    const batchId = nextIABatchId();
+    const agendaHtml = renderDayAgendaList(mergedBlocks, today, batchId);
 
     // 4) Propuestas que no encontraron hueco hoy: se muestran aparte,
     // sin hora, con el motivo (se pueden añadir igualmente como tarea).
     const unplacedHtml = unplaced.length ? `<div class="ia-timeline">${unplaced.map(t => {
-      const proposal = { id: nextIAProposalId(), source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today };
+      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today };
       iaProposals.push(proposal);
       return `<div class="ia-tl-item">
         <div class="ia-tl-time">—</div>
@@ -2517,11 +2518,12 @@ async function runIAWeek(){
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
     iaProposals = [];
+    const batchId = nextIABatchId();
     const workingTasks = state.tasks.slice();
     const daysHtml = (data.days||[]).map(day=>{
       const dateForDay = day.date || todayStr();
       const resolved = (day.items||[]).map(it => resolveProposalSlot(it, dateForDay, workingTasks));
-      const itemsHtml = resolved.map(it=>renderIAItemHTML(it, dateForDay)).join('');
+      const itemsHtml = resolved.map(it=>renderIAItemHTML(it, dateForDay, batchId)).join('');
       return `<div class="ia-week-day"><h4>${esc(day.label||day.date||'')}</h4>${itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">Sin novedades este día.</p>`}</div>`;
     }).join('');
     iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
