@@ -2127,6 +2127,10 @@ function getIAProposalBatchSummary(batchId) {
         discarded: proposals.filter(p => p.status === 'discarded').length
     };
 }
+function isIAProposalInBatch(id, batchId) {
+    const proposal = getIAProposalById(id);
+    return !!proposal && proposal.batchId === batchId;
+}
 let iaBatchSeq = 0;        // contador interno para generar ids únicos de lotes de propuestas
 
 function nextIABatchId() {
