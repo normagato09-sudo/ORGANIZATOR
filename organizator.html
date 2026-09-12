@@ -2083,6 +2083,16 @@ function getIAProposalBatch(batchId, options = {}) {
         p => p.batchId === batchId && includeStatuses.includes(p.status)
     );
 }
+function hasPendingIAProposals(batchId) {
+    return iaProposals.some(
+        p => p.batchId === batchId && p.status === 'pending'
+    );
+}
+
+function getIAProposalBatchOrNull(batchId) {
+    const proposals = getIAProposalBatch(batchId);
+    return proposals.length ? proposals : null;
+}
 let iaBatchSeq = 0;        // contador interno para generar ids únicos de lotes de propuestas
 
 function nextIABatchId() {
