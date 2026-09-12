@@ -2093,9 +2093,17 @@ function getIAProposalBatchOrNull(batchId) {
     const proposals = getIAProposalBatch(batchId);
     return proposals.length ? proposals : null;
 }
+// Ciclo de vida de una propuesta IA: pending -> applied | discarded.
+// Cualquier otra transición (incluida repetir la misma) queda prohibida.
+const IA_PROPOSAL_ALLOWED_TRANSITIONS = {
+    pending: ['applied', 'discarded'],
+};
 function setIAProposalStatus(id, status) {
     const proposal = getIAProposalById(id);
     if (!proposal) return false;
+
+    const allowedNext = IA_PROPOSAL_ALLOWED_TRANSITIONS[proposal.status] || [];
+    if (!allowedNext.includes(status)) return false;
 
     proposal.status = status;
     return true;
