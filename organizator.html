@@ -2774,17 +2774,35 @@ function wireIAProposalButtons(container){
       const it = batchId ? getIAProposalFromBatch(id, batchId) : getIAProposalById(id);
       if(!it || !it.batchId) return;          // no existe o sin batch válido
       if(it.status !== 'pending') return;     // ya aplicada o descartada: no repetir la acción
+      // 5F-2: candado síncrono. La MISMA propuesta (mismo objeto en
+      // iaProposals) puede estar renderizada a la vez en el hilo de chat
+      // y en la vista Semana, con dos <button> DOM distintos: b.disabled
+      // solo protege AL BOTÓN que se pulsó, no a la propuesta. Por eso
+      // se comprueba y fija it._applying aquí, de forma síncrona y ANTES
+      // del primer await — ningún otro handler (el del otro botón) puede
+      // ejecutarse a mitad de este tramo, así que si llega después, ya
+      // encuentra it._applying=true y no pasa de aquí.
+      if(it._applying) return;
+      it._applying = true;
       b.disabled = true;
-      await applyIAProposal(it, it.applyDate || todayStr());
-      setIAProposalStatus(it.id, 'applied');
-      b.textContent = 'Añadido ✓';
-      showToast('Añadido al plan');
-      // 5E-4, punto 5: Semana se vuelve a renderizar tras aplicar, para que
-      // la propuesta deje de mostrarse como tal y aparezca el bloque real
-      // vía Scheduler.buildDayBlocks(). Se hace DESPUÉS de setIAProposalStatus
-      // (no dentro de applyIAProposal, que se ejecuta antes) para no pintar
-      // a la vez la propuesta todavía "pending" y el bloque real ya creado.
-      if(currentView === 'semana') renderSemana();
+      try{
+        await applyIAProposal(it, it.applyDate || todayStr());
+        setIAProposalStatus(it.id, 'applied');
+        b.textContent = 'Añadido ✓';
+        showToast('Añadido al plan');
+        // 5E-4, punto 5: Semana se vuelve a renderizar tras aplicar, para que
+        // la propuesta deje de mostrarse como tal y aparezca el bloque real
+        // vía Scheduler.buildDayBlocks(). Se hace DESPUÉS de setIAProposalStatus
+        // (no dentro de applyIAProposal, que se ejecuta antes) para no pintar
+        // a la vez la propuesta todavía "pending" y el bloque real ya creado.
+        if(currentView === 'semana') renderSemana();
+      } finally {
+        // 5F-2: se libera siempre, incluso si applyIAProposal lanza error.
+        // Con status ya en 'applied' (o sin cambiar, si hubo error), el
+        // chequeo de status de arriba sigue siendo la barrera principal;
+        // _applying solo cubre la ventana mientras el await está en vuelo.
+        it._applying = false;
+      }
     });
   });
   container.querySelectorAll('[data-ia-discard]').forEach(b=>{
@@ -2794,6 +2812,10 @@ function wireIAProposalButtons(container){
       const it = batchId ? getIAProposalFromBatch(id, batchId) : getIAProposalById(id);
       if(!it || !it.batchId) return;          // no existe o sin batch válido
       if(it.status !== 'pending') return;     // solo se puede descartar una propuesta pendiente
+      // 5F-2: no permitir descartar una propuesta cuyo Apply está en
+      // curso desde el otro botón (chat/Semana) — evitaría dejar el
+      // status en 'discarded' mientras la entidad real ya se está creando.
+      if(it._applying) return;
       setIAProposalStatus(it.id, 'discarded');
       const row = b.closest('.ia-ag-row, .ia-tl-item');
       if(row) row.remove();
@@ -2801,10 +2823,18 @@ function wireIAProposalButtons(container){
   });
 }
 async function applyIAProposal(it, date){
+  // 5F-2: idempotencia por proposal.id. Si esta propuesta ya creó su
+  // entidad real (misma sourceProposalId ya presente en tasks/events),
+  // no se crea una segunda: applyIAProposal se convierte en no-op seguro
+  // ante cualquier invocación repetida, venga de donde venga.
+  const already = it.time
+    ? state.events.find(e => e.sourceProposalId === it.id)
+    : state.tasks.find(t => t.sourceProposalId === it.id);
+  if(already) return;
   if(it.time){
-    await addEvent({ title: it.title, date, endDate:'', allDay:false, startTime: it.time, endTime:'', location:'', notes: it.reason||'' });
+    await addEvent({ title: it.title, date, endDate:'', allDay:false, startTime: it.time, endTime:'', location:'', notes: it.reason||'', sourceProposalId: it.id });
   } else {
-    await addTask({ title: it.title, dueDate: date, dueTime:'', priority:'media', notes: it.reason||'' });
+    await addTask({ title: it.title, dueDate: date, dueTime:'', priority:'media', notes: it.reason||'', sourceProposalId: it.id });
   }
   if(currentView === 'inicio') renderInicio();
   if(currentView === 'calendario') renderCalendar();
