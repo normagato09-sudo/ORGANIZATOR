@@ -2313,6 +2313,113 @@ function resolveProposalSlot(item, dateStr, workingTasks){
   return item;
 }
 
+/* ---------- Colocación conjunta de propuestas semanales (5E-2) ----------
+   A diferencia de resolveProposalSlot (arriba: colocación día a día,
+   greedy, ya no se usa desde runIAWeek pero se deja sin tocar), esta
+   función coloca TODAS las propuestas de la semana en UNA sola pasada de
+   Scheduler.autoSchedule(), exactamente igual que runIADay hace con las
+   propuestas de un día: así compiten por huecos reales entre sí y nunca
+   dos propuestas de la misma generación se llevan el mismo hueco sin que
+   la otra se entere.
+
+   La IA sigue aportando QUÉ proponer, CUÁNTOS MINUTOS necesita y EN QUÉ
+   DÍA tiene sentido — pero ese día pasa a tratarse como una fecha límite
+   blanda ("dueDate" de la pseudo-tarea): Scheduler puede adelantar la
+   propuesta a un día anterior con más hueco libre dentro de la semana,
+   pero nunca puede retrasarla más allá de ese día ni del fin de la
+   semana. El día y la hora finales SIEMPRE proceden del resultado de
+   Scheduler, nunca de lo que haya dicho la IA.
+
+   Es una función pura (sin DOM, sin fetch, sin tocar `state` ni
+   `iaProposals`): recibe los `days` ya parseados de la respuesta JSON de
+   la IA más el contexto real, y devuelve una copia de `days` con cada
+   item "proposal" ya resuelto:
+     - colocado: time / _finalDate / _durationMinutes / _endTime
+     - sin hueco: time null / noSlot true / schedulingWarning
+   Los items "existing" se devuelven tal cual (la IA ya los marcó con su
+   hora real; no pasan por Scheduler). */
+function planWeekProposals(days, today, weekEnd, schedCtx){
+  const list = days || [];
+  if(!window.Scheduler){
+    // Mismo criterio defensivo que el resto del módulo IA: si falta el
+    // motor de planificación, se degrada sin romper (propuestas sin hora
+    // fija) en vez de bloquear toda la vista de Semana.
+    return list;
+  }
+  const clamp = (d) => (d < today ? today : (d > weekEnd ? weekEnd : d));
+
+  // 1) Aplanar todas las propuestas de todos los días en pseudo-tareas
+  // para UNA sola llamada a autoSchedule(). `refByTmpId` es el único
+  // dato adicional que necesitamos en memoria para volver a relacionar
+  // cada resultado con su propuesta IA original (no es un sistema nuevo
+  // de IDs persistentes: vive y muere dentro de esta función).
+  const pseudoTasks = [];
+  const refByTmpId = {};
+  list.forEach((day, dayIndex) => {
+    const dateForDay = clamp(day.date || today);
+    (day.items || []).forEach((it, itemIndex) => {
+      if(it.sourceType !== 'proposal') return;
+      const tmpId = `ia-tmp-week-${dayIndex}-${itemIndex}`;
+      pseudoTasks.push({
+        id: tmpId,
+        title: it.title,
+        reason: it.reason || null,
+        kind: it.kind || 'task',
+        dueDate: dateForDay, // fecha límite blanda: día propuesto por la IA, acotado a la semana
+        priority: 'media',
+        estimatedMinutes: (it.estimatedMinutes && it.estimatedMinutes > 0) ? it.estimatedMinutes : 45,
+      });
+      refByTmpId[tmpId] = { dayIndex, itemIndex };
+    });
+  });
+
+  // 2) UNA pasada de planificación para todo el conjunto de la semana.
+  const scheduled = pseudoTasks.length ? window.Scheduler.autoSchedule(pseudoTasks, schedCtx) : [];
+  const scheduledById = {};
+  scheduled.forEach(s => { scheduledById[s.id] = s; });
+
+  // 3) Volcar el resultado de Scheduler sobre copias de los items
+  // originales (nunca se muta `days` ni lo que vino de la IA).
+  const resultDays = list.map(day => ({ ...day, items: (day.items || []).slice() }));
+  Object.keys(refByTmpId).forEach(tmpId => {
+    const { dayIndex, itemIndex } = refByTmpId[tmpId];
+    const original = resultDays[dayIndex].items[itemIndex];
+    const result = scheduledById[tmpId];
+    const item = { ...original };
+    if(result && result.scheduledDate && result.scheduledStart && result.scheduledEnd){
+      // Validación básica (punto 9): Scheduler ya garantiza fecha+hora
+      // dentro de [hoy, dueDate] y sin solapes; solo comprobamos aquí que
+      // no se haya colado fuera del horizonte de la semana, como red de
+      // seguridad barata (no duplicamos la lógica de huecos de Scheduler).
+      const withinWeek = result.scheduledDate >= today && result.scheduledDate <= weekEnd;
+      if(withinWeek){
+        item.time = result.scheduledStart;
+        item._durationMinutes = result.estimatedMinutes;
+        item._endTime = result.scheduledEnd;
+        item._finalDate = result.scheduledDate;
+        item.noSlot = false;
+      } else {
+        item.time = null;
+        item.noSlot = true;
+        item._finalDate = clamp(days[dayIndex].date || today);
+        item.schedulingWarning = 'Quedó fuera del horizonte de la semana — se añadirá sin hora fija.';
+        item.reason = (item.reason ? item.reason + ' ' : '') + `(${item.schedulingWarning})`;
+      }
+    } else {
+      // No cabe: NO se elimina, NO se inventa horario, NO se fuerza un
+      // hueco ocupado — se conserva pendiente con su aviso (punto 6).
+      item.time = null;
+      item.noSlot = true;
+      item._finalDate = (result && result.scheduledDate) || clamp(days[dayIndex].date || today);
+      item.schedulingWarning = (result && result.schedulingWarning) || 'Sin hueco libre suficiente esa semana — se añadirá sin hora fija.';
+      item.reason = (item.reason ? item.reason + ' ' : '') + `(${item.schedulingWarning})`;
+    }
+    resultDays[dayIndex].items[itemIndex] = item;
+  });
+
+  return resultDays;
+}
+
 /* ---------- Agenda visual 00:00–23:00 (solo lectura) ----------
    Se construye a partir de los mismos items ya resueltos (con hora y
    duración reales); no decide nada, solo dibuja lo que ya se calculó.
@@ -2602,11 +2709,22 @@ async function runIAWeek(){
     const data = parseAIJSON(raw);
     iaProposals = [];
     const batchId = nextIABatchId();
-    const workingTasks = state.tasks.slice();
-    const daysHtml = (data.days||[]).map(day=>{
-      const dateForDay = day.date || todayStr();
-      const resolved = (day.items||[]).map(it => resolveProposalSlot(it, dateForDay, workingTasks));
-      const itemsHtml = resolved.map(it=>renderIAItemHTML(it, dateForDay, batchId)).join('');
+    const today = todayStr();
+    const weekEnd = addDays(today, 6); // mismo rango que buildContext('week'): hoy + 6 días
+
+    // Colocación conjunta (5E-2): todas las propuestas de la semana pasan
+    // por UNA sola pasada de Scheduler.autoSchedule (planWeekProposals),
+    // en vez de resolverse una a una día a día. El día que devuelve cada
+    // item ("_finalDate") es el que decide Scheduler, no el de la IA.
+    const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+    const plannedDays = planWeekProposals(data.days || [], today, weekEnd, schedCtx);
+
+    const daysHtml = plannedDays.map(day=>{
+      const dateForDay = day.date || today;
+      const itemsHtml = (day.items||[]).map(it => {
+        const applyDate = (it.sourceType === 'proposal') ? (it._finalDate || dateForDay) : dateForDay;
+        return renderIAItemHTML(it, applyDate, batchId);
+      }).join('');
       return `<div class="ia-week-day"><h4>${esc(day.label||day.date||'')}</h4>${itemsHtml ? `<div class="ia-timeline">${itemsHtml}</div>` : `<p class="empty-hint">Sin novedades este día.</p>`}</div>`;
     }).join('');
     iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` +
