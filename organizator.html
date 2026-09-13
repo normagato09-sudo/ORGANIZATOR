@@ -2273,8 +2273,12 @@ function parseAIJSON(text){
 }
 
 /* ---------- Contexto real de ORGANIZATOR (nunca se inventa nada) ---------- */
-function buildContext(scope){
-  const today = todayStr();
+// 5F-3B: segundo parámetro opcional `anchorDate`, SOLO usado por el modo
+// 'week' (planificación de una semana objetivo distinta a la actual, p.ej.
+// desde la vista Semana). Sin argumento, comportamiento idéntico a siempre
+// (todayStr()). day/chat/otros modos no cambian.
+function buildContext(scope, anchorDate){
+  const today = (scope === 'week' && anchorDate) ? anchorDate : todayStr();
   const pend = state.tasks.filter(t => !t.done);
   const overdue = pend.filter(t => t.dueDate && t.dueDate < today);
   const noDate = pend.filter(t => !t.dueDate);
@@ -2294,7 +2298,7 @@ function buildContext(scope){
   }).sort((a,b) => a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''));
 
   const lines = [];
-  lines.push(`FECHA ACTUAL: ${today} (${DOW_NAMES[new Date().getDay()]}), hora actual: ${nowTimeStr()}.`);
+  lines.push(`FECHA ACTUAL: ${today} (${DOW_NAMES[parseYMD(today).getDay()]}), hora actual: ${nowTimeStr()}.`);
   if(scope === 'week' || scope === 'chat') lines.push(`RANGO CONSIDERADO: ${today} a ${rangeEnd}.`);
   lines.push('');
   lines.push('TAREAS ATRASADAS (fecha límite ya pasada, sin completar):');
@@ -2959,21 +2963,31 @@ async function runIADay(){
 }
 
 /* ---------- Organizar mi semana ---------- */
-async function runIAWeek(){
+// 5F-3B: `anchorDate` opcional — permite planificar la semana objetivo
+// visible en la vista Semana (week.anchorDate) en vez de siempre la semana
+// de hoy. Sin argumento, comportamiento idéntico a siempre (todayStr()).
+async function runIAWeek(anchorDate){
   iaSetButtonsDisabled(true);
   iaSetStatus('Analizando tu semana…');
   const msgEl = iaThreadAddPending('✨ Organizar mi semana');
   try{
-    const context = buildContext('week');
-    const system = IA_RULES + `\n\nGenera un plan para los próximos 7 días (hoy incluido), agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": [].`;
+    // Guarda de tipo: ia-week-btn se conecta como addEventListener('click',
+    // runIAWeek) (sin arrow, tal cual pide 5F-3B), y el DOM pasa el
+    // MouseEvent del click como primer argumento — NO "nada". Sin esta
+    // guarda, ese MouseEvent (siempre truthy) se colaría como anchorDate y
+    // rompería addDays(). Solo un string real (p.ej. week.anchorDate) cuenta
+    // como anchorDate; cualquier otra cosa (incluido un MouseEvent) cae a
+    // todayStr(), igual que "sin argumento".
+    const today = (typeof anchorDate === 'string' && anchorDate) ? anchorDate : todayStr();
+    const weekEnd = addDays(today, 6);
+    const context = buildContext('week', today);
+    const system = IA_RULES + `\n\nGenera un plan para los 7 días del rango indicado en el contexto, agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": [].`;
     iaSetStatus('Generando planificación semanal…');
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
     iaExpirePendingProposalsBeforeReset(); // 5F-3A: avisar + caducar antes de perder las pendientes de la generación anterior
     iaProposals = [];
     const batchId = nextIABatchId();
-    const today = todayStr();
-    const weekEnd = addDays(today, 6); // mismo rango que buildContext('week'): hoy + 6 días
 
     // Colocación conjunta (5E-2): todas las propuestas de la semana pasan
     // por UNA sola pasada de Scheduler.autoSchedule (planWeekProposals),
@@ -3056,10 +3070,16 @@ function initIA(){
   const semanaWeekBtn = document.getElementById('semana-ia-week-btn');
   const chatForm = document.getElementById('ia-chat-form');
   if(dayBtn) dayBtn.addEventListener('click', runIADay);
+  // Inicio sigue planificando SIEMPRE la semana actual: sin argumento,
+  // runIAWeek() usa todayStr() (ver 5F-3B). Se deja como referencia de
+  // función (no arrow) a propósito, igual que siempre.
   if(weekBtn) weekBtn.addEventListener('click', runIAWeek);
-  // 5E-4, punto 11: mismo runIAWeek() de siempre, sin una segunda función
-  // de planificación ni una segunda llamada a la API.
-  if(semanaWeekBtn) semanaWeekBtn.addEventListener('click', runIAWeek);
+  // 5E-4, punto 11 + 5F-3B: mismo runIAWeek() de siempre, sin una segunda
+  // función de planificación ni una segunda llamada a la API — pero ahora
+  // pasando explícitamente week.anchorDate (la semana visible), envuelto en
+  // una arrow function para que el MouseEvent del click no se cuele como
+  // anchorDate.
+  if(semanaWeekBtn) semanaWeekBtn.addEventListener('click', () => runIAWeek(week.anchorDate));
   if(chatForm) chatForm.addEventListener('submit', (e)=>{
     e.preventDefault();
     const input = document.getElementById('ia-chat-input');
