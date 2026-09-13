@@ -1422,6 +1422,13 @@ function buildSemanaDayAgendaBlocks(dateStr, schedCtx){
   // su schedulingWarning tal cual (punto 10: sin inventar una solución).
   const noSlot = pending.filter(p => !p.time || p.noSlot);
   let result = dayBlocks;
+  // 5F-3C, punto 6: spliceProposalsIntoBlocks() marca `_noRoom` en la
+  // propuesta cuando su hueco antiguo (el que tenía al generarse) ya no
+  // encaja en ningún bloque libre actual — el calendario cambió desde
+  // entonces. Antes esto la hacía desaparecer sin más del render; ahora se
+  // recoge en `displaced` para seguir mostrándola (igual que una propuesta
+  // sin hueco), en vez de ocultarla en silencio.
+  let displaced = [];
   if(timed.length){
     const placedForSplice = timed.map(p => {
       const start = timeToMin(p.time);
@@ -1429,9 +1436,20 @@ function buildSemanaDayAgendaBlocks(dateStr, schedCtx){
       return { start, end, startTime: p.time, endTime: p._endTime || minToTime(end), title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId };
     });
     result = spliceProposalsIntoBlocks(dayBlocks, placedForSplice);
+    displaced = placedForSplice.filter(p => p._noRoom);
   }
   const noSlotBlocks = noSlot.map(p => ({ type: 'proposal', startTime: null, endTime: null, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId, schedulingWarning: p.schedulingWarning }));
-  return result.concat(noSlotBlocks);
+  // La propuesta real en iaProposals conserva el aviso (solo lectura +
+  // actualización de schedulingWarning, igual que hace la revalidación de
+  // Apply — no se toca su status ni se recoloca ni se genera una nueva).
+  const displacedWarning = 'Ya no encaja: el calendario cambió desde que se generó esta propuesta.';
+  const displacedBlocks = displaced.map(p => {
+    const proposal = getIAProposalById(p.id);
+    const warning = (proposal && proposal.schedulingWarning) || displacedWarning;
+    if(proposal && !proposal.schedulingWarning) proposal.schedulingWarning = displacedWarning;
+    return { type: 'proposal', startTime: null, endTime: null, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId, schedulingWarning: warning };
+  });
+  return result.concat(noSlotBlocks, displacedBlocks);
 }
 function renderSemana(){
   const days = getWeekDays(week.anchorDate);
@@ -2618,6 +2636,73 @@ function validateWeeklyProposal(item, applyDate, schedCtx, weekStart, weekEnd, d
   return { valid: true };
 }
 
+/* ---------- 5F-3C: revalidación justo antes de Apply ----------
+   Segunda comprobación, más estrecha que validateWeeklyProposal: no repite
+   sus comprobaciones de fecha/horizonte/formato (eso ya se hizo cuando la
+   propuesta se generó) — responde solo a una pregunta: "¿el hueco EXACTO
+   que esta propuesta pretende ocupar sigue libre AHORA MISMO, justo antes
+   de crear la tarea/evento real?". El calendario puede haber cambiado
+   entre que la propuesta se generó (runIADay/runIAWeek) y el momento en
+   que el usuario pulsa "Añadir al plan" — con eventos/tareas/horarios
+   nuevos que ya no dejarían sitio.
+
+   Se usa tanto para propuestas source:'day' como source:'week' (mismo
+   problema en ambas, P1/P2 de la auditoría 5F-3C). Reutiliza el mismo
+   contrato de Scheduler que ya usa validateWeeklyProposal
+   (getBusyIntervals + findConflicts) — no reimplementa aquí la lógica de
+   intervalos.
+
+   Devuelve { valid: true } o { valid: false, reason: string }. */
+function revalidateIAProposalBeforeApply(it){
+  // Propuestas sin hora (tarea suelta, sin franja horaria que pueda
+  // quedar invadida): mismo comportamiento actual, no se inventa aquí una
+  // revalidación temporal para ellas (punto 5 de esta fase).
+  if(!it || !it.time) return { valid: true };
+  if(!window.Scheduler || !window.Scheduler._internal){
+    // Mismo criterio defensivo que validateWeeklyProposal: sin Scheduler
+    // no se puede comprobar nada más, no se bloquea Apply por ello.
+    return { valid: true };
+  }
+  const { timeToMin, minToTime, getBusyIntervals } = window.Scheduler._internal;
+
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if(!HHMM.test(it.time)) return { valid: true }; // formato ya se validó antes de llegar aquí
+
+  // Mismo respaldo que ya usa el propio handler de Apply para la fecha
+  // real de aplicación (it.applyDate || todayStr()).
+  const applyDate = it.applyDate || todayStr();
+
+  const startMin = timeToMin(it.time);
+  const endMin = (it._endTime && HHMM.test(it._endTime))
+    ? timeToMin(it._endTime)
+    : startMin + (it._durationMinutes || it.estimatedMinutes || 60);
+  const endTimeStr = (it._endTime && HHMM.test(it._endTime)) ? it._endTime : minToTime(endMin);
+
+  const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+
+  // Evento, tarea u horario fijo/custom schedule ya ocupando el hueco
+  // exacto ahora mismo — getBusyIntervals fusiona las tres fuentes.
+  const busy = getBusyIntervals(applyDate, schedCtx);
+  const invades = busy.some(([bs, be]) => startMin < be && endMin > bs);
+  if(invades){
+    return { valid:false, reason:'Ya no encaja: el calendario cambió desde que se generó esta propuesta.' };
+  }
+
+  // Conflicto temporal — misma técnica de sonda que validateWeeklyProposal:
+  // se añade la propuesta como pseudo-tarea temporal solo para esta
+  // consulta, sin guardarla en ningún sitio.
+  const probeId = `ia-revalidate-probe-${it.id}-${applyDate}-${it.time}`;
+  const probeTasks = (schedCtx.tasks || []).concat([{
+    id: probeId, scheduledDate: applyDate, scheduledStart: it.time, scheduledEnd: endTimeStr,
+  }]);
+  const conflicts = window.Scheduler.findConflicts(applyDate, Object.assign({}, schedCtx, { tasks: probeTasks }));
+  if(conflicts.includes(probeId)){
+    return { valid:false, reason:'Ya no encaja: el calendario cambió desde que se generó esta propuesta.' };
+  }
+
+  return { valid: true };
+}
+
 /* ---------- Agenda visual 00:00–23:00 (solo lectura) ----------
    Se construye a partir de los mismos items ya resueltos (con hora y
    duración reales); no decide nada, solo dibuja lo que ya se calculó.
@@ -2699,7 +2784,12 @@ function renderDayAgendaList(mergedBlocks, dateForApply, batchId){
   const icon = { busy: '🔒', free: '🟢', past: '⏳', proposal: '📚' };
   return `<div class="ia-agenda">${mergedBlocks.map(b => {
     if(b.type === 'proposal'){
-      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: b.title, time: b.startTime, kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply };
+      // _endTime/_durationMinutes (5F-3C): mismos campos que ya usan las
+      // propuestas de source:'week' (planWeekProposals), aquí calculados
+      // a partir del propio bloque colocado por Scheduler.autoSchedule —
+      // permiten que revalidateIAProposalBeforeApply compruebe el hueco
+      // real en vez de adivinar una duración por defecto.
+      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: b.title, time: b.startTime, _endTime: b.endTime, _durationMinutes: (b.end - b.start), kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply };
       iaProposals.push(proposal);
       return `<div class="ia-ag-row ia-ag-proposal">
         <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
@@ -2790,6 +2880,24 @@ function wireIAProposalButtons(container){
       it._applying = true;
       b.disabled = true;
       try{
+        // 5F-3C: revalidación justo antes de aplicar. El calendario puede
+        // haber cambiado desde que esta propuesta se generó (el usuario
+        // tardó en decidir, o se creó/movió algo mientras tanto) — se
+        // comprueba el hueco EXACTO ahora mismo, con el mismo contrato de
+        // Scheduler que ya usa validateWeeklyProposal. Cubre tanto
+        // source:'day' como source:'week' (P1 + P2 de la auditoría).
+        const revalidation = revalidateIAProposalBeforeApply(it);
+        if(!revalidation.valid){
+          // No se aplica, no se descarta: la propuesta sigue pending y
+          // recuperable (el usuario decide si la descarta o espera a que
+          // se regenere). Se deja constancia del motivo para que la UI
+          // (Semana) lo refleje, y se avisa con el toast existente.
+          it.schedulingWarning = revalidation.reason;
+          showToast(revalidation.reason);
+          b.disabled = false;
+          if(currentView === 'semana') renderSemana();
+          return;
+        }
         await applyIAProposal(it, it.applyDate || todayStr());
         setIAProposalStatus(it.id, 'applied');
         b.textContent = 'Añadido ✓';

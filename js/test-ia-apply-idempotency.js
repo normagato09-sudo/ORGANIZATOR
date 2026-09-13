@@ -62,6 +62,12 @@ const src = [
   transitionsMatch[0],
   extractFn(/function setIAProposalStatus\(id, status\) \{/, 'setIAProposalStatus'),
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
+  // 5F-3C: wireIAProposalButtons ahora llama a revalidateIAProposalBeforeApply
+  // justo antes de applyIAProposal — se extrae también, literal, para que el
+  // código real siga ejecutándose tal cual en el sandbox (sin window.Scheduler
+  // en estos tests, devuelve { valid: true } y no cambia ningún resultado de
+  // esta suite, que sigue centrada en la idempotencia de 5F-2).
+  extractFn(/function revalidateIAProposalBeforeApply\(it\)\{/, 'revalidateIAProposalBeforeApply'),
   extractFn(/function wireIAProposalButtons\(container\)\{/, 'wireIAProposalButtons'),
 ].join('\n');
 

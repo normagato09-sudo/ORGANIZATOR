@@ -61,6 +61,11 @@ const src = [
   transitionsMatch[0],
   extractFn(/function setIAProposalStatus\(id, status\) \{/, 'setIAProposalStatus'),
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
+  // 5F-3C: wireIAProposalButtons ahora llama a revalidateIAProposalBeforeApply
+  // justo antes de applyIAProposal — se extrae también, literal. Sin
+  // window.Scheduler en este sandbox devuelve { valid: true } y no cambia
+  // ningún resultado de esta suite (centrada en la caducidad de 5F-3A).
+  extractFn(/function revalidateIAProposalBeforeApply\(it\)\{/, 'revalidateIAProposalBeforeApply'),
   extractFn(/function wireIAProposalButtons\(container\)\{/, 'wireIAProposalButtons'),
   extractFn(/function iaExpirePendingProposalsBeforeReset\(\)\{/, 'iaExpirePendingProposalsBeforeReset'),
 ].join('\n');
