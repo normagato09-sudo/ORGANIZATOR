@@ -296,6 +296,13 @@
    * reglas que getBusyIntervals/getFreeSlots), para que tanto la UI como
    * la propia IA puedan apoyarse en un dato 100% fiable en vez de tener
    * que deducir los huecos de una lista de texto.
+   *
+   * Fase 6A-4.2: además de `blocks`, el resultado incluye `eventContext`
+   * — la lista de eventos all-day con blocksSchedule===false ese día
+   * (id, title, allDay). No aparecen en `blocks` (no ocupan tiempo, no
+   * son "busy" ni "free"): es información aparte para que la UI pueda
+   * seguir mostrándolos como contexto del día sin que cuenten como
+   * ocupación. No afecta a getBusyIntervals/getFreeSlots/findConflicts.
    */
   function buildDayBlocks(dateStr, context, opts) {
     const cfg = Object.assign({}, DEFAULTS, opts);
@@ -308,6 +315,16 @@
     // 1) Recopilar bloques ocupados SIN fusionar todavía, conservando de
     // dónde viene cada uno (para poder mostrar su nombre real).
     const raw = [];
+    // Fase 6A-4.2: eventos all-day con blocksSchedule===false no ocupan
+    // tiempo (no van a `raw`), pero siguen siendo relevantes como
+    // "contexto" del día (p.ej. un cumpleaños o un festivo local que no
+    // bloquea la planificación, pero que sigue queriendo verse). Se
+    // recogen aparte, en paralelo a `raw`, con el mínimo dato necesario
+    // para poder pintarlos: id, título y allDay. Sigue sin conocerse aquí
+    // nada de categorías de eventos — solo se lee blocksSchedule, ya
+    // resuelto por quien construye `context.events` (igual que el resto
+    // de esta función).
+    const eventContext = [];
     (context.customSchedules || [])
       .filter(s => Array.isArray(s.days) && s.days.includes(dow) && s.startTime && s.endTime)
       .forEach(s => raw.push({ start: timeToMin(s.startTime), end: timeToMin(s.endTime), label: s.name, kind: 'schedule', id: s.id }));
@@ -317,7 +334,11 @@
       if (dateStr < start || dateStr > end) return;
       // Fase 6A-3: misma semántica que en getBusyIntervals — solo se
       // genera bloque ocupado de día completo si blocksSchedule !== false.
-      if (e.allDay) { if (e.blocksSchedule !== false) raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event', id: e.id }); return; }
+      if (e.allDay) {
+        if (e.blocksSchedule !== false) { raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event', id: e.id }); }
+        else { eventContext.push({ id: e.id, title: e.title, allDay: true }); }
+        return;
+      }
       if (e.startTime) {
         const s = timeToMin(e.startTime);
         const en = e.endTime ? timeToMin(e.endTime) : s + 60;
@@ -384,7 +405,7 @@
     const totalFreeMinutes = blocks.filter(b => b.type === 'free').reduce((sum, b) => sum + (b.end - b.start), 0);
     const totalBusyMinutes = blocks.filter(b => b.type === 'busy').reduce((sum, b) => sum + (b.end - b.start), 0);
 
-    return { date: dateStr, dayStart: cfg.dayStart, dayEnd: cfg.dayEnd, blocks, totalFreeMinutes, totalBusyMinutes };
+    return { date: dateStr, dayStart: cfg.dayStart, dayEnd: cfg.dayEnd, blocks, eventContext, totalFreeMinutes, totalBusyMinutes };
   }
 
   global.Scheduler = {

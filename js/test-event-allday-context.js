@@ -11,17 +11,23 @@
  * bloquea el horario o queda como "evento-contexto" (blocksSchedule).
  *
  * IMPORTANTE — qué es "event-context" en el código actual:
- * Scheduler.js no conoce categorías ni tiene un campo/tipo llamado
- * "context": lo único que existe es `blocksSchedule` (resuelto en
- * organizator.html a partir de categoryId, vía resolveEventBlocksSchedule
- * / eventsForScheduler). Un evento all-day con blocksSchedule === false
- * es, en la práctica, un "evento-contexto": se guarda y se muestra en el
- * listado de eventos igual que cualquier otro, pero no genera intervalo
- * ocupado, no resta tiempo libre, no genera conflictos y no aparece como
- * bloque "busy" en buildDayBlocks (que es la señal que usan tanto el día
- * como las propuestas de la IA para saber qué hay ocupado). Esta suite
- * verifica exactamente ese comportamiento REAL, sin inventar un tipo de
- * dato, campo o función nuevos que no existan en el código.
+ * Scheduler.js no conoce categorías: lo único que conoce es
+ * `blocksSchedule` (resuelto en organizator.html a partir de categoryId,
+ * vía resolveEventBlocksSchedule/eventsForScheduler). Un evento all-day
+ * con blocksSchedule === false es un "evento-contexto": se guarda y se
+ * muestra en el listado de eventos igual que cualquier otro, pero no
+ * genera intervalo ocupado, no resta tiempo libre, no genera conflictos y
+ * no aparece como bloque "busy" en buildDayBlocks (que es la señal que
+ * usan tanto el día como las propuestas de la IA para saber qué hay
+ * ocupado). Esta suite verifica exactamente ese comportamiento REAL, sin
+ * inventar un tipo de dato, campo o función nuevos que no existan en el
+ * código.
+ *
+ * Ampliación 6A-4.2 (sección 16): buildDayBlocks() ahora también
+ * devuelve `eventContext` — un array con {id, title, allDay} de cada
+ * evento-contexto de ese día, aparte de `blocks`, para que la UI pueda
+ * seguir mostrándolo sin que cuente como ocupación. Las secciones 1-15
+ * (ya existentes) no se han tocado ni reducido.
  *
  * Uso:  node js/test-event-allday-context.js
  * Sale con código 0 si todo pasa, 1 si algo falla.
@@ -30,6 +36,7 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT, 'organizator.html');
@@ -391,6 +398,91 @@ function dowOf(y, m, d) {
     const built = sb2.schedulerContext();
     check('15. schedulerContext() entrega a la IA el evento-contexto con blocksSchedule=false ya resuelto (huecos siguen disponibles para proponer tareas)',
       built.events[0].blocksSchedule === false && built.tasks[0].id === 't1');
+  }
+
+  // =====================================================================
+  section('16) 6A-4.2 — nueva estructura contextual de buildDayBlocks() (eventContext)');
+  // =====================================================================
+  {
+    const sb = makeSandbox();
+    const dateStr = '2026-11-20';
+    const opts = { dayStart: '07:00', dayEnd: '23:00' };
+
+    const ctx = {
+      events: [
+        { id: 'ctxA', title: 'Cumpleaños de Marta', date: dateStr, allDay: true, blocksSchedule: false },
+        { id: 'blockB', title: 'Examen', date: dateStr, allDay: true, blocksSchedule: true },
+      ],
+      tasks: [{ id: 't1', scheduledDate: dateStr, scheduledStart: '10:00', scheduledEnd: '10:30' }],
+      customSchedules: [{ id: 's1', name: 'Escuela', days: [dowOf(2026, 11, 20)], startTime: '08:00', endTime: '09:00' }],
+    };
+
+    // Snapshot profundo de context.events ANTES de llamar a buildDayBlocks,
+    // para comprobar después que no se ha mutado nada (ni el array ni los
+    // objetos de evento originales).
+    const eventsSnapshotBefore = JSON.stringify(ctx.events);
+
+    const result = sb.Scheduler.buildDayBlocks(dateStr, ctx, opts);
+
+    check('16. buildDayBlocks() devuelve un array eventContext', Array.isArray(result.eventContext));
+    check('16. el evento contextual (blocksSchedule:false) SIGUE SIENDO VISIBLE en eventContext',
+      result.eventContext.some(e => e.id === 'ctxA'));
+    check('16. el evento contextual conserva su id y su título exactos',
+      result.eventContext.some(e => e.id === 'ctxA' && e.title === 'Cumpleaños de Marta'));
+    check('16. el evento contextual conserva allDay:true (dato necesario para renderizarlo)',
+      result.eventContext.some(e => e.id === 'ctxA' && e.allDay === true));
+    check('16. el evento bloqueante (blocksSchedule:true) NO aparece en eventContext',
+      !result.eventContext.some(e => e.id === 'blockB'));
+
+    check('16. el evento contextual NO aparece como bloque "busy" en blocks',
+      !result.blocks.some(b => b.type === 'busy' && b.ids && b.ids.includes('ctxA')));
+    check('16. el evento bloqueante SÍ sigue apareciendo como bloque "busy" en blocks, con su id',
+      result.blocks.some(b => b.type === 'busy' && Array.isArray(b.ids) && b.ids.includes('blockB')));
+    check('16. ese mismo bloque "busy" conserva el título del evento bloqueante en su label',
+      result.blocks.some(b => b.type === 'busy' && Array.isArray(b.ids) && b.ids.includes('blockB') && b.label.includes('Examen')));
+
+    // Aislar el efecto del evento contextual: se compara CON él (solo él,
+    // sin el bloqueante) frente a un contexto vacío, para confirmar que no
+    // genera intervalo ocupado ni reduce huecos libres.
+    const ctxOnlyContext = { events: [ctx.events[0]], tasks: [], customSchedules: [] };
+    const ctxEmpty = { events: [], tasks: [], customSchedules: [] };
+    const busyWithContext = sb.Scheduler._internal.getBusyIntervals(dateStr, ctxOnlyContext);
+    check('16. el evento contextual sigue sin generar ningún intervalo ocupado (getBusyIntervals)', busyWithContext.length === 0);
+    const freeWithContext = sb.Scheduler.getFreeSlots(dateStr, ctxOnlyContext, opts);
+    const freeEmpty = sb.Scheduler.getFreeSlots(dateStr, ctxEmpty, opts);
+    check('16. el evento contextual sigue sin reducir getFreeSlots()', JSON.stringify(freeWithContext) === JSON.stringify(freeEmpty));
+
+    // Tareas y customSchedules siguen funcionando exactamente igual dentro
+    // de este mismo buildDayBlocks() con eventContext presente a la vez.
+    check('16. la tarea programada ese día sigue apareciendo como bloque "busy" (tareas no cambian)',
+      result.blocks.some(b => b.type === 'busy' && b.ids && b.ids.includes('t1')));
+    check('16. el horario fijo (customSchedules) sigue apareciendo como bloque "busy" (customSchedules no cambian)',
+      result.blocks.some(b => b.type === 'busy' && b.ids && b.ids.includes('s1')));
+
+    // scheduler.js no contiene categoryId/eventCategories (repetido aquí
+    // como comprobación directa y autocontenida de este apartado; la
+    // cobertura en profundidad vive en la sección 11).
+    check('16. scheduler.js no accede a la propiedad ".categoryId" en ningún código',
+      !/\.categoryId\b/.test(schedulerSrc));
+    check('16. scheduler.js no menciona "eventCategories" en ningún sitio', !/eventCategories/.test(schedulerSrc));
+
+    // No hay mutación de state.events (aquí, context.events): ni el array
+    // de entrada ni los objetos de evento originales cambian al llamar a
+    // buildDayBlocks().
+    check('16. buildDayBlocks() no muta context.events (mismo contenido antes/después, comparación profunda)',
+      JSON.stringify(ctx.events) === eventsSnapshotBefore);
+    check('16. buildDayBlocks() no añade campos nuevos a los objetos de evento originales',
+      Object.keys(ctx.events[0]).sort().join(',') === ['id', 'title', 'date', 'allDay', 'blocksSchedule'].sort().join(','));
+
+    // node --check sobre js/scheduler.js: mismo comando del punto 9 del
+    // encargo, replicado aquí para que la propia suite se autocontenga
+    // (falla si scheduler.js deja de ser sintácticamente válido).
+    try {
+      execFileSync(process.execPath, ['--check', SCHEDULER_PATH], { stdio: 'pipe' });
+      check('16. node --check js/scheduler.js sigue pasando (sintaxis válida)', true);
+    } catch (e) {
+      check('16. node --check js/scheduler.js sigue pasando (sintaxis válida)', false);
+    }
   }
 
   console.log(`\n${pass} pasaron, ${fail} fallaron.`);

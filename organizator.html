@@ -407,6 +407,14 @@
   .semana-day-body .ia-mini-btn:disabled{opacity:.5;}
   .semana-day-body .ia-mini-ghost{font-size:10.5px;padding:4px 5px;color:var(--ink-soft);}
   .semana-day-body .ia-mini-ghost:hover{color:var(--ink);}
+
+  /* ---------- 6A-4.2: eventos all-day "contexto" (blocksSchedule:false) ----------
+     Se pintan fuera de la secuencia temporal de bloques (no son una fila
+     .ia-ag-row más: no tienen hora, no ocupan tiempo). La señal es el
+     icono 📌 + el propio texto, no solo el color, para que funcione igual
+     en móvil o con dificultad para distinguir colores. */
+  .semana-day-context{display:flex;flex-direction:column;gap:3px;}
+  .semana-context-badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.3;color:var(--event);background:var(--event-bg);border-radius:6px;padding:3px 6px;overflow-wrap:anywhere;}
   .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
   .cal-cell{
     background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -420,6 +428,9 @@
   .cal-daynum{font-size:12px;font-weight:600;}
   .cal-dots{display:flex;flex-wrap:wrap;gap:3px;}
   .cal-dot{width:6px;height:6px;border-radius:50%;}
+  /* 6A-4.2: punto hueco (anillo) para días con solo eventos "contexto" —
+     distinción por FORMA, no solo por color, misma var(--event). */
+  .cal-dot-context{width:6px;height:6px;border-radius:50%;background:transparent;border:1.5px solid var(--event);box-sizing:border-box;}
   .cal-more{font-size:9.5px;color:var(--ink-soft);}
   .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .day-panel-head h2{font-size:14.5px;font-weight:600;margin:0;}
@@ -523,6 +534,7 @@
     .semana-day-body .ia-ag-row{padding:5px 0;gap:4px;}
     .semana-day-body .ia-ag-time{font-size:9px;}
     .semana-day-body .ia-ag-icon{font-size:10px;}
+    .semana-context-badge{font-size:9.5px;padding:3px 5px;}
     .semana-day-body .ia-ag-title{font-size:10.5px;}
   }
 
@@ -1323,11 +1335,24 @@ function renderCalendar(){
     // Una tarea se pinta en el día donde va a HACERSE (scheduledDate si
     // el Scheduler ya le asignó hueco), no necesariamente en su fecha límite.
     if(state.tasks.some(t=>(t.scheduledDate||t.dueDate)===dateStr)) dayTypes.push('task');
-    if(state.events.some(e=>isDateInRange(dateStr, e.date, e.endDate))) dayTypes.push('event');
+    const dayEventsHere = state.events.filter(e=>isDateInRange(dateStr, e.date, e.endDate));
+    if(dayEventsHere.length){
+      // 6A-4.2: si TODOS los eventos de ese día son all-day contextuales
+      // (blocksSchedule:false), el punto se pinta hueco en vez de macizo —
+      // señal mínima que no depende solo del color (5A11n), manteniendo el
+      // mismo punto/color de categoría existente y sin rediseñar el
+      // calendario. Basta con que uno bloquee para seguir usando el punto
+      // macizo de siempre.
+      const onlyContext = dayEventsHere.every(e => e.allDay && resolveEventBlocksSchedule(e.categoryId) === false);
+      dayTypes.push(onlyContext ? 'event-context' : 'event');
+    }
     cells += `
       <div class="cal-cell ${dateStr===today?'today':''} ${dateStr===cal.selected?'selected':''}" data-date="${dateStr}">
         <div class="cal-daynum">${day}</div>
-        <div class="cal-dots">${dayTypes.map(ty=>`<div class="cal-dot" style="background:var(--${ty});"></div>`).join('')}</div>
+        <div class="cal-dots">${dayTypes.map(ty=>ty==='event-context'
+          ? `<div class="cal-dot cal-dot-context" title="Solo eventos de contexto"></div>`
+          : `<div class="cal-dot" style="background:var(--${ty});"></div>`
+        ).join('')}</div>
       </div>`;
   }
   document.getElementById('cal-grid').innerHTML = cells;
@@ -1526,6 +1551,21 @@ function buildSemanaDayAgendaBlocks(dateStr, schedCtx){
   });
   return result.concat(noSlotBlocks, displacedBlocks);
 }
+/* ---------- 6A-4.2: eventos all-day "contexto" (blocksSchedule:false) ----------
+   Reciben tal cual el array `eventContext` que ya calcula
+   Scheduler.buildDayBlocks() (id, title, allDay) — solo lectura, no crea
+   ni modifica nada. Se pintan aparte de `blocks` (fuera de la secuencia
+   temporal 🔒/📚/🟢): no tienen hora ni ocupan tiempo, así que no encajan
+   como una fila más de renderSemanaAgenda/renderDayAgendaList. La señal
+   visual es el icono 📌 + el propio título (no solo el color de fondo),
+   para que se distinga igual en pantallas pequeñas o sin buena percepción
+   del color (5A11n). */
+function renderEventContextBadges(eventContext){
+  if(!eventContext || !eventContext.length) return '';
+  return `<div class="semana-day-context">${eventContext.map(e =>
+    `<span class="semana-context-badge" data-context-id="${esc(e.id)}" title="Evento de contexto: ${esc(e.title)}">📌 ${esc(e.title)}</span>`
+  ).join('')}</div>`;
+}
 function renderSemana(){
   const days = getWeekDays(week.anchorDate);
   document.getElementById('semana-title').textContent = weekRangeLabel(days);
@@ -1545,12 +1585,18 @@ function renderSemana(){
     const agendaHtml = window.Scheduler
       ? renderSemanaAgenda(buildSemanaDayAgendaBlocks(dateStr, schedCtx))
       : `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación).</p>`;
+    // 6A-4.2: eventos all-day contextuales de ese día, pintados aparte de
+    // la agenda (no son un bloque 🔒/📚/🟢 más, ver renderEventContextBadges).
+    const contextHtml = window.Scheduler
+      ? renderEventContextBadges(window.Scheduler.buildDayBlocks(dateStr, schedCtx).eventContext)
+      : '';
     return `
       <div class="semana-day ${dateStr===today?'today':''}" data-date="${dateStr}">
         <div class="semana-day-head">
           <span class="semana-day-name">${dayName}</span>
           <span class="semana-day-date">${dayDate}</span>
         </div>
+        ${contextHtml}
         <div class="semana-day-body">${agendaHtml}</div>
       </div>`;
   }).join('');
@@ -3206,7 +3252,8 @@ async function runIADay(){
     // 3) Agenda real del día (sin propuestas) + se insertan las propuestas
     // ya colocadas dentro de sus huecos libres reales.
     const { timeToMin } = window.Scheduler._internal;
-    const dayBlocks = window.Scheduler.buildDayBlocks(today, schedCtx).blocks;
+    const dayBlocksResult = window.Scheduler.buildDayBlocks(today, schedCtx);
+    const dayBlocks = dayBlocksResult.blocks;
     const placedForSplice = placed.map(t => ({
       start: timeToMin(t.scheduledStart), end: timeToMin(t.scheduledEnd),
       startTime: t.scheduledStart, endTime: t.scheduledEnd,
@@ -3214,6 +3261,10 @@ async function runIADay(){
     }));
     const mergedBlocks = spliceProposalsIntoBlocks(dayBlocks, placedForSplice);
     const batchId = nextIABatchId();
+    // 6A-4.2: eventos all-day contextuales de hoy, pintados aparte de la
+    // agenda (no son un bloque 🔒/📚/🟢 más — no ocupan tiempo, no impiden
+    // ni desplazan ninguna propuesta de la IA).
+    const contextHtml = renderEventContextBadges(dayBlocksResult.eventContext);
     const agendaHtml = renderDayAgendaList(mergedBlocks, today, batchId);
 
     // 4) Propuestas que no encontraron hueco hoy: se muestran aparte,
@@ -3235,7 +3286,7 @@ async function runIADay(){
       </div>`;
     }).join('')}</div>` : '';
 
-    iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` + agendaHtml + unplacedHtml);
+    iaThreadResolve(msgEl, `${data.summary?`<div class="ia-summary">${esc(data.summary)}</div>`:''}` + contextHtml + agendaHtml + unplacedHtml);
     wireIAProposalButtons(msgEl);
     iaSetStatus('');
   }catch(err){
