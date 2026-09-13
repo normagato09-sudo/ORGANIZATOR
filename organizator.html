@@ -846,6 +846,7 @@ function defaultIA(){
 let state = {
   tasks: [], events: [],
   customSchedules: [],
+  eventCategories: [], // Fase 6A-3: categorías configurables para eventos (color + blocksSchedule)
   prefs: defaultPrefs(),
   ia: defaultIA(),
 };
@@ -954,6 +955,10 @@ async function loadState(){
     const cs = await window.storage.get('customSchedules', false);
     state.customSchedules = cs ? JSON.parse(cs.value) : [];
   }catch(e){ state.customSchedules = []; }
+  try{
+    const ec = await window.storage.get('eventCategories', false);
+    state.eventCategories = ec ? JSON.parse(ec.value) : [];
+  }catch(e){ state.eventCategories = []; }
   // Ajustes: se cargan por separado y se combinan con los valores por defecto,
   // así si en el futuro se añaden más claves no se rompe con datos antiguos.
   try{
@@ -976,6 +981,10 @@ async function saveEvents(){
 async function saveCustomSchedules(){
   try{ await window.storage.set('customSchedules', JSON.stringify(state.customSchedules), false); }
   catch(e){ console.error('No se pudieron guardar los horarios bloqueados', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveEventCategories(){
+  try{ await window.storage.set('eventCategories', JSON.stringify(state.eventCategories), false); }
+  catch(e){ console.error('No se pudieron guardar las categorías de eventos', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
 }
 async function savePrefs(){
   try{ await window.storage.set('settingsPrefs', JSON.stringify(state.prefs), false); }
@@ -1023,6 +1032,67 @@ async function updateEvent(id, data){
 async function deleteEvent(id){
   state.events = state.events.filter(x=>x.id!==id);
   await saveEvents();
+}
+
+/* ==================================================================
+   CATEGORÍAS DE EVENTOS (Fase 6A-3)
+   Cada categoría: { id, name, color, icon?, blocksSchedule }.
+   blocksSchedule por defecto true (mismo comportamiento que un evento
+   sin categoría). Eliminar una categoría NUNCA borra eventos: los que
+   queden con categoryId huérfano se resuelven con el comportamiento y
+   color por defecto mediante resolveEventCategory/resolveEventBlocksSchedule.
+   ================================================================== */
+async function addEventCategory(data){
+  const cat = {
+    id: uid(),
+    name: (data.name||'').trim(),
+    color: data.color || '#1B1F23',
+    icon: data.icon ? data.icon.trim() : '',
+    blocksSchedule: data.blocksSchedule !== false,
+    createdAt: Date.now(),
+  };
+  state.eventCategories.push(cat);
+  await saveEventCategories();
+  return cat;
+}
+async function updateEventCategory(id, data){
+  const c = state.eventCategories.find(x=>x.id===id);
+  if(!c) return;
+  if(data.name!=null) c.name = data.name.trim();
+  if(data.color!=null) c.color = data.color;
+  if(data.icon!=null) c.icon = data.icon.trim();
+  if(data.blocksSchedule!=null) c.blocksSchedule = data.blocksSchedule !== false;
+  await saveEventCategories();
+}
+async function deleteEventCategory(id){
+  state.eventCategories = state.eventCategories.filter(x=>x.id!==id);
+  await saveEventCategories();
+}
+/** Devuelve la categoría de un evento, o null si no tiene categoryId,
+ * o si el categoryId ya no existe (huérfano) — nunca lanza. */
+function resolveEventCategory(categoryId){
+  if(!categoryId) return null;
+  return (state.eventCategories||[]).find(c=>c.id===categoryId) || null;
+}
+/** Regla de la fase: categoría existente → su blocksSchedule; categoría
+ * inexistente/ausente → true (mismo comportamiento que hoy). */
+function resolveEventBlocksSchedule(categoryId){
+  const cat = resolveEventCategory(categoryId);
+  if(!cat) return true;
+  return cat.blocksSchedule !== false;
+}
+/** Color de categoría para pintar el evento, o null si no tiene
+ * categoría (=> el llamador debe usar el color por defecto actual). */
+function resolveEventColor(categoryId){
+  const cat = resolveEventCategory(categoryId);
+  return (cat && cat.color) ? cat.color : null;
+}
+/** Copia de state.events con blocksSchedule YA resuelto a partir de
+ * categoryId, lista para pasar a Scheduler. Scheduler.js no conoce
+ * eventCategories ni categoryId: solo lee este booleano ya calculado,
+ * igual que ya lee allDay/startTime/endTime. */
+function eventsForScheduler(){
+  return state.events.map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
 }
 
 /* ==================================================================
@@ -1208,10 +1278,15 @@ function taskRowHTML(t){
     </div>`;
 }
 function eventRowHTML(e){
+  const catColor = resolveEventColor(e.categoryId);
+  const cat = resolveEventCategory(e.categoryId);
   return `
     <div class="event-row">
       <div class="row-body">
-        <div class="row-top"><span class="event-title">${esc(e.title)}</span></div>
+        <div class="row-top">
+          ${catColor ? `<span class="priority-dot" style="background:${esc(catColor)};" title="${cat?esc(cat.name):''}"></span>` : ''}
+          <span class="event-title">${esc(e.title)}</span>
+        </div>
         <div class="row-meta">
           <span>${humanDateShort(e.date)}${e.endDate?' → '+humanDateShort(e.endDate):''}</span>
           <span>${e.allDay?'Todo el día':(e.startTime||'')+(e.endTime?' - '+e.endTime:'')}</span>
@@ -1462,7 +1537,7 @@ function renderSemana(){
   // Scheduler.buildDayBlocks() la agenda real de cada día y la pinta con
   // renderSemanaAgenda() (mismo marcado que renderDayAgendaList, adaptado
   // al fondo claro de las tarjetas y con distinción visual adicional).
-  const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
   grid.innerHTML = days.map((dateStr, i) => {
     const d = parseYMD(dateStr);
     const dayName = DOW_FULL_MONFIRST[i];
@@ -1650,6 +1725,12 @@ function openEventModal({eventId=null, date=null}={}){
       <div class="form-group"><label>Título</label>
         <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Reunión de equipo">
       </div>
+      <div class="form-group"><label>Categoría (opcional)</label>
+        <select name="categoryId">
+          <option value="">Sin categoría</option>
+          ${(state.eventCategories||[]).map(c=>`<option value="${c.id}" ${existing&&existing.categoryId===c.id?'selected':''}>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</option>`).join('')}
+        </select>
+      </div>
       <div class="form-row-2">
         <div class="form-group"><label>Fecha</label>
           <input type="date" name="date" required value="${existing?existing.date:(date||'')}">
@@ -1698,6 +1779,7 @@ function openEventModal({eventId=null, date=null}={}){
     const isAllDay = fd.get('allDay') === 'on';
     const data = {
       title: fd.get('title').trim(),
+      categoryId: fd.get('categoryId') || '',
       date: fd.get('date'),
       endDate: fd.get('endDate') || '',
       allDay: isAllDay,
@@ -1787,6 +1869,70 @@ function openScheduleModal({scheduleId=null}={}){
 }
 
 /* ==================================================================
+   MODAL: CATEGORÍA DE EVENTO (Fase 6A-3)
+   ================================================================== */
+function openEventCategoryModal({categoryId=null}={}){
+  const editing = !!categoryId;
+  const existing = editing ? state.eventCategories.find(c=>c.id===categoryId) : null;
+  const blocks = existing ? existing.blocksSchedule !== false : true;
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} categoría de evento</h3>
+    <form id="event-category-form">
+      <div class="form-group"><label>Nombre</label>
+        <input type="text" name="name" required value="${existing?esc(existing.name):''}" placeholder="Ej. Vacaciones, Trabajo, Personal…">
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label>Color</label>
+          <input type="color" name="color" value="${existing?esc(existing.color||'#1B1F23'):'#1B1F23'}">
+        </div>
+        <div class="form-group"><label>Icono (opcional)</label>
+          <input type="text" name="icon" maxlength="4" value="${existing?esc(existing.icon||''):''}" placeholder="Ej. 🌴">
+        </div>
+      </div>
+      <div class="form-check">
+        <input type="checkbox" name="blocksSchedule" id="cat-blocks-schedule" ${blocks?'checked':''}>
+        <label for="cat-blocks-schedule" style="margin:0;">Bloquea planificación (un evento de todo el día con esta categoría ocupa el día entero)</label>
+      </div>
+      <div class="modal-actions">
+        <div>${editing?`<button type="button" class="btn" id="event-category-delete-btn">Eliminar</button>`:''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="event-category-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  modalBox.querySelector('#event-category-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#event-category-delete-btn').addEventListener('click', async ()=>{
+      if(confirm('¿Eliminar esta categoría? Los eventos que la usan no se eliminan: pasarán a comportarse como un evento sin categoría.')){
+        await deleteEventCategory(categoryId);
+        closeModal();
+        renderAjustes();
+      }
+    });
+  }
+  modalBox.querySelector('#event-category-form').addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const data = {
+      name: fd.get('name').trim(),
+      color: fd.get('color') || '#1B1F23',
+      icon: fd.get('icon') || '',
+      blocksSchedule: fd.get('blocksSchedule') === 'on',
+    };
+    if(!data.name) return;
+    if(editing) await updateEventCategory(categoryId, data); else await addEventCategory(data);
+    closeModal();
+    showToast(editing?'Guardado':'Añadido');
+    renderAjustes();
+  });
+
+  overlay.classList.add('open');
+}
+
+/* ==================================================================
    RENDER: AJUSTES
    ================================================================== */
 function renderScheduleRows(){
@@ -1803,6 +1949,23 @@ function renderScheduleRows(){
   }).join('');
   const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no has creado ningún bloque. Añade tu escuela, tu trabajo, el gimnasio… lo que quieras que ORGANIZATOR sepa que tienes ocupado.</div>`;
   return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-schedule">+ Añadir bloque de horario</button>`;
+}
+
+/* Fase 6A-3: filas de categorías de eventos, mismo patrón visual que
+   renderScheduleRows (reutiliza .schedule-row/.sched-main/.sched-meta/
+   .sched-time y .priority-dot para el color, sin CSS nuevo). */
+function renderEventCategoryRows(){
+  const sorted = [...state.eventCategories].sort((a,b) => (a.name||'').localeCompare(b.name||''));
+  const rows = sorted.map(c=>{
+    return `<div class="schedule-row" data-category-id="${c.id}">
+      <div class="sched-main">
+        <div class="sched-name"><span class="priority-dot" style="background:${esc(c.color)};margin-right:6px;"></span>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</div>
+        <div class="sched-meta">${c.blocksSchedule!==false ? 'Bloquea planificación' : 'No bloquea planificación'}</div>
+      </div>
+    </div>`;
+  }).join('');
+  const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no has creado ninguna categoría. Los eventos sin categoría siguen funcionando exactamente igual que ahora.</div>`;
+  return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-event-category">+ Añadir categoría</button>`;
 }
 
 /* Paso 4D: filas de duración por categoría, usando SOLO categorías reales
@@ -1958,6 +2121,11 @@ function renderAjustes(){
     </section>
 
     <section class="block">
+      <div class="block-head"><h2>Categorías de eventos</h2><span class="hint">Colores y comportamiento para tus eventos. "Bloquea planificación" decide si un evento de todo el día ocupa el día entero de cara al organizador</span></div>
+      <div class="settings-list" id="event-categories-list">${renderEventCategoryRows()}</div>
+    </section>
+
+    <section class="block">
       <div class="block-head"><h2>Preferencias de organización</h2></div>
       <div class="settings-list">
         <div class="settings-row select-row">
@@ -2056,6 +2224,12 @@ function renderAjustes(){
     row.addEventListener('click', ()=> openScheduleModal({ scheduleId: row.dataset.scheduleId }));
   });
 
+  const addCatBtn = el.querySelector('#btn-add-event-category');
+  if(addCatBtn) addCatBtn.addEventListener('click', ()=> openEventCategoryModal());
+  el.querySelectorAll('[data-category-id]').forEach(row=>{
+    row.addEventListener('click', ()=> openEventCategoryModal({ categoryId: row.dataset.categoryId }));
+  });
+
   el.querySelector('#btn-logout').addEventListener('click', logout);
   el.querySelector('#btn-export-data').addEventListener('click', exportData);
   el.querySelector('#btn-import-data').addEventListener('click', ()=> document.getElementById('import-file-input').click());
@@ -2072,6 +2246,7 @@ function exportData(){
       tasks: state.tasks,
       events: state.events,
       customSchedules: state.customSchedules,
+      eventCategories: state.eventCategories,
       prefs: state.prefs,
       ia: state.ia,
     }
@@ -2119,12 +2294,13 @@ function initSettingsDataIO(){
     state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
     state.events = Array.isArray(data.events) ? data.events : [];
     state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
+    state.eventCategories = Array.isArray(data.eventCategories) ? data.eventCategories : [];
     state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
     state.ia = { ...defaultIA(), ...(data.ia||{}) };
 
     try{
       await Promise.all([
-        saveTasks(), saveEvents(), saveCustomSchedules(),
+        saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(),
         savePrefs(), saveIA(),
       ]);
       showToast('Datos importados correctamente');
@@ -2145,12 +2321,13 @@ async function deleteAllData(){
   state.tasks = [];
   state.events = [];
   state.customSchedules = [];
+  state.eventCategories = [];
   state.prefs = defaultPrefs();
   state.ia = defaultIA();
 
   try{
     await Promise.all([
-      saveTasks(), saveEvents(), saveCustomSchedules(),
+      saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(),
       savePrefs(), saveIA(),
     ]);
     showToast('Todos los datos se han borrado');
@@ -2347,7 +2524,7 @@ function buildContext(scope, anchorDate){
 
   lines.push('');
   lines.push('HUECOS LIBRES REALES POR DÍA (calculados por el sistema restando horario bloqueado + eventos + tareas ya colocadas — usa ESTOS datos para decidir en qué día tiene sentido cada propuesta; NO calcules tú la disponibilidad ni inventes huecos):');
-  const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
   const daysForSlots = (scope === 'day') ? [today] : (() => {
     const out = []; const base = parseYMD(today);
     for(let i=0;i<7;i++){ const d = new Date(base); d.setDate(d.getDate()+i); out.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`); }
@@ -2411,7 +2588,7 @@ function resolveProposalSlot(item, dateStr, workingTasks){
   const duration = (item.estimatedMinutes && item.estimatedMinutes > 0) ? item.estimatedMinutes : 45;
   item.time = null;
   if(!window.Scheduler) return item;
-  const ctx = { events: state.events, tasks: workingTasks, customSchedules: state.customSchedules };
+  const ctx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: workingTasks, customSchedules: state.customSchedules };
   const slots = window.Scheduler.getFreeSlots(dateStr, ctx);
   const usable = slots.find(([s,e]) => (e - s) >= duration);
   if(usable){
@@ -2678,7 +2855,7 @@ function revalidateIAProposalBeforeApply(it){
     : startMin + (it._durationMinutes || it.estimatedMinutes || 60);
   const endTimeStr = (it._endTime && HHMM.test(it._endTime)) ? it._endTime : minToTime(endMin);
 
-  const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
 
   // Evento, tarea u horario fijo/custom schedule ya ocupando el hueco
   // exacto ahora mismo — getBusyIntervals fusiona las tres fuentes.
@@ -3021,7 +3198,7 @@ async function runIADay(){
     }));
 
     // 2) Colocación determinista de cada propuesta en un hueco real.
-    const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
     const scheduled = window.Scheduler.autoSchedule(pseudoTasks, schedCtx);
     const placed = scheduled.filter(t => t.scheduledStart && t.scheduledEnd);
     const unplaced = scheduled.filter(t => !t.scheduledStart);
@@ -3101,7 +3278,7 @@ async function runIAWeek(anchorDate){
     // por UNA sola pasada de Scheduler.autoSchedule (planWeekProposals),
     // en vez de resolverse una a una día a día. El día que devuelve cada
     // item ("_finalDate") es el que decide Scheduler, no el de la IA.
-    const schedCtx = { events: state.events, tasks: state.tasks, customSchedules: state.customSchedules };
+    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
     const plannedDays = planWeekProposals(data.days || [], today, weekEnd, schedCtx);
 
     // Validación (5E-3): segunda barrera de seguridad justo antes de

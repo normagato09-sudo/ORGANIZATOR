@@ -124,7 +124,13 @@ Reglas estrictas, sin excepción:
   /* ---------------- Aplicar el resultado de la IA ---------------- */
 
   function schedulerContext() {
-    return { tasks: global.state.tasks, events: global.state.events, customSchedules: global.state.customSchedules };
+    // Fase 6A-3: usa eventsForScheduler() (definida en organizator.html)
+    // si está disponible, para que blocksSchedule llegue ya resuelto a
+    // Scheduler igual que en el resto de la app. No toca buildActionContext
+    // (el texto que lee la IA) ni el Chat: solo el contexto interno que
+    // se pasa a Scheduler.scheduleTask/findConflicts/rescheduleTask.
+    const events = (typeof global.eventsForScheduler === 'function') ? global.eventsForScheduler() : global.state.events;
+    return { tasks: global.state.tasks, events, customSchedules: global.state.customSchedules };
   }
 
   async function applyCreateTask(a) {

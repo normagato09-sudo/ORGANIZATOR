@@ -83,7 +83,12 @@
     events.forEach(e => {
       const start = e.date, end = e.endDate || e.date;
       if (dateStr < start || dateStr > end) return;
-      if (e.allDay) { intervals.push([0, 24 * 60]); return; }
+      // Fase 6A-3: un evento all-day bloquea el día salvo que su
+      // blocksSchedule (ya resuelto por quien construye `events` a partir
+      // de categoryId — Scheduler no conoce categorías) sea explícitamente
+      // false. Eventos antiguos sin este campo (undefined) siguen
+      // bloqueando exactamente igual que antes.
+      if (e.allDay) { if (e.blocksSchedule !== false) intervals.push([0, 24 * 60]); return; }
       if (e.startTime) {
         const s = timeToMin(e.startTime);
         const en = e.endTime ? timeToMin(e.endTime) : s + 60; // sin hora fin conocida: asume 1h
@@ -310,7 +315,9 @@
     (context.events || []).forEach(e => {
       const start = e.date, end = e.endDate || e.date;
       if (dateStr < start || dateStr > end) return;
-      if (e.allDay) { raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event', id: e.id }); return; }
+      // Fase 6A-3: misma semántica que en getBusyIntervals — solo se
+      // genera bloque ocupado de día completo si blocksSchedule !== false.
+      if (e.allDay) { if (e.blocksSchedule !== false) raw.push({ start: 0, end: 24 * 60, label: e.title, kind: 'event', id: e.id }); return; }
       if (e.startTime) {
         const s = timeToMin(e.startTime);
         const en = e.endTime ? timeToMin(e.endTime) : s + 60;
