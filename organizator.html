@@ -2807,6 +2807,7 @@ function wireIAProposalButtons(container){
   });
   container.querySelectorAll('[data-ia-discard]').forEach(b=>{
     b.addEventListener('click', ()=>{
+      if(b.disabled) return; // 5F-3A: botón caducado (propuesta de una generación anterior) o ya usado
       const id = b.dataset.iaDiscard;
       const batchId = b.dataset.iaBatch;
       const it = batchId ? getIAProposalFromBatch(id, batchId) : getIAProposalById(id);
@@ -2820,6 +2821,30 @@ function wireIAProposalButtons(container){
       const row = b.closest('.ia-ag-row, .ia-tl-item');
       if(row) row.remove();
     });
+  });
+}
+// 5F-3A: aviso + caducidad visual de propuestas pendientes al reemplazar
+// iaProposals con una nueva tanda (runIADay/runIAWeek). Se llama SIEMPRE
+// justo antes de "iaProposals = []", con el array todavía tal cual estaba.
+// No toca proposal.id/batchId/source/status/sourceProposalId/_applying ni
+// applyIAProposal(): solo lee el estado actual de iaProposals y actúa sobre
+// el DOM (hilo de chat) y el toast ya existente (showToast). Los botones de
+// Semana no se tocan aquí a propósito: renderSemana() ya los reconstruye
+// por completo con el grid.innerHTML de cada render, así que nunca quedan
+// huérfanos ahí (a diferencia del hilo de chat, que solo hace append).
+function iaExpirePendingProposalsBeforeReset(){
+  const pending = iaProposals.filter(p => p.status === 'pending');
+  if(!pending.length) return;
+  showToast(`Se han descartado ${pending.length} propuestas anteriores sin decidir.`);
+  const idSet = new Set(pending.map(p => p.id));
+  const thread = document.getElementById('ia-thread-messages');
+  if(!thread) return;
+  thread.querySelectorAll('[data-ia-apply], [data-ia-discard]').forEach(b=>{
+    const id = b.dataset.iaApply || b.dataset.iaDiscard;
+    if(idSet.has(id)){
+      b.disabled = true;
+      b.textContent = 'Propuesta caducada';
+    }
   });
 }
 async function applyIAProposal(it, date){
@@ -2858,6 +2883,7 @@ async function runIADay(){
     iaSetStatus('Generando planificación…');
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
+    iaExpirePendingProposalsBeforeReset(); // 5F-3A: avisar + caducar antes de perder las pendientes de la generación anterior
     iaProposals = [];
     const today = todayStr();
 
@@ -2943,6 +2969,7 @@ async function runIAWeek(){
     iaSetStatus('Generando planificación semanal…');
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
+    iaExpirePendingProposalsBeforeReset(); // 5F-3A: avisar + caducar antes de perder las pendientes de la generación anterior
     iaProposals = [];
     const batchId = nextIABatchId();
     const today = todayStr();
