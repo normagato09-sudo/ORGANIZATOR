@@ -2315,6 +2315,73 @@ function exportData(){
   }
 }
 
+/* ==================================================================
+   SANEAMIENTO DE EVENTOS/CATEGORÍAS IMPORTADOS
+   Un backup importado puede venir corrupto o editado a mano (evento sin
+   title/date, allDay como string, etc.). Estas funciones validan y
+   normalizan cada elemento de forma individual ANTES de reemplazar
+   state, para que un elemento inválido no rompa el resto de la
+   importación ni el renderizado/Scheduler posterior. No cambian el
+   formato de exportación ni la semántica de categorías/all-day/contexto
+   (6A-3/6A-4.2): un categoryId huérfano NO se toca aquí, se sigue
+   resolviendo más tarde exactamente igual que hoy (resolveEventCategory/
+   resolveEventBlocksSchedule), igual que ya protege 6A-4.3.
+   ================================================================== */
+const IMPORT_DATE_YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** true si `str` tiene formato YYYY-MM-DD Y además es una fecha de
+ * calendario real (rechaza "2026-02-31", "2026-13-01", "2026-00-10"...).
+ * new Date(y, m-1, d) "desborda" fechas imposibles a otro mes/día en vez
+ * de lanzar, así que se comprueba que el resultado siga teniendo el
+ * mismo año/mes/día que se pidió. */
+function isValidYMDDate(str){
+  if(typeof str !== 'string' || !IMPORT_DATE_YMD_RE.test(str)) return false;
+  const [y, m, d] = str.split('-').map(Number);
+  if(m < 1 || m > 12) return false;
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+/** Valida y normaliza un array de eventos importados. Descarta (sin
+ * lanzar) los que no tengan title no vacío y date en formato YYYY-MM-DD
+ * que además sea una fecha de calendario real (ver isValidYMDDate).
+ * Normaliza allDay/notes/location si vienen con un tipo incorrecto.
+ * Conserva intactos el resto de campos (incluido categoryId, aunque sea
+ * huérfano, e id). Devuelve { kept, discarded }. */
+function sanitizeImportedEvents(arr){
+  const kept = [];
+  let discarded = 0;
+  (Array.isArray(arr) ? arr : []).forEach(e=>{
+    if(!e || typeof e !== 'object'){ discarded++; return; }
+    const hasTitle = typeof e.title === 'string' && e.title.trim().length > 0;
+    const hasDate = isValidYMDDate(e.date);
+    if(!hasTitle || !hasDate){ discarded++; return; }
+    kept.push({
+      ...e,
+      allDay: typeof e.allDay === 'boolean' ? e.allDay : false,
+      notes: typeof e.notes === 'string' ? e.notes : '',
+      location: typeof e.location === 'string' ? e.location : '',
+    });
+  });
+  return { kept, discarded };
+}
+
+/** Valida un array de categorías de eventos importadas. Descarta las
+ * que no tengan name no vacío. Conserva intactos el resto de campos
+ * (color, icon, blocksSchedule, id...) de las categorías válidas.
+ * Devuelve { kept, discarded }. */
+function sanitizeImportedEventCategories(arr){
+  const kept = [];
+  let discarded = 0;
+  (Array.isArray(arr) ? arr : []).forEach(c=>{
+    if(!c || typeof c !== 'object'){ discarded++; return; }
+    const hasName = typeof c.name === 'string' && c.name.trim().length > 0;
+    if(!hasName){ discarded++; return; }
+    kept.push({ ...c });
+  });
+  return { kept, discarded };
+}
+
 function initSettingsDataIO(){
   const input = document.getElementById('import-file-input');
   if(!input) return;
@@ -2338,10 +2405,13 @@ function initSettingsDataIO(){
     const ok = confirm('Vas a reemplazar TODOS los datos actuales de ORGANIZATOR por los del archivo importado. Esta acción no se puede deshacer. ¿Quieres continuar?');
     if(!ok) return;
 
+    const sanitizedEvents = sanitizeImportedEvents(data.events);
+    const sanitizedCategories = sanitizeImportedEventCategories(data.eventCategories);
+
     state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
-    state.events = Array.isArray(data.events) ? data.events : [];
+    state.events = sanitizedEvents.kept;
     state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
-    state.eventCategories = Array.isArray(data.eventCategories) ? data.eventCategories : [];
+    state.eventCategories = sanitizedCategories.kept;
     state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
     state.ia = { ...defaultIA(), ...(data.ia||{}) };
 
@@ -2350,7 +2420,12 @@ function initSettingsDataIO(){
         saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(),
         savePrefs(), saveIA(),
       ]);
-      showToast('Datos importados correctamente');
+      const discardedParts = [];
+      if(sanitizedEvents.discarded) discardedParts.push(`${sanitizedEvents.discarded} evento(s)`);
+      if(sanitizedCategories.discarded) discardedParts.push(`${sanitizedCategories.discarded} categoría(s)`);
+      showToast(discardedParts.length
+        ? `Datos importados; se ignoraron ${discardedParts.join(' y ')} por estar incompletos`
+        : 'Datos importados correctamente');
       showView('inicio');
     }catch(err){
       console.error(err);
