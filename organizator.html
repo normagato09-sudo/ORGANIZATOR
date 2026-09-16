@@ -1774,6 +1774,7 @@ function openEventModal({eventId=null, date=null}={}){
       <div class="form-group"><label>Categoría (opcional)</label>
         <select name="categoryId">
           <option value="">Sin categoría</option>
+          ${existing && existing.categoryId && !(state.eventCategories||[]).some(c=>c.id===existing.categoryId) ? `<option value="${esc(existing.categoryId)}" selected>Categoría eliminada</option>` : ''}
           ${(state.eventCategories||[]).map(c=>`<option value="${c.id}" ${existing&&existing.categoryId===c.id?'selected':''}>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</option>`).join('')}
         </select>
       </div>
