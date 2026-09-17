@@ -859,6 +859,7 @@ let state = {
   tasks: [], events: [],
   customSchedules: [],
   eventCategories: [], // Fase 6A-3: categorías configurables para eventos (color + blocksSchedule)
+  reminders: [], // recordatorios de tareas/eventos — estructura de datos mínima (Fase 1, sin notificaciones todavía)
   prefs: defaultPrefs(),
   ia: defaultIA(),
 };
@@ -971,6 +972,10 @@ async function loadState(){
     const ec = await window.storage.get('eventCategories', false);
     state.eventCategories = ec ? JSON.parse(ec.value) : [];
   }catch(e){ state.eventCategories = []; }
+  try{
+    const r = await window.storage.get('reminders', false);
+    state.reminders = r ? JSON.parse(r.value) : [];
+  }catch(e){ state.reminders = []; }
   // Ajustes: se cargan por separado y se combinan con los valores por defecto,
   // así si en el futuro se añaden más claves no se rompe con datos antiguos.
   try{
@@ -998,6 +1003,10 @@ async function saveEventCategories(){
   try{ await window.storage.set('eventCategories', JSON.stringify(state.eventCategories), false); }
   catch(e){ console.error('No se pudieron guardar las categorías de eventos', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
 }
+async function saveReminders(){
+  try{ await window.storage.set('reminders', JSON.stringify(state.reminders), false); }
+  catch(e){ console.error('No se pudieron guardar los recordatorios', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
 async function savePrefs(){
   try{ await window.storage.set('settingsPrefs', JSON.stringify(state.prefs), false); }
   catch(e){ console.error('No se pudieron guardar las preferencias', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
@@ -1022,6 +1031,11 @@ async function updateTask(id, data){
 async function deleteTask(id){
   state.tasks = state.tasks.filter(x=>x.id!==id);
   await saveTasks();
+  // Fase 3 de recordatorios: cancela (no borra) los reminders asociados,
+  // cubriendo TODOS los puntos de entrada de borrado (modal y listas
+  // rápidas), no solo uno. cancelRemindersForTarget se define más abajo
+  // en el archivo, pero al ser function declarations quedan hoisted.
+  await cancelRemindersForTarget('task', id);
 }
 async function toggleTask(id){
   const t = state.tasks.find(x=>x.id===id);
@@ -1044,6 +1058,59 @@ async function updateEvent(id, data){
 async function deleteEvent(id){
   state.events = state.events.filter(x=>x.id!==id);
   await saveEvents();
+  // Fase 3 de recordatorios: ver comentario equivalente en deleteTask().
+  await cancelRemindersForTarget('event', id);
+}
+
+/* ==================================================================
+   RECORDATORIOS — estructura de datos mínima (Fase 1)
+   Cada recordatorio: { id, targetType:'event'|'task', targetId, remindAt,
+   status:'pending'|'triggered'|'cancelled', createdAt }. Esta fase SOLO
+   guarda el dato: remindAt se recibe tal cual (nadie calcula todavía
+   cuándo debe avisarse) y nada de esto dispara ninguna notificación —
+   eso queda para una fase posterior. Mismo patrón que el resto del CRUD:
+   los helpers trabajan siempre por id (nunca por posición de array), no
+   lanzan si el id/target no existe, y devuelven null/[] de forma
+   previsible en vez de romper la app.
+   ================================================================== */
+async function addReminder(data){
+  const reminder = {
+    id: uid(),
+    targetType: data.targetType,
+    targetId: data.targetId,
+    remindAt: data.remindAt,
+    status: data.status || 'pending',
+    createdAt: Date.now(),
+  };
+  state.reminders.push(reminder);
+  await saveReminders();
+  return reminder;
+}
+/** Devuelve el recordatorio con ese id, o null si no existe. Nunca lanza. */
+function getReminderById(id){
+  return (state.reminders||[]).find(r=>r.id===id) || null;
+}
+/** Devuelve los recordatorios de un target (targetType+targetId) dado,
+ * o [] si no tiene ninguno. Nunca lanza. */
+function getRemindersForTarget(targetType, targetId){
+  return (state.reminders||[]).filter(r=>r.targetType===targetType && r.targetId===targetId);
+}
+/** Actualiza por id (mismo patrón que updateEvent/updateTask: mutación
+ * in-place del objeto encontrado, nunca de la posición en el array). El
+ * id nunca se sobrescribe aunque `data` incluya uno. Devuelve el
+ * recordatorio actualizado, o null si el id no existe (no lanza). */
+async function updateReminder(id, data){
+  const r = state.reminders.find(x=>x.id===id);
+  if(!r) return null;
+  Object.assign(r, data, { id: r.id });
+  await saveReminders();
+  return r;
+}
+/** Cancela un recordatorio por id (status:'cancelled'), sin tocar
+ * ningún otro campo ni ningún otro recordatorio. Devuelve el
+ * recordatorio actualizado, o null si el id no existe (no lanza). */
+async function cancelReminder(id){
+  return updateReminder(id, { status: 'cancelled' });
 }
 
 /* ==================================================================
@@ -1105,6 +1172,173 @@ function resolveEventColor(categoryId){
  * igual que ya lee allDay/startTime/endTime. */
 function eventsForScheduler(){
   return state.events.map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
+}
+
+/* ==================================================================
+   RECORDATORIOS — cálculo de remindAt (Fase 2, SIN notificaciones)
+   calculateReminderAt() es una función PURA: no lee ni modifica state
+   ni ningún array, solo calcula a partir de sus argumentos. Recibe una
+   fecha/hora objetivo (string ISO o Date) y una anticipación en
+   minutos, y devuelve el ISO de cuándo debería avisarse (o null si
+   algo es inválido). No sabe nada de eventos de día completo,
+   recurrencia, cumpleaños ni zonas horarias avanzadas: eso son fases
+   posteriores.
+   createReminderForTarget() combina ese cálculo con addReminder() (la
+   creación real de la Fase 1, sin duplicar su lógica) para dejar listo
+   un reminder con remindAt ya calculado. Nada de esta fase se conecta
+   todavía a formularios, calendario, scheduler ni notificaciones: son
+   helpers preparados para que una fase posterior los use.
+   ================================================================== */
+function calculateReminderAt(targetDateTime, minutesBefore){
+  if(typeof targetDateTime !== 'string' && !(targetDateTime instanceof Date)) return null;
+  const target = targetDateTime instanceof Date ? targetDateTime : new Date(targetDateTime);
+  if(isNaN(target.getTime())) return null;
+  if(typeof minutesBefore !== 'number' || !isFinite(minutesBefore) || minutesBefore < 0) return null;
+  return new Date(target.getTime() - minutesBefore * 60000).toISOString();
+}
+async function createReminderForTarget(targetType, targetId, targetDateTime, minutesBefore){
+  if(targetType !== 'event' && targetType !== 'task') return null;
+  if(!targetId) return null;
+  const remindAt = calculateReminderAt(targetDateTime, minutesBefore);
+  if(remindAt === null) return null;
+  return addReminder({ targetType, targetId, remindAt, status: 'pending' });
+}
+
+/* ==================================================================
+   RECORDATORIOS — integración con la interfaz (Fase 3, SIN notificaciones)
+   Conecta los helpers de cálculo/creación de las Fases 1 y 2 con los
+   formularios de eventos y tareas. Reglas de esta fase:
+   - como mucho UN reminder activo (status:'pending') por target: crear,
+     actualizar o cancelar reutilizan siempre ese mismo reminder, nunca
+     se duplica;
+   - si el evento/tarea no tiene fecha/hora suficiente para calcular
+     remindAt (p.ej. un evento "todo el día" sin hora, o una tarea sin
+     hora), nunca se crea un reminder: el resultado visible es
+     "Sin recordatorio", sin inventar ninguna regla especial para
+     allDay/recurrencia todavía;
+   - nada de esto dispara ninguna notificación real: eso es una fase
+     posterior (Notification API / Web Push / Scheduler quedan fuera).
+   ================================================================== */
+const REMINDER_OPTIONS = [
+  { minutes: 5,    label: '5 minutos antes' },
+  { minutes: 10,   label: '10 minutos antes' },
+  { minutes: 15,   label: '15 minutos antes' },
+  { minutes: 30,   label: '30 minutos antes' },
+  { minutes: 60,   label: '1 hora antes' },
+  { minutes: 1440, label: '1 día antes' },
+];
+/** Combina fecha ('YYYY-MM-DD') y hora ('HH:mm') en un datetime local
+ * ('YYYY-MM-DDTHH:mm:00') apto para calculateReminderAt(), o null si
+ * falta cualquiera de las dos, el formato no es el esperado, o el
+ * resultado no es una fecha válida. Es la comprobación de "fecha/hora
+ * suficiente" que decide si se pueden ofrecer opciones de recordatorio
+ * distintas de "Sin recordatorio". */
+function reminderTargetDateTime(dateStr, timeStr){
+  if(!dateStr || !timeStr) return null;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(timeStr)) return null;
+  const dt = `${dateStr}T${timeStr}:00`;
+  return isNaN(new Date(dt).getTime()) ? null : dt;
+}
+/** HTML de las <option> del <select> de recordatorio de un formulario.
+ * Si hasDateTime es false, solo se ofrece "Sin recordatorio" (nunca se
+ * muestran opciones que no podrían calcularse correctamente). */
+function reminderOptionsHtml(hasDateTime, selectedMinutes){
+  const sel = String(selectedMinutes==null ? '' : selectedMinutes);
+  let html = `<option value="" ${sel===''?'selected':''}>Sin recordatorio</option>`;
+  if(hasDateTime){
+    html += REMINDER_OPTIONS.map(o=>{
+      const v = String(o.minutes);
+      return `<option value="${v}" ${sel===v?'selected':''}>${o.label}</option>`;
+    }).join('');
+  }
+  return html;
+}
+/** El reminder pending de un target (como mucho hay uno en esta fase),
+ * o null si no tiene ninguno activo. No lanza. */
+function pendingReminderForTarget(targetType, targetId){
+  return getRemindersForTarget(targetType, targetId).find(r=>r.status==='pending') || null;
+}
+/** Minutos de anticipación del reminder pending de un target, como
+ * string apto para preseleccionar el <select> ('' si no hay reminder,
+ * o si su remindAt ya no coincide con ninguna opción conocida para el
+ * datetime objetivo ACTUAL, p.ej. porque se cambió la hora después de
+ * crear el recordatorio). */
+function currentReminderMinutes(targetType, targetId, targetDateTime){
+  if(!targetDateTime) return '';
+  const reminder = pendingReminderForTarget(targetType, targetId);
+  if(!reminder) return '';
+  const target = new Date(targetDateTime);
+  const remindAt = new Date(reminder.remindAt);
+  if(isNaN(target.getTime()) || isNaN(remindAt.getTime())) return '';
+  const diffMinutes = Math.round((target.getTime() - remindAt.getTime()) / 60000);
+  const match = REMINDER_OPTIONS.find(o=>o.minutes===diffMinutes);
+  return match ? String(match.minutes) : '';
+}
+/** Crea, actualiza o cancela el reminder pending de un target a partir
+ * de la anticipación elegida en un formulario (minutesBefore: '' o
+ * null = "Sin recordatorio", o un número de minutos). SIEMPRE reutiliza
+ * el reminder pending existente si lo había (nunca crea uno duplicado
+ * para el mismo target):
+ *  - "Sin recordatorio", o datetime/objetivo inválido → cancela el
+ *    reminder pending existente (si lo había); nunca crea uno inválido;
+ *  - anticipación válida + datetime válido → si ya había un reminder
+ *    pending lo actualiza (mismo id, nuevo remindAt, sigue pending); si
+ *    no había ninguno, crea uno nuevo con createReminderForTarget().
+ * Devuelve el reminder resultante, o null si el resultado final es
+ * "sin recordatorio activo". No lanza si el target no existe. */
+async function syncReminderForTarget(targetType, targetId, targetDateTime, minutesBefore){
+  const existing = pendingReminderForTarget(targetType, targetId);
+  const minutes = (minutesBefore===''||minutesBefore==null) ? null : Number(minutesBefore);
+  const remindAt = (minutes!=null) ? calculateReminderAt(targetDateTime, minutes) : null;
+  if(remindAt===null){
+    if(existing) await cancelReminder(existing.id);
+    return null;
+  }
+  if(existing) return updateReminder(existing.id, { remindAt, status: 'pending' });
+  return createReminderForTarget(targetType, targetId, targetDateTime, minutes);
+}
+/** Cancela (status:'cancelled') todos los reminders no-cancelados de un
+ * target. Se usa al borrar el evento/tarea: el reminder NUNCA se borra
+ * físicamente, solo deja de estar activo. No lanza si el target no
+ * tenía ningún reminder. */
+async function cancelRemindersForTarget(targetType, targetId){
+  const active = getRemindersForTarget(targetType, targetId).filter(r=>r.status!=='cancelled');
+  for(const r of active){ await cancelReminder(r.id); }
+}
+
+/* ==================================================================
+   RECORDATORIOS — motor de detección y disparo lógico (Fase 4)
+   getDueReminders() es una función PURA: no lee más que state.reminders
+   (sin mutarlo) y no depende de posiciones del array. Un reminder está
+   "vencido" si status==='pending' y remindAt<=now (comparación numérica
+   de timestamps, no de strings). triggerDueReminders() es el único que
+   los marca como 'triggered' y persiste, usando updateReminder() (Fase
+   1) — nunca reimplementa esa lógica. Idempotente: un reminder ya
+   'triggered' deja de cumplir status==='pending', así que una segunda
+   pasada con el mismo `now` no vuelve a dispararlo.
+   Todavía SIN Notification API, Service Worker, Web Push, Scheduler,
+   setInterval/setTimeout ni ningún disparo real: esta fase solo decide
+   QUÉ reminders están vencidos y los marca como tal. Mostrar el aviso
+   de verdad es una fase posterior.
+   ================================================================== */
+function getDueReminders(now = new Date()){
+  const nowDate = now instanceof Date ? now : new Date(now);
+  if(isNaN(nowDate.getTime())) return [];
+  const nowTime = nowDate.getTime();
+  return (state.reminders||[]).filter(r=>{
+    if(r.status !== 'pending') return false;
+    const remindAtTime = new Date(r.remindAt).getTime();
+    return !isNaN(remindAtTime) && remindAtTime <= nowTime;
+  });
+}
+async function triggerDueReminders(now = new Date()){
+  const due = getDueReminders(now);
+  const triggered = [];
+  for(const r of due){
+    const updated = await updateReminder(r.id, { status: 'triggered' });
+    if(updated) triggered.push(updated);
+  }
+  return triggered;
 }
 
 /* ==================================================================
@@ -1621,6 +1855,10 @@ overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); })
 function openTaskModal({taskId=null, date=null}={}){
   const editing = !!taskId;
   const existing = editing ? state.tasks.find(t=>t.id===taskId) : null;
+  // Fase 3 de recordatorios: estado inicial del <select> de recordatorio,
+  // calculado a partir de la fecha/hora YA guardada (si se está editando).
+  const initialReminderDateTime = existing ? reminderTargetDateTime(existing.dueDate||'', existing.dueTime||'') : null;
+  const initialReminderMinutes = existing ? currentReminderMinutes('task', existing.id, initialReminderDateTime) : '';
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} tarea</h3>
@@ -1635,6 +1873,9 @@ function openTaskModal({taskId=null, date=null}={}){
         <div class="form-group"><label>Hora (opcional)</label>
           <input type="time" name="dueTime" value="${existing?existing.dueTime||'':''}">
         </div>
+      </div>
+      <div class="form-group"><label>Recordatorio</label>
+        <select name="reminderMinutes" id="task-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
       </div>
       <div class="form-group"><label>Prioridad</label>
         <select name="priority">
@@ -1692,6 +1933,19 @@ function openTaskModal({taskId=null, date=null}={}){
   modalBox.querySelector('[name="title"]').addEventListener('input', renderDurationHint);
   modalBox.querySelector('[name="category"]').addEventListener('input', renderDurationHint);
 
+  // Fase 3 de recordatorios: el <select> solo puede ofrecer opciones
+  // distintas de "Sin recordatorio" si hay fecha Y hora; se recalcula al
+  // vuelo si el usuario cambia cualquiera de las dos (mismo patrón que
+  // renderDurationHint más arriba).
+  function refreshTaskReminderSelect(){
+    const selectEl = modalBox.querySelector('#task-reminder-select');
+    if(!selectEl) return;
+    const dt = reminderTargetDateTime(modalBox.querySelector('[name="dueDate"]').value, modalBox.querySelector('[name="dueTime"]').value);
+    selectEl.innerHTML = reminderOptionsHtml(!!dt, selectEl.value);
+  }
+  modalBox.querySelector('[name="dueDate"]').addEventListener('input', refreshTaskReminderSelect);
+  modalBox.querySelector('[name="dueTime"]').addEventListener('input', refreshTaskReminderSelect);
+
   modalBox.querySelector('#task-cancel-btn').addEventListener('click', closeModal);
   if(editing){
     modalBox.querySelector('#task-delete-btn').addEventListener('click', async ()=>{
@@ -1712,7 +1966,15 @@ function openTaskModal({taskId=null, date=null}={}){
       notes: fd.get('notes').trim(),
     };
     if(!data.title) return;
+    // Fase 3 de recordatorios: id real del target ANTES de crear (para
+    // que targetId del reminder coincida con el id real de la tarea; se
+    // apoya en que addTask() usa el id incluido en `data` si se le pasa,
+    // igual que ya hace con cualquier otro campo).
+    const taskTargetId = editing ? taskId : uid();
+    if(!editing) data.id = taskTargetId;
     if(editing) await updateTask(taskId, data); else await addTask(data);
+    const reminderDateTime = reminderTargetDateTime(data.dueDate, data.dueTime);
+    await syncReminderForTarget('task', taskTargetId, reminderDateTime, fd.get('reminderMinutes'));
     closeModal();
     showToast(editing?'Guardado':'Añadido');
     renderCurrentView();
@@ -1764,6 +2026,12 @@ function openEventModal({eventId=null, date=null}={}){
   const editing = !!eventId;
   const existing = editing ? state.events.find(x=>x.id===eventId) : null;
   const allDay = existing ? !!existing.allDay : false;
+  // Fase 3 de recordatorios: estado inicial del <select> de recordatorio.
+  // Un evento allDay (o sin hora de inicio) nunca tiene datetime válido
+  // en esta fase — sin regla especial todavía para allDay, simplemente
+  // no hay hora con la que calcular remindAt.
+  const initialReminderDateTime = existing ? reminderTargetDateTime(existing.date, allDay?'':(existing.startTime||'')) : null;
+  const initialReminderMinutes = existing ? currentReminderMinutes('event', existing.id, initialReminderDateTime) : '';
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} evento</h3>
@@ -1794,6 +2062,9 @@ function openEventModal({eventId=null, date=null}={}){
         <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':''}"></div>
         <div class="form-group"><label>Hora fin (opcional)</label><input type="time" name="endTime" value="${existing?existing.endTime||'':''}"></div>
       </div>
+      <div class="form-group"><label>Recordatorio</label>
+        <select name="reminderMinutes" id="event-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
+      </div>
       <div class="form-group"><label>Ubicación (opcional)</label>
         <input type="text" name="location" value="${existing?esc(existing.location||''):''}">
       </div>
@@ -1813,6 +2084,20 @@ function openEventModal({eventId=null, date=null}={}){
   allDayCb.addEventListener('change', ()=>{
     document.getElementById('event-time-row').style.display = allDayCb.checked ? 'none' : '';
   });
+
+  // Fase 3 de recordatorios: el <select> solo puede ofrecer opciones
+  // distintas de "Sin recordatorio" si el evento NO es allDay y tiene
+  // hora de inicio; se recalcula al vuelo al tocar fecha/hora/allDay.
+  function refreshEventReminderSelect(){
+    const selectEl = modalBox.querySelector('#event-reminder-select');
+    if(!selectEl) return;
+    const isAllDay = modalBox.querySelector('[name="allDay"]').checked;
+    const dt = reminderTargetDateTime(modalBox.querySelector('[name="date"]').value, isAllDay?'':modalBox.querySelector('[name="startTime"]').value);
+    selectEl.innerHTML = reminderOptionsHtml(!!dt, selectEl.value);
+  }
+  modalBox.querySelector('[name="date"]').addEventListener('input', refreshEventReminderSelect);
+  modalBox.querySelector('[name="startTime"]').addEventListener('input', refreshEventReminderSelect);
+  allDayCb.addEventListener('change', refreshEventReminderSelect);
 
   modalBox.querySelector('#event-cancel-btn').addEventListener('click', closeModal);
   if(editing){
@@ -1836,7 +2121,13 @@ function openEventModal({eventId=null, date=null}={}){
       notes: fd.get('notes').trim(),
     };
     if(!data.title || !data.date) return;
+    // Fase 3 de recordatorios: ver comentario equivalente en el submit de
+    // openTaskModal() sobre por qué se genera el id antes de addEvent().
+    const eventTargetId = editing ? eventId : uid();
+    if(!editing) data.id = eventTargetId;
     if(editing) await updateEvent(eventId, data); else await addEvent(data);
+    const reminderDateTime = reminderTargetDateTime(data.date, data.allDay ? '' : data.startTime);
+    await syncReminderForTarget('event', eventTargetId, reminderDateTime, fd.get('reminderMinutes'));
     closeModal();
     showToast(editing?'Guardado':'Añadido');
     renderCurrentView();
@@ -2294,6 +2585,7 @@ function exportData(){
       events: state.events,
       customSchedules: state.customSchedules,
       eventCategories: state.eventCategories,
+      reminders: state.reminders,
       prefs: state.prefs,
       ia: state.ia,
     }
@@ -2412,12 +2704,16 @@ function initSettingsDataIO(){
     state.events = sanitizedEvents.kept;
     state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
     state.eventCategories = sanitizedCategories.kept;
+    // Fase 1 de recordatorios: solo validación mínima (que sea un array),
+    // igual que tasks/customSchedules — el saneamiento por-campo (como el
+    // que ya tienen events/eventCategories) es de una fase posterior.
+    state.reminders = Array.isArray(data.reminders) ? data.reminders : [];
     state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
     state.ia = { ...defaultIA(), ...(data.ia||{}) };
 
     try{
       await Promise.all([
-        saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(),
+        saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
         savePrefs(), saveIA(),
       ]);
       const discardedParts = [];
@@ -2444,12 +2740,13 @@ async function deleteAllData(){
   state.events = [];
   state.customSchedules = [];
   state.eventCategories = [];
+  state.reminders = [];
   state.prefs = defaultPrefs();
   state.ia = defaultIA();
 
   try{
     await Promise.all([
-      saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(),
+      saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
       savePrefs(), saveIA(),
     ]);
     showToast('Todos los datos se han borrado');

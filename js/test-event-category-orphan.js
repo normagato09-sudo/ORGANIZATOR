@@ -62,6 +62,29 @@ const openEventModalSrc = extractBetween(
   'función openEventModal()'
 );
 
+// ---------------------------------------------------------------------
+// Desde la Fase 3 de recordatorios, openEventModal() llama de forma
+// SÍNCRONA (al construir el HTML, antes de devolver nada) a
+// reminderTargetDateTime()/currentReminderMinutes()/reminderOptionsHtml(),
+// y currentReminderMinutes() depende a su vez de getRemindersForTarget()
+// (Fase 1). Ninguna de ellas se relaciona con la lógica de categorías que
+// prueba este archivo, pero deben existir en el sandbox o openEventModal
+// lanza un ReferenceError antes de llegar a generar el <select> de
+// categoría. Se extraen literalmente (no se reimplementan) los mismos
+// bloques que ya usan test-reminders-model.js/test-reminders-ui.js.
+const remindersFase1Src = extractBetween(
+  html,
+  '/* ==================================================================\n   RECORDATORIOS — estructura de datos mínima (Fase 1)',
+  '\n\n/* ==================================================================\n   CATEGORÍAS DE EVENTOS (Fase 6A-3)',
+  'bloque RECORDATORIOS (Fase 1)'
+);
+const remindersFase3Src = extractBetween(
+  html,
+  '/* ==================================================================\n   RECORDATORIOS — integración con la interfaz (Fase 3, SIN notificaciones)',
+  '\n\n/* ==================================================================\n   TOAST',
+  'bloque RECORDATORIOS (Fase 3, integración UI)'
+);
+
 // ---------------- Utilidades de test ----------------
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -115,6 +138,8 @@ function renderEventModalHTML(state, args) {
      function closeModal(){}`,
     sandbox, { filename: 'dom-stub' }
   );
+  vm.runInContext(remindersFase1Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 1)' });
+  vm.runInContext(remindersFase3Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 3)' });
   vm.runInContext(openEventModalSrc, sandbox, { filename: 'organizator.html (openEventModal)' });
   vm.runInContext(`this.openEventModal = openEventModal; this.modalBox = modalBox;`, sandbox, { filename: 'expose-openEventModal' });
 
