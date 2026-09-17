@@ -1336,9 +1336,78 @@ async function triggerDueReminders(now = new Date()){
   const triggered = [];
   for(const r of due){
     const updated = await updateReminder(r.id, { status: 'triggered' });
-    if(updated) triggered.push(updated);
+    if(updated){
+      triggered.push(updated);
+      // Fase 5: intenta mostrar la notificación real tras marcar el
+      // reminder como triggered. showReminderNotification() nunca lanza
+      // (ver su propia doc): si Notification API no existe, no hay
+      // permiso, o falla al crear la notificación, simplemente no se
+      // muestra nada — el reminder YA quedó triggered de forma correcta
+      // y el bucle sigue con el siguiente sin interrumpirse.
+      showReminderNotification(updated);
+    }
   }
   return triggered;
+}
+
+/* ==================================================================
+   RECORDATORIOS — notificación real del navegador (Fase 5)
+   requestReminderNotificationPermission() y showReminderNotification()
+   son los únicos dos puntos que tocan la Notification API del navegador.
+   Ninguno de los dos lanza nunca: si la API no existe, o algo falla al
+   pedir permiso o al crear la notificación, se resuelve a false/null en
+   vez de propagar la excepción — así triggerDueReminders() (justo
+   arriba) puede llamar a showReminderNotification() sin necesidad de su
+   propio try/catch, y un fallo mostrando la notificación de un reminder
+   nunca impide procesar los demás.
+   Todavía SIN Service Worker, Web Push, acciones/botones, sonido
+   personalizado ni vibración: solo el título/cuerpo mínimos para
+   identificar el recordatorio y si es un evento o una tarea.
+   ================================================================== */
+/** Comprueba/solicita permiso de notificaciones del navegador. Nunca
+ * lanza: si `Notification` no existe en este entorno, devuelve false
+ * directamente. Devuelve true SOLO si el permiso queda en 'granted'
+ * (ya lo estaba, o el usuario lo concede al solicitarlo). */
+async function requestReminderNotificationPermission(){
+  if(typeof Notification === 'undefined' || !Notification) return false;
+  if(Notification.permission === 'granted') return true;
+  if(Notification.permission === 'denied') return false;
+  try{
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  }catch(e){
+    return false;
+  }
+}
+/** Etiqueta legible del objetivo de un reminder ("Evento: X" / "Tarea:
+ * Y"), buscando el evento/tarea real por id (nunca por posición) para
+ * incluir su título. Si el target ya no existe (se borró y el reminder
+ * quedó huérfano), cae a un texto genérico en vez de romper. */
+function reminderNotificationBody(reminder){
+  if(reminder.targetType === 'event'){
+    const ev = (state.events||[]).find(e=>e.id===reminder.targetId);
+    return `Evento: ${ev ? ev.title : 'evento'}`;
+  }
+  if(reminder.targetType === 'task'){
+    const tk = (state.tasks||[]).find(t=>t.id===reminder.targetId);
+    return `Tarea: ${tk ? tk.title : 'tarea'}`;
+  }
+  return 'Recordatorio';
+}
+/** Muestra una notificación real del navegador para un reminder ya
+ * triggered. NUNCA modifica el reminder (solo lo lee). Nunca lanza:
+ * si `Notification` no existe, si el permiso no es 'granted', o si
+ * `new Notification(...)` falla por cualquier motivo, devuelve null en
+ * vez de propagar el error. Devuelve la notificación creada si tuvo
+ * éxito. */
+function showReminderNotification(reminder){
+  if(typeof Notification === 'undefined' || !Notification) return null;
+  if(Notification.permission !== 'granted') return null;
+  try{
+    return new Notification('ORGANIZATOR', { body: reminderNotificationBody(reminder) });
+  }catch(e){
+    return null;
+  }
 }
 
 /* ==================================================================
