@@ -137,6 +137,30 @@
   .block-head h2{font-size:15px;font-weight:600;margin:0;}
   .block-head .hint{font-size:12px;color:var(--ink-soft);}
 
+  /* UX-7: Ajustes como acordeón — cada categoría (Organización,
+     Inteligencia artificial, Recordatorios, Datos y privacidad,
+     Información, Cuenta) es una fila-cabecera <button> real (accesible
+     por teclado: Tab + Enter/Espacio) que expande/contrae su panel. No
+     cambia la estructura de cada section.block existente por dentro —
+     solo envuelve su categoría, así que ningún id/selector/listener de
+     los controles existentes se ve afectado. */
+  .settings-accordion{display:flex;flex-direction:column;gap:10px;margin-bottom:20px;}
+  .settings-accordion-item{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .settings-accordion-header{
+    width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:16px 18px;background:none;border:none;cursor:pointer;font-family:inherit;
+    font-size:13px;font-weight:700;letter-spacing:0.03em;text-transform:uppercase;
+    color:var(--ink);text-align:left;
+  }
+  .settings-accordion-header:hover{background:var(--paper);}
+  .settings-accordion-header:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;}
+  .settings-accordion-chevron{font-size:11px;color:var(--ink-soft);transition:transform .18s ease;flex:none;}
+  .settings-accordion-header[aria-expanded="true"] .settings-accordion-chevron{transform:rotate(180deg);}
+  .settings-accordion-panel{padding:4px 18px 18px;}
+  .settings-accordion-panel section.block{margin-bottom:20px;}
+  .settings-accordion-panel section.block:last-child{margin-bottom:0;}
+  .settings-accordion-panel[hidden]{display:none;}
+
   .empty-state{
     background:var(--surface);
     border:1px dashed var(--line);
@@ -2493,6 +2517,60 @@ function renderGeneralPatternsSection(){
     </section>`;
 }
 
+/* UX-7: estado a mostrar en la nueva sección "Recordatorios" de Ajustes.
+   Función de solo lectura sobre la Notification API del navegador — NO
+   duplica ni reimplementa requestReminderNotificationPermission()/
+   showReminderNotification() (bloque RECORDATORIOS — Fase 5, sin tocar);
+   solo decide qué texto mostrar y si el botón "Activar notificaciones"
+   tiene sentido, con las mismas comprobaciones (typeof Notification,
+   Notification.permission) que esas funciones ya hacen. Nunca solicita
+   permiso por su cuenta — eso solo ocurre al pulsar el botón. */
+function reminderNotificationStatusInfo(){
+  if(typeof Notification === 'undefined' || !Notification){
+    return { text: 'Tu navegador no admite notificaciones.', showButton: false };
+  }
+  if(Notification.permission === 'granted'){
+    return { text: 'Activadas — recibirás una notificación cuando llegue la hora de un recordatorio.', showButton: false };
+  }
+  if(Notification.permission === 'denied'){
+    return { text: 'Bloqueadas en el navegador. Actívalas desde los ajustes de notificaciones de tu navegador para este sitio.', showButton: false };
+  }
+  return { text: 'Todavía no las has activado.', showButton: true };
+}
+
+/* UX-7 (acordeón): qué categorías de Ajustes están abiertas/cerradas.
+   Vive a nivel de módulo (mismo patrón que `cal`/`week`): es solo estado
+   de UI de esta sesión, nunca se guarda ni se exporta. Persiste ENTRE
+   llamadas a renderAjustes() — necesario porque un par de controles de
+   dentro de Ajustes (el toggle de IA, el botón de notificaciones) sí
+   vuelven a renderizar toda la vista; sin esto, cualquier categoría que
+   el usuario hubiera cerrado se reabriría sola al tocar esos controles.
+   Todas las categorías empiezan abiertas la primera vez (mismo contenido
+   visible que antes de este cambio). */
+let ajustesAccordionOpen = {};
+function isAjustesGroupOpen(key){
+  if(!(key in ajustesAccordionOpen)) ajustesAccordionOpen[key] = true;
+  return ajustesAccordionOpen[key];
+}
+/** Envuelve el HTML de una categoría de Ajustes en un panel de acordeón
+ * con su cabecera-botón (nombre + chevron). Puramente de presentación:
+ * `contentHtml` es exactamente el mismo HTML que antes vivía dentro de
+ * cada `<div class="settings-group">` — no crea, renombra ni quita
+ * ningún control existente. */
+function ajustesAccordionSection(key, title, contentHtml){
+  const open = isAjustesGroupOpen(key);
+  return `
+    <div class="settings-accordion-item">
+      <button type="button" class="settings-accordion-header" data-accordion="${key}" aria-expanded="${open}" aria-controls="accordion-panel-${key}">
+        <span>${esc(title)}</span>
+        <span class="settings-accordion-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="settings-accordion-panel" id="accordion-panel-${key}"${open?'':' hidden'}>
+        ${contentHtml}
+      </div>
+    </div>`;
+}
+
 function renderAjustes(){
   const el = document.getElementById('view-ajustes');
 
@@ -2500,17 +2578,16 @@ function renderAjustes(){
     .map(o=>`<option value="${o.id}" ${state.prefs.defaultHome===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
 
   const hourOptions = (selected)=> Array.from({length:24},(_,h)=>`<option value="${h}" ${Number(selected)===h?'selected':''}>${pad(h)}:00</option>`).join('');
+  // UX-7: estado de las notificaciones de recordatorios (nueva sección);
+  // no toca el bloque RECORDATORIOS (Fase 5), solo lo consulta al vuelo.
+  const reminderStatus = reminderNotificationStatusInfo();
 
-  el.innerHTML = `
-    <div class="area-head">
-      <div class="area-head-l">
-        <div class="ic" style="background:var(--paper);color:var(--ink);">⚙️</div>
-        <div><h1>Ajustes</h1><p>Preferencias generales de ORGANIZATOR</p></div>
-      </div>
-    </div>
-
+  // UX-7 (acordeón): contenido de cada categoría, EXACTAMENTE el mismo
+  // HTML que antes vivía dentro de cada <div class="settings-group"> —
+  // solo se movió a una variable para poder pasarlo a
+  // ajustesAccordionSection(). Ningún id/name/control cambia.
+  const cuentaHtml = `
     <section class="block">
-      <div class="block-head"><h2>Cuenta</h2></div>
       <div class="settings-list">
         <div class="settings-row">
           <div class="left stack">
@@ -2520,79 +2597,131 @@ function renderAjustes(){
           <button class="btn btn-danger" id="btn-logout">Cerrar sesión</button>
         </div>
       </div>
-    </section>
+    </section>`;
 
-    <section class="block">
-      <div class="block-head"><h2>Horarios bloqueados</h2><span class="hint">Define los bloques fijos de tu rutina (escuela, trabajo, gimnasio…) para que la IA nunca te ponga nada encima</span></div>
-      <div class="settings-list" id="schedules-list">${renderScheduleRows()}</div>
-    </section>
+  const organizacionHtml = `
+      <section class="block">
+        <div class="block-head"><h2>Horarios bloqueados</h2><span class="hint">Define los bloques fijos de tu rutina (escuela, trabajo, gimnasio…) para que la IA nunca te ponga nada encima</span></div>
+        <div class="settings-list" id="schedules-list">${renderScheduleRows()}</div>
+      </section>
 
-    <section class="block">
-      <div class="block-head"><h2>Categorías de eventos</h2><span class="hint">Colores y comportamiento para tus eventos. "Bloquea planificación" decide si un evento de todo el día ocupa el día entero de cara al organizador</span></div>
-      <div class="settings-list" id="event-categories-list">${renderEventCategoryRows()}</div>
-    </section>
+      <section class="block">
+        <div class="block-head"><h2>Categorías de eventos</h2><span class="hint">Colores y comportamiento para tus eventos. "Bloquea planificación" decide si un evento de todo el día ocupa el día entero de cara al organizador</span></div>
+        <div class="settings-list" id="event-categories-list">${renderEventCategoryRows()}</div>
+      </section>
 
-    <section class="block">
-      <div class="block-head"><h2>Preferencias de organización</h2></div>
-      <div class="settings-list">
-        <div class="settings-row select-row">
-          <div class="left">Inicio predeterminado</div>
-          <select id="pref-default-home">${homeOptions}</select>
-        </div>
-        <div class="settings-row">
-          <div class="left">Mostrar tareas completadas</div>
-          <button type="button" class="toggle ${state.prefs.showCompletedTasks?'on':''}" data-toggle-pref="showCompletedTasks" aria-label="Mostrar tareas completadas"></button>
-        </div>
-        <div class="settings-row">
-          <div class="left">Mostrar eventos pasados</div>
-          <button type="button" class="toggle ${state.prefs.showPastEvents?'on':''}" data-toggle-pref="showPastEvents" aria-label="Mostrar eventos pasados"></button>
-        </div>
-        <div class="settings-row select-row">
-          <div class="left">Horario del día</div>
-          <div class="hour-row">
-            <select id="pref-day-start">${hourOptions(state.prefs.dayStartHour)}</select>
-            <span class="hint">a</span>
-            <select id="pref-day-end">${hourOptions(state.prefs.dayEndHour)}</select>
+      <section class="block">
+        <div class="block-head"><h2>Preferencias de organización</h2></div>
+        <div class="settings-list">
+          <div class="settings-row select-row">
+            <div class="left">Inicio predeterminado</div>
+            <select id="pref-default-home">${homeOptions}</select>
+          </div>
+          <div class="settings-row">
+            <div class="left">Mostrar tareas completadas</div>
+            <button type="button" class="toggle ${state.prefs.showCompletedTasks?'on':''}" data-toggle-pref="showCompletedTasks" aria-label="Mostrar tareas completadas"></button>
+          </div>
+          <div class="settings-row">
+            <div class="left">Mostrar eventos pasados</div>
+            <button type="button" class="toggle ${state.prefs.showPastEvents?'on':''}" data-toggle-pref="showPastEvents" aria-label="Mostrar eventos pasados"></button>
+          </div>
+          <div class="settings-row select-row">
+            <div class="left">Horario del día</div>
+            <div class="hour-row">
+              <select id="pref-day-start">${hourOptions(state.prefs.dayStartHour)}</select>
+              <span class="hint">a</span>
+              <select id="pref-day-end">${hourOptions(state.prefs.dayEndHour)}</select>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>`;
 
-    <section class="block">
-      <div class="block-head"><h2>Organización con IA</h2></div>
-      <div class="settings-list">
-        <div class="settings-row">
-          <div class="left stack">
-            <div>Asistente de IA</div>
-            <div class="row-sub">${state.ia.enabled ? 'Activado — entiende lo que escribes en Inicio y organiza tu calendario automáticamente' : 'Desactivado — no se envía ni se solicita nada a la IA'}</div>
+  const iaHtml = `
+      <section class="block">
+        <div class="block-head"><h2>Organización con IA</h2></div>
+        <div class="settings-list">
+          <div class="settings-row">
+            <div class="left stack">
+              <div>Asistente de IA</div>
+              <div class="row-sub">${state.ia.enabled ? 'Activado — entiende lo que escribes en Inicio y organiza tu calendario automáticamente' : 'Desactivado — no se envía ni se solicita nada a la IA'}</div>
+            </div>
+            <button type="button" class="toggle ${state.ia.enabled?'on':''}" id="toggle-ia" aria-label="Activar o desactivar la IA"></button>
           </div>
-          <button type="button" class="toggle ${state.ia.enabled?'on':''}" id="toggle-ia" aria-label="Activar o desactivar la IA"></button>
         </div>
-      </div>
-      <p class="hint" style="display:block;margin-top:8px;">La IA solo usa las tareas, eventos y horarios bloqueados que ya tienes guardados — nunca se inventa información. Al desactivarla, el chat de Inicio desaparece y no se hace ninguna petición.</p>
-    </section>
+        <p class="hint" style="display:block;margin-top:8px;">La IA solo usa las tareas, eventos y horarios bloqueados que ya tienes guardados — nunca se inventa información. Al desactivarla, el chat de Inicio desaparece y no se hace ninguna petición.</p>
+      </section>`;
 
-    <section class="block">
-      <div class="block-head"><h2>Datos</h2></div>
-      <div class="settings-actions">
-        <button class="btn" id="btn-export-data">⬇️ Exportar datos</button>
-        <button class="btn" id="btn-import-data">⬆️ Importar datos</button>
-        <button class="btn btn-danger" id="btn-delete-data">🗑️ Borrar todos los datos</button>
-      </div>
-      <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con todos tus datos. Importar y borrar piden confirmación explícita antes de aplicarse.</p>
-    </section>
+  const recordatoriosHtml = `
+      <section class="block">
+        <p class="hint" style="display:block;margin-bottom:14px;">ORGANIZATOR puede mostrarte una notificación del navegador cuando llega la hora de un recordatorio que hayas configurado en una tarea o evento.</p>
+        <div class="settings-list">
+          <div class="settings-row">
+            <div class="left stack">
+              <div>Notificaciones del navegador</div>
+              <div class="row-sub" id="reminder-notification-status">${esc(reminderStatus.text)}</div>
+            </div>
+            ${reminderStatus.showButton ? `<button type="button" class="btn" id="btn-enable-notifications">Activar notificaciones</button>` : ''}
+          </div>
+        </div>
+      </section>`;
 
-    ${renderDurationStatsSection()}
-    ${renderGeneralPatternsSection()}
+  const datosHtml = `
+      <section class="block">
+        <div class="block-head"><h2>Datos</h2></div>
+        <div class="settings-actions">
+          <button class="btn" id="btn-export-data">⬇️ Exportar datos</button>
+          <button class="btn" id="btn-import-data">⬆️ Importar datos</button>
+          <button class="btn btn-danger" id="btn-delete-data">🗑️ Borrar todos los datos</button>
+        </div>
+        <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con todos tus datos. Importar y borrar piden confirmación explícita antes de aplicarse.</p>
+      </section>`;
 
-    <section class="block">
-      <div class="block-head"><h2>Información de la aplicación</h2></div>
-      <div class="app-info-box">
-        <div><strong>${APP_NAME}</strong> · versión ${APP_VERSION}</div>
-        <div style="margin-top:6px;">Cuéntale a la IA lo que tienes que hacer y ella lo organiza en tu calendario, guardado de forma privada en tu cuenta.</div>
+  const informacionHtml = `
+      ${renderDurationStatsSection()}
+      ${renderGeneralPatternsSection()}
+      <section class="block">
+        <div class="block-head"><h2>Información de la aplicación</h2></div>
+        <div class="app-info-box">
+          <div><strong>${APP_NAME}</strong> · versión ${APP_VERSION}</div>
+          <div style="margin-top:6px;">Cuéntale a la IA lo que tienes que hacer y ella lo organiza en tu calendario, guardado de forma privada en tu cuenta.</div>
+        </div>
+      </section>`;
+
+  el.innerHTML = `
+    <div class="area-head">
+      <div class="area-head-l">
+        <div class="ic" style="background:var(--paper);color:var(--ink);">⚙️</div>
+        <div><h1>Ajustes</h1><p>Preferencias generales de ORGANIZATOR</p></div>
       </div>
-    </section>
+    </div>
+
+    <div class="settings-accordion">
+      ${ajustesAccordionSection('organizacion', 'Organización', organizacionHtml)}
+      ${ajustesAccordionSection('ia', 'Inteligencia artificial', iaHtml)}
+      ${ajustesAccordionSection('recordatorios', 'Recordatorios', recordatoriosHtml)}
+      ${ajustesAccordionSection('datos', 'Datos y privacidad', datosHtml)}
+      ${ajustesAccordionSection('informacion', 'Información', informacionHtml)}
+      ${ajustesAccordionSection('cuenta', 'Cuenta', cuentaHtml)}
+    </div>
   `;
+
+  // UX-7 (acordeón): toggle directo del panel pulsado, sin volver a
+  // llamar a renderAjustes() — más ágil y no pierde el scroll/foco del
+  // resto de la pantalla. ajustesAccordionOpen se actualiza igualmente,
+  // así que si luego se dispara un render completo (toggle de IA, botón
+  // de notificaciones) el estado abierto/cerrado de CADA categoría se
+  // conserva tal cual lo dejó el usuario.
+  el.querySelectorAll('[data-accordion]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const key = btn.dataset.accordion;
+      const panel = document.getElementById('accordion-panel-' + key);
+      if(!panel) return;
+      const willOpen = panel.hidden;
+      panel.hidden = !willOpen;
+      btn.setAttribute('aria-expanded', String(willOpen));
+      ajustesAccordionOpen[key] = willOpen;
+    });
+  });
 
   el.querySelectorAll('[data-toggle-pref]').forEach(btn=>{
     btn.addEventListener('click', async ()=>{
@@ -2623,6 +2752,19 @@ function renderAjustes(){
     await saveIA();
     renderAjustes();
     if(currentView==='inicio') renderInicio();
+  });
+
+  // UX-7: el permiso SOLO se solicita al pulsar este botón (nunca al
+  // abrir Ajustes). Llama directamente a la función ya existente de la
+  // Fase 5 de recordatorios (requestReminderNotificationPermission), sin
+  // reimplementarla; tras la respuesta del navegador, se vuelve a
+  // renderizar Ajustes para reflejar el nuevo Notification.permission
+  // (mismo patrón que el toggle de IA justo arriba).
+  const enableNotifBtn = el.querySelector('#btn-enable-notifications');
+  if(enableNotifBtn) enableNotifBtn.addEventListener('click', async ()=>{
+    enableNotifBtn.disabled = true;
+    await requestReminderNotificationPermission();
+    renderAjustes();
   });
 
   const addSchedBtn = el.querySelector('#btn-add-schedule');
