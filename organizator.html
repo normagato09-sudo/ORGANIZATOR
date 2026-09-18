@@ -513,6 +513,23 @@
   .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px;}
   .modal-actions .right{display:flex;gap:8px;}
 
+  /* UX-8: secciones desplegables dentro de los modales de tarea/evento
+     (⚙️ Más opciones / 🔁 Repetición / 🔔 Recordatorio). Mismo lenguaje
+     visual que .settings-accordion-* (Ajustes, UX-7), a escala de modal. */
+  .modal-collapsible{border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:hidden;}
+  .modal-collapsible-toggle{
+    width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:11px 13px;background:none;border:none;cursor:pointer;font-family:inherit;
+    font-size:12.5px;font-weight:600;color:var(--ink);text-align:left;
+  }
+  .modal-collapsible-toggle:hover{background:var(--paper);}
+  .modal-collapsible-toggle:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;}
+  .modal-collapsible-chevron{font-size:11px;color:var(--ink-soft);transition:transform .18s ease;flex:none;}
+  .modal-collapsible-toggle[aria-expanded="true"] .modal-collapsible-chevron{transform:rotate(180deg);}
+  .modal-collapsible-panel{padding:10px 13px 13px;}
+  .modal-collapsible-panel[hidden]{display:none;}
+  .modal-collapsible-panel .form-group:last-child{margin-bottom:0;}
+
   /* ---------- Columna derecha ---------- */
   aside{border-left:1px solid var(--line);padding:40px 26px;display:flex;flex-direction:column;gap:30px;}
   aside h3{font-size:12px;font-weight:600;margin:0 0 12px;color:var(--ink-soft);}
@@ -1044,12 +1061,22 @@ async function saveIA(){
    CRUD
    ================================================================== */
 async function addTask(data){
-  state.tasks.push({ id:uid(), done:false, createdAt:Date.now(), ...data });
+  // Fase R-1 de recurrencia: `recurrence` siempre se guarda saneado
+  // (null si no es una recurrencia válida), nunca tal cual venga en data.
+  state.tasks.push({ id:uid(), done:false, createdAt:Date.now(), ...data, recurrence: sanitizeRecurrence(data.recurrence) });
   await saveTasks();
 }
 async function updateTask(id, data){
   const t = state.tasks.find(x=>x.id===id);
-  if(t) Object.assign(t, data);
+  if(t){
+    Object.assign(t, data);
+    // Solo se toca `recurrence` si `data` la incluye explícitamente, para
+    // no borrar la recurrencia existente en actualizaciones parciales
+    // (p.ej. openActualMinutesModal actualiza solo actualMinutes).
+    if(Object.prototype.hasOwnProperty.call(data, 'recurrence')){
+      t.recurrence = sanitizeRecurrence(data.recurrence);
+    }
+  }
   await saveTasks();
 }
 async function deleteTask(id){
@@ -1057,9 +1084,14 @@ async function deleteTask(id){
   await saveTasks();
   // Fase 3 de recordatorios: cancela (no borra) los reminders asociados,
   // cubriendo TODOS los puntos de entrada de borrado (modal y listas
-  // rápidas), no solo uno. cancelRemindersForTarget se define más abajo
-  // en el archivo, pero al ser function declarations quedan hoisted.
-  await cancelRemindersForTarget('task', id);
+  // rápidas), no solo uno. Fase R-7: cancelRemindersForTaskAndOccurrences
+  // (en vez de cancelRemindersForTarget('task', id) a secas) cancela
+  // también los reminders de las ocurrencias de esta tarea (targetId
+  // "id::fecha"), no solo el de la tarea base — si no, quedarían
+  // huérfanos al desaparecer la tarea de la que dependen. Ambas
+  // funciones se definen más abajo en el archivo, pero al ser function
+  // declarations quedan hoisted.
+  await cancelRemindersForTaskAndOccurrences(id);
 }
 async function toggleTask(id){
   const t = state.tasks.find(x=>x.id===id);
@@ -1070,13 +1102,63 @@ async function toggleTask(id){
   renderCurrentView();
   if(justCompleted) openActualMinutesModal(id);
 }
+/* ==================================================================
+   RECURRENCIA — completar/deshacer ocurrencias de TAREAS (Fase R-3)
+   Distinguen tarea base de ocurrencia concreta: completar/deshacer una
+   fecha de una tarea recurrente NUNCA toca `done` de la tarea base (eso
+   seguiría marcando "toda la serie" como hecha) ni afecta a otras
+   fechas. Cada función es idempotente: completar dos veces la misma
+   ocurrencia deja completedOccurrences igual que completarla una vez;
+   deshacer una ocurrencia ya pendiente tampoco cambia nada. Ninguna de
+   las dos abre el modal de minutos reales ni llama a renderCurrentView:
+   a diferencia de toggleTask, esta fase no toca UI (queda para una fase
+   posterior conectar esto con la interfaz).
+   Tarea no recurrente: se comporta como toggleTask siempre ha hecho,
+   usando `done` (ver requisito de R-3: "una tarea no recurrente debe
+   seguir usando done como hasta ahora").
+   ================================================================== */
+async function completeTaskOccurrence(taskId, occurrenceDate){
+  const t = state.tasks.find(x=>x.id===taskId);
+  if(!t) return;
+  if(!t.recurrence){
+    t.done = true;
+    await saveTasks();
+    return;
+  }
+  const completed = Array.isArray(t.completedOccurrences) ? t.completedOccurrences : [];
+  if(!completed.includes(occurrenceDate)){
+    t.completedOccurrences = [...completed, occurrenceDate];
+    await saveTasks();
+  }
+}
+async function uncompleteTaskOccurrence(taskId, occurrenceDate){
+  const t = state.tasks.find(x=>x.id===taskId);
+  if(!t) return;
+  if(!t.recurrence){
+    t.done = false;
+    await saveTasks();
+    return;
+  }
+  const completed = Array.isArray(t.completedOccurrences) ? t.completedOccurrences : [];
+  if(completed.includes(occurrenceDate)){
+    t.completedOccurrences = completed.filter(d => d !== occurrenceDate);
+    await saveTasks();
+  }
+}
 async function addEvent(data){
-  state.events.push({ id:uid(), createdAt:Date.now(), ...data });
+  // Fase R-1 de recurrencia: mismo criterio que addTask (ver comentario allí).
+  state.events.push({ id:uid(), createdAt:Date.now(), ...data, recurrence: sanitizeRecurrence(data.recurrence) });
   await saveEvents();
 }
 async function updateEvent(id, data){
   const e = state.events.find(x=>x.id===id);
-  if(e) Object.assign(e, data);
+  if(e){
+    Object.assign(e, data);
+    // Mismo criterio que updateTask (ver comentario allí).
+    if(Object.prototype.hasOwnProperty.call(data, 'recurrence')){
+      e.recurrence = sanitizeRecurrence(data.recurrence);
+    }
+  }
   await saveEvents();
 }
 async function deleteEvent(id){
@@ -1196,6 +1278,105 @@ function resolveEventColor(categoryId){
  * igual que ya lee allDay/startTime/endTime. */
 function eventsForScheduler(){
   return state.events.map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
+}
+
+/* ==================================================================
+   RECURRENCIA — integración con vistas (Fase R-6)
+   Las vistas (Inicio, Calendario, Semana) ya no filtran state.tasks/
+   state.events directamente por fecha: piden sus ocurrencias dentro del
+   rango visible EXACTO de esa vista (getTaskOccurrences/
+   getEventOccurrences, R-3/R-4) y pintan esas ocurrencias derivadas. No
+   se genera ninguna ocurrencia fuera del rango pedido (nada de "desde
+   2020 hasta 2030"), y state.tasks/state.events nunca se modifican
+   aquí: son solo lecturas + derivaciones, mismo contrato de solo
+   lectura que ya tienen getTaskOccurrences/getEventOccurrences. No se
+   reimplementa nada de daily/weekly/monthly: todo el cálculo de fechas
+   sigue siendo el de R-2 a través de esos dos helpers.
+   ================================================================== */
+
+/** Todas las ocurrencias de `tasks` dentro de [fromDate, toDate], listas
+ * para pintar. Una tarea no recurrente ya devuelve, como mucho, su
+ * única ocurrencia (ver getTaskOccurrences, R-3) en el mismo campo
+ * (scheduledDate||dueDate) que usaba directamente el resto de la app
+ * antes de R-6 — mismo comportamiento exacto, solo que ahora unificado
+ * con el camino de las tareas recurrentes en vez de tener dos rutas
+ * distintas. */
+function taskOccurrencesInRange(tasks, fromDate, toDate){
+  return tasks.flatMap(t => getTaskOccurrences(t, fromDate, toDate));
+}
+
+/** Ocurrencias YA expandidas (R-4) de los eventos recurrentes de
+ * `events`, calculadas UNA sola vez para todo [fromDate, toDate] (no se
+ * repite el cálculo día a día dentro de un bucle de vista — ver
+ * eventsOnDate). Los eventos no recurrentes quedan fuera a propósito:
+ * ver eventsOnDate para por qué se comprueban aparte. */
+function expandEventOccurrencesInRange(events, fromDate, toDate){
+  return events.filter(e => !!e.recurrence).flatMap(e => getEventOccurrences(e, fromDate, toDate));
+}
+
+/** Eventos "activos" en `dateStr`: combina los eventos NO recurrentes
+ * (comprobados tal cual contra su date/endDate reales, exactamente el
+ * mismo criterio — isDateInRange — que usaba el resto de la app antes
+ * de R-6, SIN pasar por getEventOccurrences) con las ocurrencias
+ * recurrentes ya expandidas que se le pasen en `recurringOccurrences`
+ * (ver expandEventOccurrencesInRange). Que los no-recurrentes no pasen
+ * por getEventOccurrences es deliberado: así un evento de varios días
+ * que ya estuviera en curso al empezar el rango visible sigue
+ * apareciendo igual que siempre (getEventOccurrences solo encuentra
+ * ocurrencias cuya fecha de INICIO cae dentro del rango pedido, ver
+ * R-4) — "evento no recurrente se comporta exactamente como antes" se
+ * cumple así de forma literal, sin ningún caso especial nuevo. */
+function eventsOnDate(events, recurringOccurrences, dateStr){
+  const plain = events.filter(e => !e.recurrence && isDateInRange(dateStr, e.date, e.endDate));
+  const fromOccurrences = recurringOccurrences.filter(occ => isDateInRange(dateStr, occ.date, occ.endDate));
+  return plain.concat(fromOccurrences);
+}
+
+/** Mismo criterio que eventsForScheduler() (resuelve blocksSchedule vía
+ * categoryId; Scheduler.js sigue sin conocer categorías) pero con los
+ * eventos recurrentes ya expandidos en sus ocurrencias dentro de
+ * [fromDate, toDate]. Se usa SOLO en las vistas de calendario (Semana,
+ * R-6): los flujos de IA (Organizar mi día/semana, huecos libres para
+ * el contexto de la IA) siguen llamando a eventsForScheduler() tal
+ * cual, sin tocar — fuera de alcance de esta fase. Scheduler.js no
+ * recibe ningún cambio: solo se le pasa una lista de eventos ya
+ * expandida, con la misma forma (date/endDate/allDay/startTime/
+ * endTime/blocksSchedule/title/id) que ya esperaba antes de R-6, así
+ * que su propio filtrado por fecha (dateStr < start || dateStr > end)
+ * coloca cada ocurrencia en el día correcto sin que Scheduler sepa que
+ * existe la recurrencia. */
+function eventsForSchedulerInRange(fromDate, toDate){
+  const plain = state.events.filter(e => !e.recurrence);
+  const recurringOccurrences = expandEventOccurrencesInRange(state.events, fromDate, toDate);
+  return plain.concat(recurringOccurrences)
+    .map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
+}
+
+/** Wrapper de UI para el checkbox de "completada" en las vistas: decide
+ * entre el camino de siempre (toggleTask, tarea no recurrente — incluye
+ * su modal de minutos reales, sin cambios) y el camino de ocurrencia
+ * (R-3: completeTaskOccurrence/uncompleteTaskOccurrence, tarea
+ * recurrente — afecta solo a esa fecha). No inventa lógica de
+ * completado nueva: usa exactamente los helpers ya existentes.
+ * NOTA (minutos reales, R-6 punto 6): completar una ocurrencia
+ * recurrente NO abre el modal de "¿cuántos minutos te ha llevado?"
+ * (openActualMinutesModal). Ese modal guarda `actualMinutes` en la
+ * tarea BASE, un único campo compartido por todas sus ocurrencias:
+ * asociarlo correctamente a una ocurrencia concreta necesitaría un
+ * cambio de modelo mayor (minutos reales por fecha, con una estructura
+ * similar a completedOccurrences), que R-6 deja explícitamente para una
+ * fase posterior en vez de improvisarlo aquí. Por ahora, completar una
+ * ocurrencia recurrente solo actualiza completedOccurrences. */
+async function toggleTaskOccurrenceFromView(taskId, occurrenceDate){
+  const t = state.tasks.find(x => x.id === taskId);
+  if(!t) return;
+  if(!t.recurrence){
+    await toggleTask(taskId);
+    return;
+  }
+  if(isTaskOccurrenceCompleted(t, occurrenceDate)) await uncompleteTaskOccurrence(taskId, occurrenceDate);
+  else await completeTaskOccurrence(taskId, occurrenceDate);
+  renderCurrentView();
 }
 
 /* ==================================================================
@@ -1331,6 +1512,111 @@ async function cancelRemindersForTarget(targetType, targetId){
 }
 
 /* ==================================================================
+   RECORDATORIOS — ocurrencias recurrentes de tareas (Fase R-7)
+   Una tarea recurrente tiene un único `id` (tarea base, R-1/R-3) pero
+   puede necesitar un recordatorio propio por cada ocurrencia
+   (occurrenceDate, ver getTaskOccurrences/R-3). Esta fase NO cambia el
+   modelo de reminder ({id, targetType, targetId, remindAt, status,
+   createdAt}, Fases 1-5 de arriba): un recordatorio de ocurrencia sigue
+   siendo `targetType:'task'`, solo que su `targetId` es el id
+   COMPUESTO y determinista de la ocurrencia — el mismo que ya usa R-3
+   para identificarla de forma estable, ver getTaskOccurrenceId
+   ("taskId::YYYY-MM-DD") — en vez del id de la tarea base a secas.
+   Como getRemindersForTarget/pendingReminderForTarget/
+   syncReminderForTarget/cancelRemindersForTarget/getDueReminders/
+   triggerDueReminders ya trabajan de forma genérica por
+   (targetType, targetId) sin conocer nada de recurrencia, NINGUNA de
+   esas funciones necesita cambiar: basta con pasarles el targetId
+   compuesto de la ocurrencia en vez del id de la tarea base. Los
+   helpers de abajo son wrappers finos que solo construyen ese targetId
+   y calculan la fecha/hora objetivo de ESA ocurrencia concreta (ver
+   occurrenceReminderTargetDateTime) — cero lógica de recordatorios
+   duplicada.
+   Dos ocurrencias distintas de la misma tarea (id compuesto distinto)
+   son, a todos los efectos de recordatorios, dos targets
+   completamente independientes: cada una puede tener su propio
+   reminder pending, o ninguno, sin que se pisen entre sí. Un
+   recordatorio de la tarea BASE (targetId sin "::", el que ya crea/
+   gestiona openTaskModal) sigue siendo un target totalmente aparte:
+   ninguno de los helpers de abajo lo toca ni lo sustituye.
+   ================================================================== */
+
+/** Fecha/hora objetivo de la ocurrencia `occurrenceDate` de `task`, lista
+ * para pasar a calculateReminderAt() (vía reminderTargetDateTime, Fase
+ * 3 — no se reimplementa ese cálculo ni su validación de formato aquí).
+ * Prioridad de la hora, tal como pide esta fase:
+ *  1) si la tarea tiene una hora PROGRAMADA para justo esta ocurrencia
+ *     (task.scheduledDate === occurrenceDate && task.scheduledStart),
+ *     se usa esa hora — scheduledStart pertenece a un único
+ *     scheduledDate (Scheduler solo agenda una tarea recurrente en un
+ *     día concreto, R-6), así que NUNCA se reutiliza para otra fecha;
+ *  2) si no, y la tarea tiene dueTime, se usa dueTime (misma hora
+ *     "genérica" que ya usa taskRowHTML para cualquier ocurrencia sin
+ *     horario propio, ver R-6);
+ *  3) si no hay ninguna hora válida, no se inventa ninguna: se
+ *     devuelve null (reminderTargetDateTime ya hace exactamente eso),
+ *     y quien llame (syncReminderForTaskOccurrence) no crea ningún
+ *     recordatorio temporalmente imposible. */
+function occurrenceReminderTargetDateTime(task, occurrenceDate){
+  if(!task) return null;
+  const timeStr = (task.scheduledDate === occurrenceDate && task.scheduledStart) ? task.scheduledStart : (task.dueTime || '');
+  return reminderTargetDateTime(occurrenceDate, timeStr);
+}
+/** Reminder pending de una ocurrencia concreta (taskId+occurrenceDate),
+ * o null si no tiene ninguno activo. Reutiliza pendingReminderForTarget
+ * (Fase 3) con el targetId compuesto de la ocurrencia (R-3): no
+ * reimplementa la búsqueda. No devuelve nunca el reminder de la tarea
+ * BASE ni el de otra fecha — targetId distinto, target distinto. */
+function pendingReminderForTaskOccurrence(taskId, occurrenceDate){
+  return pendingReminderForTarget('task', getTaskOccurrenceId(taskId, occurrenceDate));
+}
+/** Minutos de anticipación del reminder pending de una ocurrencia,
+ * listos para preseleccionar un <select> si en el futuro se conecta a
+ * UI (ver R-7 punto 7: por ahora no hay ningún formulario que lo use).
+ * Reutiliza currentReminderMinutes (Fase 3) tal cual. */
+function currentReminderMinutesForTaskOccurrence(task, occurrenceDate){
+  if(!task) return '';
+  return currentReminderMinutes('task', getTaskOccurrenceId(task.id, occurrenceDate), occurrenceReminderTargetDateTime(task, occurrenceDate));
+}
+/** Crea, actualiza o cancela el reminder pending de una ocurrencia
+ * concreta, a partir de la anticipación elegida (mismo contrato que
+ * syncReminderForTarget, Fase 3, al que delega TODA la lógica de
+ * "reutilizar el existente / crear uno nuevo / cancelar" — aquí solo se
+ * calcula el targetId compuesto y la fecha/hora objetivo de ESTA
+ * ocurrencia). No lanza si `taskId` no existe en state.tasks (createa/
+ * sincroniza igualmente si es posible; si no hay tarea o no hay
+ * fecha/hora válida, el resultado es "sin recordatorio", igual que el
+ * resto de esta fase). */
+async function syncReminderForTaskOccurrence(taskId, occurrenceDate, minutesBefore){
+  const task = (state.tasks||[]).find(t => t.id === taskId);
+  const targetDateTime = occurrenceReminderTargetDateTime(task, occurrenceDate);
+  return syncReminderForTarget('task', getTaskOccurrenceId(taskId, occurrenceDate), targetDateTime, minutesBefore);
+}
+/** Cancela (status:'cancelled') el/los reminder(s) de una ocurrencia
+ * concreta — nunca los de otra fecha ni los de la tarea base. Reutiliza
+ * cancelRemindersForTarget (Fase 3) con el targetId compuesto. */
+async function cancelReminderForTaskOccurrence(taskId, occurrenceDate){
+  await cancelRemindersForTarget('task', getTaskOccurrenceId(taskId, occurrenceDate));
+}
+/** Cancela TODOS los reminders de una tarea al borrarla: el de la
+ * propia tarea base (targetId === taskId, el camino de siempre, Fase 3)
+ * Y los de cualquiera de sus ocurrencias (targetId === "taskId::fecha").
+ * Sin este segundo grupo, borrar una tarea recurrente dejaría
+ * "huérfanos" (pending para siempre) los recordatorios de sus
+ * ocurrencias — el único motivo por el que deleteTask() pasa a llamar
+ * a esta función en vez de a cancelRemindersForTarget('task', id)
+ * directamente. No cambia cancelRemindersForTarget ni
+ * getRemindersForTarget: ambas siguen exactamente igual que antes de
+ * R-7, esto solo las combina desde fuera. */
+async function cancelRemindersForTaskAndOccurrences(taskId){
+  const occurrencePrefix = `${taskId}::`;
+  const occurrenceReminders = (state.reminders||[]).filter(r =>
+    r.targetType === 'task' && typeof r.targetId === 'string' && r.targetId.startsWith(occurrencePrefix));
+  const active = getRemindersForTarget('task', taskId).concat(occurrenceReminders).filter(r => r.status !== 'cancelled');
+  for(const r of active){ await cancelReminder(r.id); }
+}
+
+/* ==================================================================
    RECORDATORIOS — motor de detección y disparo lógico (Fase 4)
    getDueReminders() es una función PURA: no lee más que state.reminders
    (sin mutarlo) y no depende de posiciones del array. Un reminder está
@@ -1403,6 +1689,18 @@ async function requestReminderNotificationPermission(){
     return false;
   }
 }
+// Fase R-7: el targetId de un reminder de tarea puede ser el id de la
+// tarea base ("abc") o el id compuesto de una de sus ocurrencias
+// ("abc::2026-09-21", ver getTaskOccurrenceId, R-3). Para resolver el
+// título real de la tarea da igual cuál de los dos sea: se toma solo la
+// parte de antes del "::". Un targetId sin "::" (el caso de siempre)
+// se devuelve tal cual — cero cambio de comportamiento para reminders
+// no ligados a una ocurrencia.
+function resolveTaskIdFromReminderTargetId(targetId){
+  if(typeof targetId !== 'string') return targetId;
+  const sep = targetId.indexOf('::');
+  return sep === -1 ? targetId : targetId.slice(0, sep);
+}
 /** Etiqueta legible del objetivo de un reminder ("Evento: X" / "Tarea:
  * Y"), buscando el evento/tarea real por id (nunca por posición) para
  * incluir su título. Si el target ya no existe (se borró y el reminder
@@ -1413,7 +1711,7 @@ function reminderNotificationBody(reminder){
     return `Evento: ${ev ? ev.title : 'evento'}`;
   }
   if(reminder.targetType === 'task'){
-    const tk = (state.tasks||[]).find(t=>t.id===reminder.targetId);
+    const tk = (state.tasks||[]).find(t=>t.id===resolveTaskIdFromReminderTargetId(reminder.targetId));
     return `Tarea: ${tk ? tk.title : 'tarea'}`;
   }
   return 'Recordatorio';
@@ -1432,6 +1730,71 @@ function showReminderNotification(reminder){
   }catch(e){
     return null;
   }
+}
+
+/* ==================================================================
+   RECORDATORIOS — disparo automático mientras la app está abierta
+   (Fase R-7.1)
+   Diagnóstico: triggerDueReminders() (Fase 4) y showReminderNotification()
+   (Fase 5) ya funcionaban correctamente cuando se llamaban, pero nada en
+   organizator.html las llamaba nunca fuera de sus propios tests — no
+   había ningún setInterval/setTimeout/visibilitychange/focus ni ningún
+   otro ciclo que ejecutara triggerDueReminders() mientras la app
+   permanecía abierta. Por eso el recordatorio se creaba bien pero nunca
+   se disparaba: nadie preguntaba periódicamente "¿hay algo vencido?".
+   Esta fase SOLO añade ese ciclo (polling ligero con setInterval,
+   startApp() lo arranca una vez) — no cambia el modelo de reminders, no
+   cambia la identidad de las ocurrencias (R-7), no reimplementa nada de
+   getDueReminders/triggerDueReminders/showReminderNotification: el
+   callback del intervalo se limita a llamar a triggerDueReminders(), que
+   sigue siendo la ÚNICA función responsable de localizar due reminders,
+   pasarlos a 'triggered' y avisar a showReminderNotification(). El
+   intervalo tampoco crea reminders nuevos: solo puede disparar los que
+   ya existían.
+   Idempotencia: startReminderPolling() se apoya en
+   reminderPollingIntervalId (module-level, no en `state`) para no crear
+   un segundo intervalo si se llama más de una vez (p.ej. si startApp()
+   se ejecutara dos veces en la misma pestaña) — la segunda llamada es
+   un no-op que devuelve el id ya existente. stopReminderPolling() limpia
+   el intervalo si algún código futuro (logout, tests) lo necesita.
+   ================================================================== */
+let reminderPollingIntervalId = null;
+const REMINDER_POLLING_INTERVAL_MS = 20000; // 20s: frecuencia razonable (rango pedido 15-30s), sin sobrecargar la pestaña.
+
+/** Un "tick" del polling: delega TODO en triggerDueReminders() (Fase 4),
+ * sin decidir ni recalcular nada por su cuenta — así no hay ninguna
+ * lógica de disparo duplicada entre el polling y triggerDueReminders().
+ * No lanza: si triggerDueReminders() fallara, el intervalo no se
+ * detiene (mismo espíritu que showReminderNotification(), que ya nunca
+ * lanza) — un fallo puntual no debe dejar de detectar el siguiente
+ * recordatorio 20s después. */
+async function reminderPollingTick(now = new Date()){
+  try{
+    return await triggerDueReminders(now);
+  }catch(e){
+    console.error('Fallo comprobando recordatorios vencidos', e);
+    return [];
+  }
+}
+/** Arranca el polling de recordatorios si no está ya en marcha.
+ * Idempotente (ver nota de la fase más arriba): llamarlo varias veces
+ * NUNCA crea un segundo setInterval, siempre devuelve el mismo id.
+ * `intervalMs` es configurable (para tests con un intervalo corto); en
+ * producción startApp() lo llama sin argumento, con
+ * REMINDER_POLLING_INTERVAL_MS. No toca renderizado ni Scheduler: el
+ * callback solo llama a reminderPollingTick(), que a su vez solo llama
+ * a triggerDueReminders(). */
+function startReminderPolling(intervalMs = REMINDER_POLLING_INTERVAL_MS){
+  if(reminderPollingIntervalId !== null) return reminderPollingIntervalId;
+  reminderPollingIntervalId = setInterval(() => { reminderPollingTick(); }, intervalMs);
+  return reminderPollingIntervalId;
+}
+/** Detiene el polling si está en marcha (limpia el setInterval y libera
+ * reminderPollingIntervalId). No lanza si no había ninguno activo. */
+function stopReminderPolling(){
+  if(reminderPollingIntervalId === null) return;
+  clearInterval(reminderPollingIntervalId);
+  reminderPollingIntervalId = null;
 }
 
 /* ==================================================================
@@ -1550,12 +1913,17 @@ function renderInicio(){
   // Una tarea puede tener dueDate (su fecha límite) distinta de
   // scheduledDate (el día en que Scheduler decidió que se hace realmente);
   // para "hoy" nos importa dónde está programada, no cuándo vence.
+  // Fase R-6: se pide la ocurrencia de HOY (rango [today, today], nunca
+  // más amplio) en vez de filtrar state.tasks/state.events directamente,
+  // para que una tarea/evento recurrente cuya ocurrencia caiga hoy
+  // también aparezca (ver getTaskOccurrences/getEventOccurrences, R-3/R-4).
   const items = [];
-  state.tasks.filter(t=>!t.done && (t.scheduledDate||t.dueDate)===today).forEach(t=>{
+  taskOccurrencesInRange(state.tasks, today, today).filter(t=>!t.done).forEach(t=>{
     const time = t.scheduledStart || t.dueTime || '';
     items.push({ type:'task', title:t.title, sortKey:time||'23:59', timeLabel:time, warning:t.schedulingWarning||'' });
   });
-  state.events.filter(e=>isDateInRange(today, e.date, e.endDate)).forEach(e=>{
+  const todayRecurringEvents = expandEventOccurrencesInRange(state.events, today, today);
+  eventsOnDate(state.events, todayRecurringEvents, today).forEach(e=>{
     items.push({ type:'event', title:e.title, sortKey:(e.allDay?'00:00':(e.startTime||'00:00')), timeLabel: e.allDay?'Todo el día':(e.startTime||'') });
   });
   items.sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
@@ -1590,10 +1958,27 @@ function esc(s){
    FILAS DE TAREA / EVENTO (reutilizadas en Calendario)
    ================================================================== */
 function taskRowHTML(t){
-  const overdue = t.dueDate && t.dueDate < todayStr() && !t.done;
+  // Fase R-6: t puede ser la tarea base (recurrence: null) o una
+  // ocurrencia derivada de getTaskOccurrences (R-3, tiene taskId +
+  // occurrenceDate). displayDate usa occurrenceDate cuando existe, para
+  // que una ocurrencia recurrente muestre SU fecha (21/09), no la
+  // dueDate original de la tarea base (18/09) — para una tarea no
+  // recurrente occurrenceDate === scheduledDate||dueDate, así que el
+  // comportamiento no cambia en absoluto respecto a antes de R-6.
+  const displayDate = t.occurrenceDate || t.dueDate;
+  const overdue = displayDate && displayDate < todayStr() && !t.done;
+  // El checkbox identifica SIEMPRE tarea base (taskId) + fecha de la
+  // ocurrencia por separado (nunca solo t.id, que para una ocurrencia es
+  // un id compuesto "taskId::fecha"), para que
+  // toggleTaskOccurrenceFromView pueda decidir entre toggleTask (no
+  // recurrente) y completeTaskOccurrence/uncompleteTaskOccurrence
+  // (recurrente, R-3) sin ambigüedad. Editar/eliminar siguen operando
+  // sobre la tarea base (t.taskId||t.id): R-6 no implementa todavía
+  // edición/borrado individual de una ocurrencia.
+  const baseId = t.taskId || t.id;
   return `
     <div class="task-row ${t.done?'done':''}">
-      <div class="checkbox ${t.done?'checked':''}" data-action="toggle-task" data-id="${t.id}">${t.done?'✓':''}</div>
+      <div class="checkbox ${t.done?'checked':''}" data-action="toggle-task" data-task-id="${baseId}" data-occurrence-date="${displayDate||''}">${t.done?'✓':''}</div>
       <div class="row-body">
         <div class="row-top">
           <span class="task-title">${esc(t.title)}</span>
@@ -1601,7 +1986,7 @@ function taskRowHTML(t){
         </div>
         <div class="row-meta">
           ${t.scheduledDate ? `<span>Programada: ${humanDateShort(t.scheduledDate)} · ${t.scheduledStart}-${t.scheduledEnd}</span>` : ''}
-          ${t.dueDate ? `<span style="${overdue?'color:var(--alta);font-weight:600;':''}">${t.scheduledDate?'Vence':''} ${humanDateShort(t.dueDate)}${(!t.scheduledDate && t.dueTime)?' · '+t.dueTime:''}</span>` : ''}
+          ${displayDate ? `<span style="${overdue?'color:var(--alta);font-weight:600;':''}">${t.scheduledDate?'Vence':''} ${humanDateShort(displayDate)}${(!t.scheduledDate && t.dueTime)?' · '+t.dueTime:''}</span>` : ''}
           ${t.priority ? `<span>Prioridad ${PRIORITIES[t.priority].label}</span>` : ''}
           ${t.category ? `<span>${esc(t.category)}</span>` : ''}
           ${t.estimatedMinutes ? `<span>⏱ Estimado: ${t.estimatedMinutes} min</span>` : ''}
@@ -1611,14 +1996,23 @@ function taskRowHTML(t){
         ${t.notes ? `<div class="row-notes">${esc(t.notes)}</div>` : ''}
       </div>
       <div class="row-actions">
-        <button class="btn-ghost" data-action="edit-task" data-id="${t.id}" title="Editar">✏️</button>
-        <button class="btn-ghost" data-action="delete-task" data-id="${t.id}" title="Eliminar">🗑️</button>
+        <button class="btn-ghost" data-action="edit-task" data-id="${baseId}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-task" data-id="${baseId}" title="Eliminar">🗑️</button>
       </div>
     </div>`;
 }
 function eventRowHTML(e){
   const catColor = resolveEventColor(e.categoryId);
   const cat = resolveEventCategory(e.categoryId);
+  // Fase R-6: e puede ser el evento base (recurrence: null) o una
+  // ocurrencia derivada de getEventOccurrences (R-4, tiene eventId +
+  // occurrenceDate). date/endDate ya vienen desplazados a la fecha de
+  // esta ocurrencia concreta (ver buildEventOccurrence, R-4), así que no
+  // hace falta tocarlos aquí. Editar/eliminar sí deben operar sobre el
+  // evento BASE (e.eventId||e.id): R-6 no implementa todavía edición/
+  // borrado individual de una ocurrencia. Eventos no tienen estado de
+  // completado (R-6 punto 7: no se añade aquí).
+  const baseId = e.eventId || e.id;
   return `
     <div class="event-row">
       <div class="row-body">
@@ -1634,8 +2028,8 @@ function eventRowHTML(e){
         ${e.notes ? `<div class="row-notes">${esc(e.notes)}</div>` : ''}
       </div>
       <div class="row-actions">
-        <button class="btn-ghost" data-action="edit-event" data-id="${e.id}" title="Editar">✏️</button>
-        <button class="btn-ghost" data-action="delete-event" data-id="${e.id}" title="Eliminar">🗑️</button>
+        <button class="btn-ghost" data-action="edit-event" data-id="${baseId}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-event" data-id="${baseId}" title="Eliminar">🗑️</button>
       </div>
     </div>`;
 }
@@ -1654,6 +2048,16 @@ function renderCalendar(){
   const daysInMonth = new Date(cal.year, cal.month+1, 0).getDate();
   const today = todayStr();
 
+  // Fase R-6: ocurrencias de todo el mes visible calculadas UNA sola vez
+  // (no una llamada a getTaskOccurrences/getEventOccurrences por cada
+  // día del bucle de abajo) — mismo rango exacto que se ve en pantalla,
+  // nunca más amplio (ver taskOccurrencesInRange/
+  // expandEventOccurrencesInRange más arriba).
+  const monthFrom = `${cal.year}-${pad(cal.month+1)}-${pad(1)}`;
+  const monthTo = `${cal.year}-${pad(cal.month+1)}-${pad(daysInMonth)}`;
+  const monthTaskOccurrences = taskOccurrencesInRange(state.tasks, monthFrom, monthTo);
+  const monthRecurringEvents = expandEventOccurrencesInRange(state.events, monthFrom, monthTo);
+
   let cells = '';
   for(let i=0;i<startOffset;i++) cells += `<div class="cal-cell empty"></div>`;
   for(let day=1; day<=daysInMonth; day++){
@@ -1661,8 +2065,8 @@ function renderCalendar(){
     const dayTypes = [];
     // Una tarea se pinta en el día donde va a HACERSE (scheduledDate si
     // el Scheduler ya le asignó hueco), no necesariamente en su fecha límite.
-    if(state.tasks.some(t=>(t.scheduledDate||t.dueDate)===dateStr)) dayTypes.push('task');
-    const dayEventsHere = state.events.filter(e=>isDateInRange(dateStr, e.date, e.endDate));
+    if(monthTaskOccurrences.some(t=>t.occurrenceDate===dateStr)) dayTypes.push('task');
+    const dayEventsHere = eventsOnDate(state.events, monthRecurringEvents, dateStr);
     if(dayEventsHere.length){
       // 6A-4.2: si TODOS los eventos de ese día son all-day contextuales
       // (blocksSchedule:false), el punto se pinta hueco en vez de macizo —
@@ -1700,8 +2104,12 @@ function renderDayPanel(){
     return;
   }
   title.textContent = humanDateShort(sel) + ' de ' + parseYMD(sel).getFullYear();
-  const dayTasks = state.tasks.filter(t=>(t.scheduledDate||t.dueDate)===sel);
-  const dayEvents = state.events.filter(e=>isDateInRange(sel, e.date, e.endDate));
+  // Fase R-6: rango de un solo día [sel, sel] — igual que antes, pero
+  // vía getTaskOccurrences/getEventOccurrences para que las ocurrencias
+  // recurrentes de ese día también aparezcan (ver helpers más arriba).
+  const dayTasks = taskOccurrencesInRange(state.tasks, sel, sel);
+  const dayRecurringEvents = expandEventOccurrencesInRange(state.events, sel, sel);
+  const dayEvents = eventsOnDate(state.events, dayRecurringEvents, sel);
 
   if(dayTasks.length===0 && dayEvents.length===0){
     content.innerHTML = `<div class="empty-state small">No hay nada guardado para este día todavía.</div>`;
@@ -1710,7 +2118,7 @@ function renderDayPanel(){
       ${dayEvents.map(e=>eventRowHTML(e)).join('')}
       ${dayTasks.map(t=>taskRowHTML(t)).join('')}
     </div>`;
-    content.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTask(b.dataset.id)));
+    content.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTaskOccurrenceFromView(b.dataset.taskId, b.dataset.occurrenceDate)));
     content.querySelectorAll('[data-action="edit-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({taskId:b.dataset.id})));
     content.querySelectorAll('[data-action="delete-task"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar esta tarea?')){ deleteTask(b.dataset.id).then(renderCurrentView); } }));
     content.querySelectorAll('[data-action="edit-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({eventId:b.dataset.id})));
@@ -1904,7 +2312,15 @@ function renderSemana(){
   // Scheduler.buildDayBlocks() la agenda real de cada día y la pinta con
   // renderSemanaAgenda() (mismo marcado que renderDayAgendaList, adaptado
   // al fondo claro de las tarjetas y con distinción visual adicional).
-  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  // Fase R-6: eventsForSchedulerInRange(days[0], days[6]) en vez de
+  // eventsForScheduler() — mismo dato que espera Scheduler.buildDayBlocks
+  // (date/endDate/allDay/startTime/endTime/blocksSchedule/title/id), pero
+  // con los eventos recurrentes ya expandidos en sus ocurrencias de ESTA
+  // semana visible. scheduler.js no cambia: sigue haciendo su propio
+  // filtrado por fecha sobre la lista que se le pasa, igual que siempre.
+  // Los flujos de IA (fuera de alcance de R-6) siguen usando
+  // eventsForScheduler() sin tocar.
+  const schedCtx = { events: (typeof eventsForSchedulerInRange === 'function' ? eventsForSchedulerInRange(days[0], days[days.length-1]) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
   grid.innerHTML = days.map((dateStr, i) => {
     const d = parseYMD(dateStr);
     const dayName = DOW_FULL_MONFIRST[i];
@@ -1938,12 +2354,190 @@ document.getElementById('semana-next').addEventListener('click', ()=>{ weekGoFor
 document.getElementById('semana-today').addEventListener('click', ()=>{ weekGoToToday(); renderSemana(); });
 
 /* ==================================================================
+   RECURRENCIA — UI compartida entre tarea y evento (Fase R-5)
+   Controles de "Repetir" reutilizados por openTaskModal/openEventModal.
+   NO reimplementan la validación de R-1: readRecurrenceFromForm solo
+   construye el candidato "en bruto" a partir del formulario (puede
+   llevar un interval/fecha inválidos); quien llama SIEMPRE lo pasa por
+   sanitizeRecurrence antes de guardar — vía addTask/updateTask/
+   addEvent/updateEvent, que ya lo hacen automáticamente en cuanto
+   `data.recurrence` está presente (ver R-1). daysOfWeek usa la misma
+   convención 0=Lunes...6=Domingo que el resto de la app (DOW_SHORT,
+   DOW_FULL_MONFIRST, R-1, R-2).
+   `prefix` ("task"/"event") evita colisiones de id entre ambos modales
+   (solo hay uno abierto a la vez, pero así los ids son únicos siempre).
+   ================================================================== */
+function recurrenceUnitLabel(type){
+  if(type === 'daily') return 'días';
+  if(type === 'weekly') return 'semanas';
+  if(type === 'monthly') return 'meses';
+  return '';
+}
+
+/** HTML de los controles de recurrencia, precargados a partir de
+ * `existingRecurrence` (o "No repetir" en blanco si es null/ausente).
+ * Pura: no lee ni escribe `state`, no toca el DOM real (solo construye
+ * un string) — se puede probar comprobando el string devuelto. */
+function recurrenceControlsHtml(prefix, existingRecurrence){
+  const r = existingRecurrence || null;
+  const type = r ? r.type : 'none';
+  const interval = (r && r.interval) ? r.interval : 1;
+  const daysOfWeek = (r && Array.isArray(r.daysOfWeek)) ? r.daysOfWeek : [];
+  const hasEndDate = !!(r && r.endDate);
+  const endDateValue = hasEndDate ? r.endDate : '';
+  return `
+    <div class="form-group">
+      <label for="${prefix}-repeat-type">Repetir</label>
+      <select name="repeatType" id="${prefix}-repeat-type">
+        <option value="none" ${type==='none'?'selected':''}>No repetir</option>
+        <option value="daily" ${type==='daily'?'selected':''}>Cada día</option>
+        <option value="weekly" ${type==='weekly'?'selected':''}>Cada semana</option>
+        <option value="monthly" ${type==='monthly'?'selected':''}>Cada mes</option>
+      </select>
+    </div>
+    <div id="${prefix}-repeat-detail" style="${type==='none'?'display:none;':''}">
+      <div class="form-group">
+        <label for="${prefix}-repeat-interval">Cada</label>
+        <input type="number" name="repeatInterval" id="${prefix}-repeat-interval" min="1" step="1" value="${interval}" style="width:70px;display:inline-block;">
+        <span id="${prefix}-repeat-interval-unit">${recurrenceUnitLabel(type)}</span>
+      </div>
+      <div class="form-group" id="${prefix}-repeat-days-group" style="${type==='weekly'?'':'display:none;'}">
+        <span id="${prefix}-repeat-days-legend">Días</span>
+        <div class="day-pills" role="group" aria-labelledby="${prefix}-repeat-days-legend">
+          ${DOW_SHORT.map((lb,i)=>`
+            <label style="display:inline-flex;align-items:center;gap:3px;font-size:12.5px;" title="${esc(DOW_FULL_MONFIRST[i])}">
+              <input type="checkbox" name="repeatDaysOfWeek" id="${prefix}-repeat-day-${i}" value="${i}" ${daysOfWeek.includes(i)?'checked':''} aria-label="${esc(DOW_FULL_MONFIRST[i])}">${lb}
+            </label>`).join('')}
+        </div>
+      </div>
+      <div class="form-group">
+        <span id="${prefix}-repeat-end-legend">Finaliza</span>
+        <div role="radiogroup" aria-labelledby="${prefix}-repeat-end-legend" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <label style="display:inline-flex;align-items:center;gap:4px;font-weight:normal;">
+            <input type="radio" name="repeatEnd" id="${prefix}-repeat-end-never" value="never" ${!hasEndDate?'checked':''}> Nunca
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:4px;font-weight:normal;">
+            <input type="radio" name="repeatEnd" id="${prefix}-repeat-end-until" value="until" ${hasEndDate?'checked':''}> Hasta
+          </label>
+          <input type="date" name="repeatEndDate" id="${prefix}-repeat-end-date" value="${esc(endDateValue)}" aria-label="Fecha de fin de la recurrencia" ${hasEndDate?'':'disabled'}>
+        </div>
+      </div>
+    </div>`;
+}
+
+/** Cablea el show/hide de los controles de recurrencia dentro de
+ * `modalBox` (el detalle solo aparece si "Repetir" no es "No repetir";
+ * los días de la semana solo si es "Cada semana"; el input de fecha de
+ * fin solo se habilita si se elige "Hasta"). No valida ni guarda nada:
+ * eso ocurre al enviar el formulario (ver readRecurrenceFromForm /
+ * isRecurrenceEndDateValid, usados en el submit de cada modal). */
+function wireRecurrenceControls(modalBox, prefix){
+  const typeSel = modalBox.querySelector(`#${prefix}-repeat-type`);
+  if(!typeSel) return;
+  const detail = modalBox.querySelector(`#${prefix}-repeat-detail`);
+  const daysGroup = modalBox.querySelector(`#${prefix}-repeat-days-group`);
+  const unitEl = modalBox.querySelector(`#${prefix}-repeat-interval-unit`);
+  const endDateInput = modalBox.querySelector(`#${prefix}-repeat-end-date`);
+  const untilRadio = modalBox.querySelector(`#${prefix}-repeat-end-until`);
+
+  function refreshType(){
+    const type = typeSel.value;
+    detail.style.display = type === 'none' ? 'none' : '';
+    daysGroup.style.display = type === 'weekly' ? '' : 'none';
+    unitEl.textContent = recurrenceUnitLabel(type);
+  }
+  function refreshEndMode(){
+    endDateInput.disabled = !(untilRadio && untilRadio.checked);
+  }
+  typeSel.addEventListener('change', refreshType);
+  modalBox.querySelectorAll(`input[name="repeatEnd"]`).forEach(r => r.addEventListener('change', refreshEndMode));
+  refreshType();
+  refreshEndMode();
+}
+
+/** Construye el candidato "en bruto" de recurrencia a partir de un
+ * FormData (real, o cualquier objeto compatible con .get()/.getAll())
+ * y la fecha ancla de la tarea/evento (dueDate / date). Devuelve `null`
+ * si se eligió "No repetir". NO valida: eso lo sigue haciendo
+ * exclusivamente sanitizeRecurrence (R-1) cuando addTask/updateTask/
+ * addEvent/updateEvent guardan `data.recurrence`. Pura: no lee ni
+ * escribe `state`, no toca el DOM. */
+function readRecurrenceFromForm(fd, anchorDate){
+  const type = fd.get('repeatType');
+  if(!type || type === 'none') return null;
+  const intervalRaw = parseInt(fd.get('repeatInterval'), 10);
+  const daysOfWeek = fd.getAll('repeatDaysOfWeek').map(v => parseInt(v, 10));
+  const endMode = fd.get('repeatEnd');
+  const endDateRaw = fd.get('repeatEndDate');
+  return {
+    type,
+    interval: intervalRaw,
+    daysOfWeek,
+    startDate: anchorDate,
+    endDate: (endMode === 'until' && endDateRaw) ? endDateRaw : null,
+  };
+}
+
+/** Guarda cliente-side (mensaje inmediato) para no dejar que el usuario
+ * pierda en silencio una recurrencia por poner una fecha de fin
+ * anterior al inicio: sanitizeRecurrence ya la rechazaría igualmente
+ * (devolviendo recurrence: null), pero aquí se avisa ANTES de guardar
+ * en vez de descartarla sin explicación. `endDate` null/vacío siempre
+ * es válido (recurrencia sin fin). */
+function isRecurrenceEndDateValid(startDate, endDate){
+  if(!endDate) return true;
+  if(!startDate) return true;
+  return endDate >= startDate;
+}
+
+/* ==================================================================
    MODAL: TAREA
    ================================================================== */
 const overlay = document.getElementById('modal-overlay');
 const modalBox = document.getElementById('modal-box');
 function closeModal(){ overlay.classList.remove('open'); modalBox.innerHTML=''; }
 overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
+
+/* ==================================================================
+   UX-8 — secciones desplegables de los modales de tarea/evento
+   (⚙️ Más opciones / 🔁 Repetición / 🔔 Recordatorio). Envuelven HTML ya
+   existente (recurrenceControlsHtml de R-5, el <select> de recordatorio
+   de reminderOptionsHtml, prioridad, categoría...) en un <button>
+   accesible por teclado (aria-expanded) + panel colapsable — no
+   reimplementan ni cambian ninguna lógica de recurrencia, recordatorios,
+   categorías ni prioridad: solo deciden si sus controles ya existentes
+   ocupan espacio visual o no. `open` decide el estado inicial (cerrado
+   al crear; abierto al editar si esa sección ya tiene algo configurado,
+   para no esconder información existente).
+   ================================================================== */
+function modalCollapsibleSection(id, label, contentHtml, open){
+  return `
+    <div class="modal-collapsible">
+      <button type="button" class="modal-collapsible-toggle" data-modal-collapsible="${id}" aria-expanded="${open?'true':'false'}" aria-controls="modal-collapsible-panel-${id}">
+        <span>${esc(label)}</span>
+        <span class="modal-collapsible-chevron" aria-hidden="true">▾</span>
+      </button>
+      <div class="modal-collapsible-panel" id="modal-collapsible-panel-${id}"${open?'':' hidden'}>
+        ${contentHtml}
+      </div>
+    </div>`;
+}
+/** Cablea el toggle abrir/cerrar de todas las secciones desplegables que
+ * haya en `modalBox` (puede haber una — Más opciones en tareas — o dos —
+ * Repetición y Recordatorio en eventos). Idéntico patrón que ya usa el
+ * acordeón de Ajustes (UX-7, ver wireRecurrenceControls/ajustesAccordionSection
+ * más abajo/arriba): togglea `hidden` del panel y `aria-expanded` del botón. */
+function wireModalCollapsibleSections(modalBox){
+  modalBox.querySelectorAll('[data-modal-collapsible]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const panel = modalBox.querySelector('#modal-collapsible-panel-' + btn.dataset.modalCollapsible);
+      if(!panel) return;
+      const willOpen = panel.hidden;
+      panel.hidden = !willOpen;
+      btn.setAttribute('aria-expanded', String(willOpen));
+    });
+  });
+}
 
 function openTaskModal({taskId=null, date=null}={}){
   const editing = !!taskId;
@@ -1952,6 +2546,11 @@ function openTaskModal({taskId=null, date=null}={}){
   // calculado a partir de la fecha/hora YA guardada (si se está editando).
   const initialReminderDateTime = existing ? reminderTargetDateTime(existing.dueDate||'', existing.dueTime||'') : null;
   const initialReminderMinutes = existing ? currentReminderMinutes('task', existing.id, initialReminderDateTime) : '';
+  // UX-8: "Más opciones" empieza cerrado al crear una tarea nueva; al
+  // editar una que ya tenga algo configurado ahí dentro (hora, prioridad
+  // distinta de la media por defecto, minutos estimados o un recordatorio
+  // activo) empieza abierto, para no esconder información ya guardada.
+  const taskMoreOpen = !!(existing && (existing.dueTime || (existing.priority && existing.priority !== 'media') || existing.estimatedMinutes || initialReminderMinutes));
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} tarea</h3>
@@ -1959,36 +2558,34 @@ function openTaskModal({taskId=null, date=null}={}){
       <div class="form-group"><label>Título</label>
         <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Estudiar para el examen">
       </div>
-      <div class="form-row-2">
-        <div class="form-group"><label>Fecha límite</label>
-          <input type="date" name="dueDate" value="${existing?existing.dueDate||'':(date||'')}">
-        </div>
+      <div class="form-group"><label>Fecha límite</label>
+        <input type="date" name="dueDate" value="${existing?existing.dueDate||'':(date||'')}">
+      </div>
+      ${recurrenceControlsHtml('task', existing ? existing.recurrence : null)}
+      ${modalCollapsibleSection('task-more', '⚙️ Más opciones', `
         <div class="form-group"><label>Hora (opcional)</label>
           <input type="time" name="dueTime" value="${existing?existing.dueTime||'':''}">
         </div>
-      </div>
-      <div class="form-group"><label>Recordatorio</label>
-        <select name="reminderMinutes" id="task-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
-      </div>
-      <div class="form-group"><label>Prioridad</label>
-        <select name="priority">
-          <option value="media" ${(!existing||existing.priority==='media')?'selected':''}>Media</option>
-          <option value="alta" ${existing&&existing.priority==='alta'?'selected':''}>Alta</option>
-          <option value="baja" ${existing&&existing.priority==='baja'?'selected':''}>Baja</option>
-        </select>
-      </div>
-      <div class="form-row-2">
-        <div class="form-group"><label>Categoría (opcional)</label>
-          <input type="text" name="category" value="${existing?esc(existing.category||''):''}" placeholder="Ej. Estudio, Casa, Trabajo">
+        <div class="form-group"><label>Prioridad</label>
+          <select name="priority">
+            <option value="media" ${(!existing||existing.priority==='media')?'selected':''}>Media</option>
+            <option value="alta" ${existing&&existing.priority==='alta'?'selected':''}>Alta</option>
+            <option value="baja" ${existing&&existing.priority==='baja'?'selected':''}>Baja</option>
+          </select>
         </div>
-        <div class="form-group"><label>Minutos estimados (opcional)</label>
-          <input type="number" name="estimatedMinutes" min="1" step="1" value="${existing&&existing.estimatedMinutes?existing.estimatedMinutes:''}" placeholder="Ej. 45">
-          <div class="duration-hint" id="duration-hint" style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;"></div>
+        <div class="form-row-2">
+          <div class="form-group"><label>Categoría (opcional)</label>
+            <input type="text" name="category" value="${existing?esc(existing.category||''):''}" placeholder="Ej. Estudio, Casa, Trabajo">
+          </div>
+          <div class="form-group"><label>Minutos estimados (opcional)</label>
+            <input type="number" name="estimatedMinutes" min="1" step="1" value="${existing&&existing.estimatedMinutes?existing.estimatedMinutes:''}" placeholder="Ej. 45">
+            <div class="duration-hint" id="duration-hint" style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;"></div>
+          </div>
         </div>
-      </div>
-      <div class="form-group"><label>Notas (opcional)</label>
-        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
-      </div>
+        <div class="form-group"><label>Recordatorio</label>
+          <select name="reminderMinutes" id="task-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
+        </div>
+      `, taskMoreOpen)}
       <div class="modal-actions">
         <div>${editing?`<button type="button" class="btn" id="task-delete-btn">Eliminar</button>`:''}</div>
         <div class="right">
@@ -2039,6 +2636,27 @@ function openTaskModal({taskId=null, date=null}={}){
   modalBox.querySelector('[name="dueDate"]').addEventListener('input', refreshTaskReminderSelect);
   modalBox.querySelector('[name="dueTime"]').addEventListener('input', refreshTaskReminderSelect);
 
+  // Fase R-7.2: pide permiso de notificaciones justo cuando el usuario
+  // ACTIVA un recordatorio (elige una opción distinta de "Sin
+  // recordatorio"), nunca al cargar la app. requestReminderNotificationPermission()
+  // (Fase 5, sin duplicar su lógica) ya es idempotente: si Notification
+  // no existe o el permiso ya no es 'default' (granted/denied), no hace
+  // nada — así que es seguro llamarla en cada 'change' sin repetir el
+  // prompt nativo del navegador. Rechazar el permiso, o que Notification
+  // no exista, nunca impide guardar el recordatorio: el guardado real
+  // ocurre en el submit de este formulario (syncReminderForTarget),
+  // completamente aparte de esto.
+  const taskReminderSelect = modalBox.querySelector('#task-reminder-select');
+  if(taskReminderSelect) taskReminderSelect.addEventListener('change', ()=>{
+    if(taskReminderSelect.value !== '') requestReminderNotificationPermission();
+  });
+
+  // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
+  // openEventModal, ver RECURRENCIA — UI compartida más arriba).
+  wireRecurrenceControls(modalBox, 'task');
+  // UX-8: abrir/cerrar "Más opciones".
+  wireModalCollapsibleSections(modalBox);
+
   modalBox.querySelector('#task-cancel-btn').addEventListener('click', closeModal);
   if(editing){
     modalBox.querySelector('#task-delete-btn').addEventListener('click', async ()=>{
@@ -2056,9 +2674,30 @@ function openTaskModal({taskId=null, date=null}={}){
       priority: fd.get('priority'),
       category: (fd.get('category')||'').trim(),
       estimatedMinutes: (Number.isFinite(rawMinutes) && rawMinutes > 0) ? rawMinutes : null,
-      notes: fd.get('notes').trim(),
+      // UX-8: el campo "Notas" se quitó de la UI (ver requisito de la
+      // fase); no se incluye en `data` para no crear la propiedad en
+      // tareas nuevas y no pisar/borrar un `notes` ya guardado (importado
+      // o de antes de UX-8) al editar — updateTask (Fase R-1) solo toca
+      // los campos que `data` trae explícitamente.
     };
     if(!data.title) return;
+    // Fase R-5: startDate de la recurrencia se deriva de la fecha de la
+    // propia tarea (dueDate); si el usuario pone una fecha de fin
+    // anterior a esa, se avisa y no se guarda nada (sanitizeRecurrence,
+    // R-1, la rechazaría igualmente, pero en silencio).
+    if(fd.get('repeatType') !== 'none' && fd.get('repeatEnd') === 'until'){
+      const repeatEndDateRaw = fd.get('repeatEndDate');
+      if(repeatEndDateRaw && !isRecurrenceEndDateValid(data.dueDate, repeatEndDateRaw)){
+        showToast('La fecha de fin de la recurrencia no puede ser anterior a la fecha de la tarea');
+        return;
+      }
+    }
+    // data.recurrence SIEMPRE se incluye (aunque sea null): updateTask
+    // solo toca recurrence si `data` la trae explícitamente (ver R-1), y
+    // "No repetir" debe poder borrar una recurrencia existente. La
+    // sanitización real la hace sanitizeRecurrence dentro de
+    // addTask/updateTask — aquí no se duplica esa validación.
+    data.recurrence = readRecurrenceFromForm(fd, data.dueDate);
     // Fase 3 de recordatorios: id real del target ANTES de crear (para
     // que targetId del reminder coincida con el id real de la tarea; se
     // apoya en que addTask() usa el id incluido en `data` si se le pasa,
@@ -2125,19 +2764,18 @@ function openEventModal({eventId=null, date=null}={}){
   // no hay hora con la que calcular remindAt.
   const initialReminderDateTime = existing ? reminderTargetDateTime(existing.date, allDay?'':(existing.startTime||'')) : null;
   const initialReminderMinutes = existing ? currentReminderMinutes('event', existing.id, initialReminderDateTime) : '';
+  // UX-8: "Repetición" y "Recordatorio" son secciones independientes,
+  // cerradas por defecto al crear un evento; al editar uno que ya tenga
+  // recurrencia/recordatorio configurados, la sección correspondiente
+  // empieza abierta para reflejar el estado actual sin esconderlo.
+  const eventRepeatOpen = !!(existing && existing.recurrence);
+  const eventReminderOpen = !!initialReminderMinutes;
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} evento</h3>
     <form id="event-form">
       <div class="form-group"><label>Título</label>
         <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Reunión de equipo">
-      </div>
-      <div class="form-group"><label>Categoría (opcional)</label>
-        <select name="categoryId">
-          <option value="">Sin categoría</option>
-          ${existing && existing.categoryId && !(state.eventCategories||[]).some(c=>c.id===existing.categoryId) ? `<option value="${esc(existing.categoryId)}" selected>Categoría eliminada</option>` : ''}
-          ${(state.eventCategories||[]).map(c=>`<option value="${c.id}" ${existing&&existing.categoryId===c.id?'selected':''}>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</option>`).join('')}
-        </select>
       </div>
       <div class="form-row-2">
         <div class="form-group"><label>Fecha</label>
@@ -2155,15 +2793,19 @@ function openEventModal({eventId=null, date=null}={}){
         <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':''}"></div>
         <div class="form-group"><label>Hora fin (opcional)</label><input type="time" name="endTime" value="${existing?existing.endTime||'':''}"></div>
       </div>
-      <div class="form-group"><label>Recordatorio</label>
-        <select name="reminderMinutes" id="event-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
+      <div class="form-group"><label>Categoría (opcional)</label>
+        <select name="categoryId">
+          <option value="">Sin categoría</option>
+          ${existing && existing.categoryId && !(state.eventCategories||[]).some(c=>c.id===existing.categoryId) ? `<option value="${esc(existing.categoryId)}" selected>Categoría eliminada</option>` : ''}
+          ${(state.eventCategories||[]).map(c=>`<option value="${c.id}" ${existing&&existing.categoryId===c.id?'selected':''}>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</option>`).join('')}
+        </select>
       </div>
-      <div class="form-group"><label>Ubicación (opcional)</label>
-        <input type="text" name="location" value="${existing?esc(existing.location||''):''}">
-      </div>
-      <div class="form-group"><label>Notas (opcional)</label>
-        <textarea name="notes" rows="2">${existing?esc(existing.notes||''):''}</textarea>
-      </div>
+      ${modalCollapsibleSection('event-repeat', '🔁 Repetición', recurrenceControlsHtml('event', existing ? existing.recurrence : null), eventRepeatOpen)}
+      ${modalCollapsibleSection('event-reminder', '🔔 Recordatorio', `
+        <div class="form-group"><label>Recordatorio</label>
+          <select name="reminderMinutes" id="event-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
+        </div>
+      `, eventReminderOpen)}
       <div class="modal-actions">
         <div>${editing?`<button type="button" class="btn" id="event-delete-btn">Eliminar</button>`:''}</div>
         <div class="right">
@@ -2192,6 +2834,22 @@ function openEventModal({eventId=null, date=null}={}){
   modalBox.querySelector('[name="startTime"]').addEventListener('input', refreshEventReminderSelect);
   allDayCb.addEventListener('change', refreshEventReminderSelect);
 
+  // Fase R-7.2: mismo criterio que en openTaskModal (ver comentario allí)
+  // — pide permiso de notificaciones solo al ACTIVAR un recordatorio
+  // desde este formulario, nunca al cargar la app.
+  const eventReminderSelect = modalBox.querySelector('#event-reminder-select');
+  if(eventReminderSelect) eventReminderSelect.addEventListener('change', ()=>{
+    if(eventReminderSelect.value !== '') requestReminderNotificationPermission();
+  });
+
+  // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
+  // openTaskModal, ver RECURRENCIA — UI compartida más arriba). Funciona
+  // igual con allDay que con startTime/endTime: la recurrencia no
+  // depende de si el evento tiene hora o no.
+  wireRecurrenceControls(modalBox, 'event');
+  // UX-8: abrir/cerrar "Repetición" y "Recordatorio".
+  wireModalCollapsibleSections(modalBox);
+
   modalBox.querySelector('#event-cancel-btn').addEventListener('click', closeModal);
   if(editing){
     modalBox.querySelector('#event-delete-btn').addEventListener('click', async ()=>{
@@ -2210,10 +2868,27 @@ function openEventModal({eventId=null, date=null}={}){
       allDay: isAllDay,
       startTime: isAllDay ? '' : (fd.get('startTime')||''),
       endTime: isAllDay ? '' : (fd.get('endTime')||''),
-      location: fd.get('location').trim(),
-      notes: fd.get('notes').trim(),
+      // UX-8: "Ubicación" y "Notas" se quitaron de la UI (ver requisito de
+      // la fase); no se incluyen en `data` — mismo criterio que en
+      // openTaskModal (ver comentario allí) para no crear estas
+      // propiedades en eventos nuevos ni pisar/borrar un location/notes ya
+      // guardado (importado o de antes de UX-8) al editar.
     };
     if(!data.title || !data.date) return;
+    // Fase R-5: recurrence.startDate se deriva de la fecha del propio
+    // evento (data.date) — NO de data.endDate, que es el fin del tramo
+    // de días del evento (un concepto distinto de
+    // recurrence.endDate, el fin de la serie recurrente; ver R-1/R-4).
+    if(fd.get('repeatType') !== 'none' && fd.get('repeatEnd') === 'until'){
+      const repeatEndDateRaw = fd.get('repeatEndDate');
+      if(repeatEndDateRaw && !isRecurrenceEndDateValid(data.date, repeatEndDateRaw)){
+        showToast('La fecha de fin de la recurrencia no puede ser anterior a la fecha del evento');
+        return;
+      }
+    }
+    // data.recurrence SIEMPRE se incluye (aunque sea null): mismo
+    // criterio que en openTaskModal (ver comentario allí).
+    data.recurrence = readRecurrenceFromForm(fd, data.date);
     // Fase 3 de recordatorios: ver comentario equivalente en el submit de
     // openTaskModal() sobre por qué se genera el id antes de addEvent().
     const eventTargetId = editing ? eventId : uid();
@@ -2845,6 +3520,411 @@ function isValidYMDDate(str){
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
 }
 
+/* ==================================================================
+   RECURRENCIA — modelo de datos (Fase R-1)
+   Campo opcional `recurrence` en tareas/eventos: null si no hay
+   recurrencia, o { type:'daily'|'weekly'|'monthly', interval, daysOfWeek,
+   startDate, endDate }. Esta fase SOLO guarda el dato saneado: nadie
+   calcula todavía próximas ocurrencias ni genera copias — eso es de una
+   fase posterior. daysOfWeek usa el mismo índice que customSchedules.days
+   y DOW_SHORT (0=Lunes...6=Domingo).
+   ================================================================== */
+const RECURRENCE_TYPES = ['daily', 'weekly', 'monthly'];
+
+function isValidRecurrenceInterval(n){
+  return typeof n === 'number' && Number.isInteger(n) && n >= 1;
+}
+
+function isValidRecurrenceDaysOfWeek(arr){
+  if(arr === undefined) return true;
+  if(!Array.isArray(arr)) return false;
+  return arr.every(d => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6);
+}
+
+/** Valida y normaliza una recurrencia importada/introducida. Devuelve
+ * `null` si `value` no es un objeto de recurrencia válido (type
+ * desconocido, interval no entero >=1, daysOfWeek con valores fuera de
+ * 0-6, startDate/endDate que no sean YYYY-MM-DD reales, o endDate
+ * anterior a startDate). No convierte silenciosamente datos inválidos en
+ * una recurrencia válida, y no modifica el objeto `value` recibido. */
+function sanitizeRecurrence(value){
+  if(!value || typeof value !== 'object') return null;
+  if(!RECURRENCE_TYPES.includes(value.type)) return null;
+  if(!isValidRecurrenceInterval(value.interval)) return null;
+  if(!isValidRecurrenceDaysOfWeek(value.daysOfWeek)) return null;
+  if(!isValidYMDDate(value.startDate)) return null;
+  const hasEndDate = value.endDate !== null && value.endDate !== undefined;
+  if(hasEndDate && !isValidYMDDate(value.endDate)) return null;
+  const endDate = hasEndDate ? value.endDate : null;
+  if(endDate !== null && endDate < value.startDate) return null;
+  return {
+    type: value.type,
+    interval: value.interval,
+    daysOfWeek: Array.isArray(value.daysOfWeek) ? [...value.daysOfWeek] : [],
+    startDate: value.startDate,
+    endDate,
+  };
+}
+
+/* ==================================================================
+   RECURRENCIA — cálculo de próximas ocurrencias (Fase R-2)
+   Lógica pura sobre una recurrencia ya saneada (ver sanitizeRecurrence,
+   Fase R-1): saber si una fecha pertenece a la recurrencia
+   (isDateInRecurrence) y calcular la siguiente ocurrencia después de una
+   fecha dada (getNextRecurrenceDate). Ninguna de las dos funciones ni sus
+   helpers internos modifican `recurrence`, tareas/eventos ni `state`, ni
+   crean ocurrencias reales — eso sigue siendo de una fase posterior.
+   Reutilizan parseYMD/addDays/dowOfDate/getWeekMonday/pad ya definidos en
+   UTILIDADES DE FECHA para no duplicar el manejo de fechas y evitar
+   errores de zona horaria (parseYMD siempre construye la fecha en
+   horario local a medianoche).
+   ================================================================== */
+
+// Nº de días entre dos fechas YYYY-MM-DD (b - a); siempre exacto porque
+// ambas se construyen a medianoche en el mismo huso horario local.
+function daysBetweenYMD(a, b){
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  return Math.round((parseYMD(b).getTime() - parseYMD(a).getTime()) / MS_PER_DAY);
+}
+
+// Nº de meses completos entre dos fechas YYYY-MM-DD (b - a), ignorando el
+// día del mes (solo año/mes). Puede ser negativo.
+function monthsBetweenYMD(a, b){
+  const [ay, am] = a.split('-').map(Number);
+  const [by, bm] = b.split('-').map(Number);
+  return (by - ay) * 12 + (bm - am);
+}
+
+// Último día (28-31) del mes `month` (1-12) de `year`.
+function daysInMonthOf(year, month){
+  return new Date(year, month, 0).getDate();
+}
+
+/** Indica si `dateStr` (YYYY-MM-DD) es una ocurrencia válida de
+ * `recurrence` (ya saneada por sanitizeRecurrence). No muta `recurrence`.
+ * Devuelve `false` de forma segura si `recurrence` es null/inválida o si
+ * `dateStr` no es una fecha YYYY-MM-DD real (nunca lanza).
+ *
+ * Reglas por tipo:
+ * - daily: cada `interval` días exactos desde startDate.
+ * - weekly: cada `interval` semanas (semanas lunes-domingo, alineadas a
+ *   la semana de startDate) y, dentro de esa semana, en cualquiera de los
+ *   días de `daysOfWeek`; si `daysOfWeek` está vacío se usa el mismo día
+ *   de la semana que startDate.
+ * - monthly: cada `interval` meses desde startDate, en el mismo día del
+ *   mes que startDate. Si ese día no existe en el mes de destino (p.ej.
+ *   startDate=31 de enero y el mes de destino es febrero), se usa el
+ *   último día de ese mes (recorte/"clamp"), sin inventar otra fecha ni
+ *   lanzar: 31/01 → 28/02 (o 29/02 en año bisiesto). Este recorte es
+ *   solo para ese mes concreto: el mes siguiente vuelve a usar el día
+ *   original de startDate si cabe (ver getNextRecurrenceDate).
+ */
+function isDateInRecurrence(dateStr, recurrence){
+  if(!isValidYMDDate(dateStr)) return false;
+  if(!recurrence || typeof recurrence !== 'object') return false;
+  const { type, interval, startDate, endDate, daysOfWeek } = recurrence;
+  if(!RECURRENCE_TYPES.includes(type)) return false;
+  if(!isValidRecurrenceInterval(interval)) return false;
+  if(!isValidYMDDate(startDate)) return false;
+  if(dateStr < startDate) return false;
+  if(endDate !== null && endDate !== undefined && dateStr > endDate) return false;
+
+  if(type === 'daily'){
+    const diff = daysBetweenYMD(startDate, dateStr);
+    return diff % interval === 0;
+  }
+
+  if(type === 'weekly'){
+    const days = Array.isArray(daysOfWeek) && daysOfWeek.length ? daysOfWeek : [dowOfDate(startDate)];
+    if(!days.includes(dowOfDate(dateStr))) return false;
+    const weekDiff = daysBetweenYMD(getWeekMonday(startDate), getWeekMonday(dateStr)) / 7;
+    return weekDiff % interval === 0;
+  }
+
+  if(type === 'monthly'){
+    const sd = Number(startDate.split('-')[2]);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const monthDiff = monthsBetweenYMD(startDate, dateStr);
+    if(monthDiff % interval !== 0) return false;
+    const expectedDay = Math.min(sd, daysInMonthOf(y, m));
+    return d === expectedDay;
+  }
+
+  return false;
+}
+
+/** Devuelve la siguiente ocurrencia (YYYY-MM-DD) de `recurrence`
+ * estrictamente posterior a `dateStr` (`dateStr` no tiene por qué ser
+ * una ocurrencia válida: puede ser cualquier fecha, p.ej. "hoy"). No
+ * muta `recurrence`. Devuelve `null` de forma segura si `recurrence` es
+ * null/inválida, si `dateStr` no es una fecha YYYY-MM-DD real, o si no
+ * queda ninguna ocurrencia futura antes de `endDate` (nunca lanza).
+ * Ver isDateInRecurrence para el criterio de recorte usado en monthly.
+ */
+function getNextRecurrenceDate(dateStr, recurrence){
+  if(!isValidYMDDate(dateStr)) return null;
+  if(!recurrence || typeof recurrence !== 'object') return null;
+  const { type, interval, startDate, endDate, daysOfWeek } = recurrence;
+  if(!RECURRENCE_TYPES.includes(type)) return null;
+  if(!isValidRecurrenceInterval(interval)) return null;
+  if(!isValidYMDDate(startDate)) return null;
+
+  const withinEnd = (d) => (endDate === null || endDate === undefined || d <= endDate);
+
+  // Si dateStr es anterior al inicio de la recurrencia, la primera
+  // ocurrencia posible es startDate mismo (siempre es una ocurrencia
+  // válida de su propia recurrencia).
+  if(dateStr < startDate){
+    return withinEnd(startDate) ? startDate : null;
+  }
+
+  if(type === 'daily'){
+    const diff = daysBetweenYMD(startDate, dateStr);
+    const stepsPassed = Math.floor(diff / interval);
+    const next = addDays(startDate, (stepsPassed + 1) * interval);
+    return withinEnd(next) ? next : null;
+  }
+
+  if(type === 'weekly'){
+    const days = (Array.isArray(daysOfWeek) && daysOfWeek.length) ? [...daysOfWeek].sort((a,b)=>a-b) : [dowOfDate(startDate)];
+    const startMonday = getWeekMonday(startDate);
+    const dateMonday = getWeekMonday(dateStr);
+    const weekDiff = daysBetweenYMD(startMonday, dateMonday) / 7;
+    // Alinea a la semana "activa" (múltiplo de interval desde startMonday)
+    // igual o posterior a la semana de dateStr.
+    const offset = ((weekDiff % interval) + interval) % interval;
+    let monday = offset === 0 ? dateMonday : addDays(dateMonday, (interval - offset) * 7);
+    let candidate = null;
+    for(const dow of days){
+      const c = addDays(monday, dow);
+      if(c > dateStr){ candidate = c; break; }
+    }
+    if(candidate === null){
+      // Ningún día activo de esta semana cae después de dateStr: se salta
+      // a la siguiente semana activa y se toma su primer día (ya ordenado).
+      monday = addDays(monday, interval * 7);
+      candidate = addDays(monday, days[0]);
+    }
+    return withinEnd(candidate) ? candidate : null;
+  }
+
+  if(type === 'monthly'){
+    const [sy, sm, sd] = startDate.split('-').map(Number);
+    const monthDiff = monthsBetweenYMD(startDate, dateStr);
+    const candidateForStep = (k) => {
+      const totalMonths = (sm - 1) + k * interval;
+      const y = sy + Math.floor(totalMonths / 12);
+      const m = (totalMonths % 12) + 1;
+      const day = Math.min(sd, daysInMonthOf(y, m));
+      return `${y}-${pad(m)}-${pad(day)}`;
+    };
+    let steps = Math.floor(monthDiff / interval);
+    let candidate = candidateForStep(steps);
+    if(candidate <= dateStr){
+      steps += 1;
+      candidate = candidateForStep(steps);
+    }
+    return withinEnd(candidate) ? candidate : null;
+  }
+
+  return null;
+}
+
+/* ==================================================================
+   RECURRENCIA — integración con TAREAS (Fase R-3)
+   Convierte una tarea base (única, con su `recurrence`) en sus
+   "ocurrencias" dentro de un rango de fechas, sin crear copias
+   persistentes: getTaskOccurrences() es pura, no lee ni escribe
+   `state.tasks`, y calcula las fechas exclusivamente con
+   isDateInRecurrence/getNextRecurrenceDate (Fase R-2) — no duplica esa
+   lógica. Cada ocurrencia se identifica de forma estable por
+   `taskId` + `occurrenceDate` (nunca por posición de array), vía
+   getTaskOccurrenceId. El estado de "completada" de cada ocurrencia se
+   guarda aparte de `done`: ver completedOccurrences más abajo (funciones
+   completeTaskOccurrence/uncompleteTaskOccurrence, en el bloque CRUD,
+   que sí mutan `state.tasks`).
+   ================================================================== */
+
+// Id estable y determinista de una ocurrencia, derivado de taskId +
+// occurrenceDate (nunca de la posición en ningún array).
+function getTaskOccurrenceId(taskId, occurrenceDate){
+  return `${taskId}::${occurrenceDate}`;
+}
+
+/** Indica si la ocurrencia `occurrenceDate` de `task` está completada.
+ * - Tarea no recurrente (`recurrence` null/ausente): usa `task.done`
+ *   tal cual, igual que siempre (la fecha se ignora, como antes de R-3).
+ * - Tarea recurrente: comprueba `completedOccurrences` (un array de
+ *   fechas YYYY-MM-DD opcional; si no existe todavía, ninguna ocurrencia
+ *   está completada). No muta `task`. */
+function isTaskOccurrenceCompleted(task, occurrenceDate){
+  if(!task || typeof task !== 'object') return false;
+  if(!task.recurrence) return !!task.done;
+  return Array.isArray(task.completedOccurrences) && task.completedOccurrences.includes(occurrenceDate);
+}
+
+// Construye el objeto derivado de una ocurrencia a partir de la tarea
+// base; no muta `task` ni state.tasks. `completedOccurrences` no se
+// incluye en el resultado (es un detalle interno de la tarea base, no de
+// la ocurrencia individual); en su lugar se expone `done`, ya resuelto
+// para esa fecha concreta vía isTaskOccurrenceCompleted.
+function buildTaskOccurrence(task, occurrenceDate){
+  const { completedOccurrences, ...rest } = task;
+  return {
+    ...rest,
+    id: getTaskOccurrenceId(task.id, occurrenceDate),
+    taskId: task.id,
+    occurrenceDate,
+    done: isTaskOccurrenceCompleted(task, occurrenceDate),
+  };
+}
+
+/** Devuelve las ocurrencias de `task` dentro de [fromDate, toDate]
+ * (ambos límites incluidos), como objetos derivados (ver
+ * buildTaskOccurrence). Pura: no modifica `task`, `task.recurrence` ni
+ * `state.tasks`; no crea ninguna tarea nueva. Devuelve `[]` de forma
+ * segura ante entradas inválidas (nunca lanza).
+ *
+ * - Tarea no recurrente (`recurrence` null/ausente): se comporta
+ *   exactamente como antes de R-3 — devuelve, como mucho, una única
+ *   ocurrencia en su fecha propia (scheduledDate si la tiene, si no
+ *   dueDate; mismo criterio que usa el resto de la app para "la fecha de
+ *   la tarea", ver taskRowHTML/renderToday), solo si cae en el rango.
+ * - Tarea recurrente: genera las fechas válidas dentro del rango
+ *   apoyándose exclusivamente en isDateInRecurrence/getNextRecurrenceDate
+ *   de R-2 (ninguna lógica de recurrencia se reimplementa aquí). Respeta
+ *   `endDate`: nunca hay ocurrencias después de esa fecha. */
+function getTaskOccurrences(task, fromDate, toDate){
+  if(!task || typeof task !== 'object') return [];
+  if(!isValidYMDDate(fromDate) || !isValidYMDDate(toDate) || fromDate > toDate) return [];
+
+  if(!task.recurrence){
+    const anchor = task.scheduledDate || task.dueDate;
+    if(anchor && isValidYMDDate(anchor) && anchor >= fromDate && anchor <= toDate){
+      return [buildTaskOccurrence(task, anchor)];
+    }
+    return [];
+  }
+
+  const occurrences = [];
+  // Primer candidato a comprobar: el rango pedido puede empezar antes de
+  // que exista la recurrencia (startDate siempre es su primera ocurrencia
+  // válida, ver R-2), así que se arranca en el más tardío de los dos.
+  const cursor = fromDate < task.recurrence.startDate ? task.recurrence.startDate : fromDate;
+  if(cursor <= toDate && isDateInRecurrence(cursor, task.recurrence)){
+    occurrences.push(buildTaskOccurrence(task, cursor));
+  }
+  let next = getNextRecurrenceDate(cursor, task.recurrence);
+  while(next !== null && next <= toDate){
+    occurrences.push(buildTaskOccurrence(task, next));
+    next = getNextRecurrenceDate(next, task.recurrence);
+  }
+  return occurrences;
+}
+
+/* ==================================================================
+   RECURRENCIA — integración con EVENTOS (Fase R-4)
+   Mismo principio que R-3 (tareas), aplicado a eventos: una única
+   entidad base (con su `id` y `recurrence`) genera ocurrencias
+   derivadas dentro de un rango de fechas, sin crear copias persistentes
+   en `state.events`. getEventOccurrences() es pura y calcula las fechas
+   exclusivamente con isDateInRecurrence/getNextRecurrenceDate (Fase
+   R-2) — no duplica esa lógica. Cada ocurrencia se identifica de forma
+   estable por `eventId` + `occurrenceDate` (nunca por posición de
+   array), vía getEventOccurrenceId.
+   Un evento tiene dos conceptos de "fecha fin" distintos que no hay que
+   confundir: `event.endDate` (fin del tramo de días del evento, p.ej.
+   un viaje de varios días) y `event.recurrence.endDate` (fin de la
+   propia recurrencia, ver R-1/R-2). Esta fase respeta ambos: la
+   duración en días de `event.date` → `event.endDate` se conserva igual
+   en cada ocurrencia (ver eventDurationDays/buildEventOccurrence), y
+   `event.recurrence.endDate` sigue acotando qué ocurrencias existen
+   (vía R-2, sin reimplementarlo aquí).
+   Esta fase NO añade ningún estado de "completado" a los eventos (a
+   diferencia de completedOccurrences en tareas, R-3): los eventos no
+   tienen ese concepto todavía, y no se inventa aquí.
+   ================================================================== */
+
+// Id estable y determinista de una ocurrencia de evento, derivado de
+// eventId + occurrenceDate (nunca de la posición en ningún array).
+function getEventOccurrenceId(eventId, occurrenceDate){
+  return `${eventId}::${occurrenceDate}`;
+}
+
+// Duración en días completos entre event.date y event.endDate (0 si el
+// evento es de un solo día, o si endDate/date faltan o no son fechas
+// YYYY-MM-DD reales). Nunca negativa: un endDate anterior a date (dato
+// corrupto) se trata como duración 0, sin lanzar.
+function eventDurationDays(event){
+  if(!event || typeof event !== 'object') return 0;
+  if(!isValidYMDDate(event.date) || !isValidYMDDate(event.endDate)) return 0;
+  const diff = daysBetweenYMD(event.date, event.endDate);
+  return diff > 0 ? diff : 0;
+}
+
+// Construye el objeto derivado de una ocurrencia a partir del evento
+// base; no muta `event` ni state.events. Conserva todos los campos del
+// evento base (title, allDay, startTime, endTime, location, notes,
+// categoryId, y cualquier otro campo existente) y desplaza `date`/
+// `endDate` a la ocurrencia concreta, preservando la duración original
+// (ver eventDurationDays) si el evento abarca varios días.
+function buildEventOccurrence(event, occurrenceDate){
+  const durationDays = eventDurationDays(event);
+  return {
+    ...event,
+    id: getEventOccurrenceId(event.id, occurrenceDate),
+    eventId: event.id,
+    occurrenceDate,
+    date: occurrenceDate,
+    endDate: event.endDate ? addDays(occurrenceDate, durationDays) : event.endDate,
+  };
+}
+
+/** Devuelve las ocurrencias de `event` dentro de [fromDate, toDate]
+ * (ambos límites incluidos), como objetos derivados (ver
+ * buildEventOccurrence). Pura: no modifica `event`, `event.recurrence`
+ * ni `state.events`; no crea ningún evento nuevo. Devuelve `[]` de
+ * forma segura ante entradas inválidas (nunca lanza).
+ *
+ * - Evento no recurrente (`recurrence` null/ausente): se comporta
+ *   exactamente como antes de R-4 — devuelve, como mucho, una única
+ *   ocurrencia en su fecha original (`event.date`), solo si esa fecha
+ *   cae en el rango (igual que el resto de la app filtra eventos por
+ *   `e.date`, ver isDateInRange/renderToday). Conserva su `endDate`
+ *   original (el tramo de días del evento) sin recalcular nada.
+ * - Evento recurrente: genera las fechas de inicio válidas dentro del
+ *   rango apoyándose exclusivamente en
+ *   isDateInRecurrence/getNextRecurrenceDate de R-2 (ninguna lógica de
+ *   recurrencia se reimplementa aquí). Respeta `recurrence.endDate`:
+ *   nunca hay ocurrencias después de esa fecha. Cada ocurrencia
+ *   conserva la duración del evento base (ver eventDurationDays). */
+function getEventOccurrences(event, fromDate, toDate){
+  if(!event || typeof event !== 'object') return [];
+  if(!isValidYMDDate(fromDate) || !isValidYMDDate(toDate) || fromDate > toDate) return [];
+
+  if(!event.recurrence){
+    if(isValidYMDDate(event.date) && event.date >= fromDate && event.date <= toDate){
+      return [buildEventOccurrence(event, event.date)];
+    }
+    return [];
+  }
+
+  const occurrences = [];
+  // Primer candidato a comprobar: el rango pedido puede empezar antes de
+  // que exista la recurrencia (startDate siempre es su primera ocurrencia
+  // válida, ver R-2), así que se arranca en el más tardío de los dos.
+  const cursor = fromDate < event.recurrence.startDate ? event.recurrence.startDate : fromDate;
+  if(cursor <= toDate && isDateInRecurrence(cursor, event.recurrence)){
+    occurrences.push(buildEventOccurrence(event, cursor));
+  }
+  let next = getNextRecurrenceDate(cursor, event.recurrence);
+  while(next !== null && next <= toDate){
+    occurrences.push(buildEventOccurrence(event, next));
+    next = getNextRecurrenceDate(next, event.recurrence);
+  }
+  return occurrences;
+}
+
 /** Valida y normaliza un array de eventos importados. Descarta (sin
  * lanzar) los que no tengan title no vacío y date en formato YYYY-MM-DD
  * que además sea una fecha de calendario real (ver isValidYMDDate).
@@ -2864,6 +3944,7 @@ function sanitizeImportedEvents(arr){
       allDay: typeof e.allDay === 'boolean' ? e.allDay : false,
       notes: typeof e.notes === 'string' ? e.notes : '',
       location: typeof e.location === 'string' ? e.location : '',
+      recurrence: sanitizeRecurrence(e.recurrence),
     });
   });
   return { kept, discarded };
@@ -2911,7 +3992,12 @@ function initSettingsDataIO(){
     const sanitizedEvents = sanitizeImportedEvents(data.events);
     const sanitizedCategories = sanitizeImportedEventCategories(data.eventCategories);
 
-    state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    // Fase R-1 de recurrencia: solo se normaliza el campo `recurrence`
+    // (igual que hace sanitizeImportedEvents para eventos); el resto de
+    // campos/tareas se conserva exactamente igual que hasta ahora.
+    state.tasks = (Array.isArray(data.tasks) ? data.tasks : []).map(t =>
+      (t && typeof t === 'object') ? { ...t, recurrence: sanitizeRecurrence(t.recurrence) } : t
+    );
     state.events = sanitizedEvents.kept;
     state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
     state.eventCategories = sanitizedCategories.kept;
@@ -4185,6 +5271,11 @@ async function startApp(){
   initIA();
   initSettingsDataIO();
   initPWA();
+  // Fase R-7.1: arranca el polling que dispara los recordatorios
+  // vencidos mientras la app está abierta (ver RECORDATORIOS — disparo
+  // automático más arriba). startReminderPolling() es idempotente, así
+  // que no pasa nada si startApp() llegara a ejecutarse más de una vez.
+  startReminderPolling();
   showView(state.prefs.defaultHome || 'inicio');
 }
 

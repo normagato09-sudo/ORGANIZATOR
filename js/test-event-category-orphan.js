@@ -63,6 +63,35 @@ const openEventModalSrc = extractBetween(
 );
 
 // ---------------------------------------------------------------------
+// UX-8: desde esta fase, openEventModal() también llama de forma SÍNCRONA
+// (al construir el HTML) a modalCollapsibleSection()/wireModalCollapsibleSections()
+// (envoltorio de "🔁 Repetición"/"🔔 Recordatorio", definido justo antes de
+// openTaskModal) y a recurrenceControlsHtml()/wireRecurrenceControls()
+// (Fase R-5, ya existentes antes de UX-8). Ninguna se relaciona con la
+// lógica de categorías que prueba este archivo, pero deben existir en el
+// sandbox o openEventModal lanza un ReferenceError antes de llegar a
+// generar el <select> de categoría — mismo motivo por el que ya se
+// extraen remindersFase1Src/remindersFase3Src más abajo.
+const dowConstsSrc = extractBetween(
+  html,
+  'const DOW_NAMES = ',
+  '\n\n/* ==================================================================\n   AJUSTES',
+  'constantes DOW_NAMES/DOW_SHORT/DOW_FULL_MONFIRST/MONTH_NAMES'
+);
+const recurrenceUiSrc = extractBetween(
+  html,
+  '/* ==================================================================\n   RECURRENCIA — UI compartida entre tarea y evento (Fase R-5)',
+  '\n\n/* ==================================================================\n   MODAL: TAREA',
+  'bloque RECURRENCIA — UI compartida (Fase R-5)'
+);
+const modalCollapsibleSrc = extractBetween(
+  html,
+  'function modalCollapsibleSection(id, label, contentHtml, open){',
+  '\nfunction openTaskModal(',
+  'bloque UX-8 secciones desplegables (modalCollapsibleSection/wireModalCollapsibleSections)'
+);
+
+// ---------------------------------------------------------------------
 // Desde la Fase 3 de recordatorios, openEventModal() llama de forma
 // SÍNCRONA (al construir el HTML, antes de devolver nada) a
 // reminderTargetDateTime()/currentReminderMinutes()/reminderOptionsHtml(),
@@ -130,6 +159,11 @@ function renderEventModalHTML(state, args) {
        set innerHTML(v){ this._html = v; },
        get innerHTML(){ return this._html; },
        querySelector(){ return { addEventListener(){}, style:{} }; },
+       // UX-8: wireRecurrenceControls/wireModalCollapsibleSections usan
+       // querySelectorAll (radios "repeatEnd", botones [data-modal-collapsible]);
+       // un forEach vacío es suficiente para que no lancen sin necesidad
+       // de simular una NodeList real.
+       querySelectorAll(){ return { forEach(){} }; },
      };
      const overlay = { classList: { add(){}, remove(){} } };
      // openEventModal pasa closeModal directamente como referencia de
@@ -138,6 +172,9 @@ function renderEventModalHTML(state, args) {
      function closeModal(){}`,
     sandbox, { filename: 'dom-stub' }
   );
+  vm.runInContext(dowConstsSrc, sandbox, { filename: 'organizator.html (DOW_NAMES/DOW_SHORT/DOW_FULL_MONFIRST/MONTH_NAMES)' });
+  vm.runInContext(recurrenceUiSrc, sandbox, { filename: 'organizator.html (RECURRENCIA UI R-5)' });
+  vm.runInContext(modalCollapsibleSrc, sandbox, { filename: 'organizator.html (UX-8 modalCollapsibleSection)' });
   vm.runInContext(remindersFase1Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 1)' });
   vm.runInContext(remindersFase3Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 3)' });
   vm.runInContext(openEventModalSrc, sandbox, { filename: 'organizator.html (openEventModal)' });

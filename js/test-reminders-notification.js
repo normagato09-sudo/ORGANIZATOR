@@ -49,6 +49,17 @@ const uidSrc = extractBetween(
 const saveTasksSrc = extractBetween(html, 'async function saveTasks(){', '\nasync function saveEvents(){', 'función saveTasks()');
 const saveEventsSrc = extractBetween(html, 'async function saveEvents(){', '\nasync function saveCustomSchedules(){', 'función saveEvents()');
 const saveRemindersSrc = extractBetween(html, 'async function saveReminders(){', '\nasync function savePrefs(){', 'función saveReminders()');
+// Desde R-1, addTask/addEvent/updateTask/updateEvent (bloque CRUD) llaman
+// a sanitizeRecurrence() para sanear `recurrence` — no se relaciona con
+// notificaciones, pero debe existir en el sandbox o el CRUD lanza un
+// ReferenceError. Mismo rango que ya extraen test-recurrence-model.js/
+// test-recurrence-ui-r5.js (bloque de saneamiento completo, autocontenido).
+const sanitizeSrc = extractBetween(
+  html,
+  '/* ==================================================================\n   SANEAMIENTO DE EVENTOS/CATEGORÍAS IMPORTADOS',
+  '\n\nfunction initSettingsDataIO(){',
+  'bloque SANEAMIENTO DE EVENTOS/CATEGORÍAS IMPORTADOS (incluye RECURRENCIA R-1)'
+);
 const crudSrc = extractBetween(
   html,
   '/* ==================================================================\n   CRUD',
@@ -157,6 +168,7 @@ function makeSandbox(notificationOpts) {
   vm.runInContext(remindersFase1Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 1)' });
   vm.runInContext(remindersFase4Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 4)' });
   vm.runInContext(remindersFase5Src, sandbox, { filename: 'organizator.html (RECORDATORIOS Fase 5)' });
+  vm.runInContext(sanitizeSrc, sandbox, { filename: 'organizator.html (saneamiento + recurrencia R-1)' });
   vm.runInContext(crudSrc, sandbox, { filename: 'organizator.html (CRUD)' });
   vm.runInContext(
     `this.addTask = addTask; this.addEvent = addEvent;
