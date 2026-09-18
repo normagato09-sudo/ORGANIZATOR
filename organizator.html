@@ -2539,32 +2539,41 @@ function wireModalCollapsibleSections(modalBox){
   });
 }
 
-function openTaskModal({taskId=null, date=null}={}){
+function openTaskModal({taskId=null, date=null, prefill=null}={}){
   const editing = !!taskId;
   const existing = editing ? state.tasks.find(t=>t.id===taskId) : null;
-  // Fase 3 de recordatorios: estado inicial del <select> de recordatorio,
-  // calculado a partir de la fecha/hora YA guardada (si se está editando).
-  const initialReminderDateTime = existing ? reminderTargetDateTime(existing.dueDate||'', existing.dueTime||'') : null;
-  const initialReminderMinutes = existing ? currentReminderMinutes('task', existing.id, initialReminderDateTime) : '';
+  // AI-2.3: prefill (title/date/time) SOLO se aplica al crear una tarea
+  // nueva desde el chat (nunca al editar una ya existente, que siempre
+  // manda sobre sus propios valores guardados) — y solo rellena los
+  // campos que el propio prefill trae explícitamente; el resto conserva
+  // los defaults normales del formulario de siempre, exactamente igual
+  // que al abrirlo a mano. `fields` es el objeto ya resuelto por
+  // detectSmartFormIntent (AI-2.1): título/fecha/hora ya interpretados,
+  // nunca recalculados ni inventados aquí.
+  const pre = (!editing && prefill) ? prefill : null;
   // UX-8: "Más opciones" empieza cerrado al crear una tarea nueva; al
   // editar una que ya tenga algo configurado ahí dentro (hora, prioridad
   // distinta de la media por defecto, minutos estimados o un recordatorio
   // activo) empieza abierto, para no esconder información ya guardada.
-  const taskMoreOpen = !!(existing && (existing.dueTime || (existing.priority && existing.priority !== 'media') || existing.estimatedMinutes || initialReminderMinutes));
+  // AI-2.3: igual criterio si el prefill del chat ya trae una hora, para
+  // no esconderla dentro de la sección colapsada.
+  const initialReminderDateTime = existing ? reminderTargetDateTime(existing.dueDate||'', existing.dueTime||'') : null;
+  const initialReminderMinutes = existing ? currentReminderMinutes('task', existing.id, initialReminderDateTime) : '';
+  const taskMoreOpen = !!(existing && (existing.dueTime || (existing.priority && existing.priority !== 'media') || existing.estimatedMinutes || initialReminderMinutes)) || !!(pre && pre.time);
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} tarea</h3>
     <form id="task-form">
       <div class="form-group"><label>Título</label>
-        <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Estudiar para el examen">
+        <input type="text" name="title" required value="${existing?esc(existing.title):esc((pre&&pre.title)||'')}" placeholder="Ej. Estudiar para el examen">
       </div>
       <div class="form-group"><label>Fecha límite</label>
-        <input type="date" name="dueDate" value="${existing?existing.dueDate||'':(date||'')}">
+        <input type="date" name="dueDate" value="${existing?existing.dueDate||'':((pre&&pre.date)||date||'')}">
       </div>
       ${recurrenceControlsHtml('task', existing ? existing.recurrence : null)}
       ${modalCollapsibleSection('task-more', '⚙️ Más opciones', `
         <div class="form-group"><label>Hora (opcional)</label>
-          <input type="time" name="dueTime" value="${existing?existing.dueTime||'':''}">
+          <input type="time" name="dueTime" value="${existing?existing.dueTime||'':((pre&&pre.time)||'')}">
         </div>
         <div class="form-group"><label>Prioridad</label>
           <select name="priority">
@@ -2754,10 +2763,17 @@ function openActualMinutesModal(taskId){
 /* ==================================================================
    MODAL: EVENTO
    ================================================================== */
-function openEventModal({eventId=null, date=null}={}){
+function openEventModal({eventId=null, date=null, prefill=null}={}){
   const editing = !!eventId;
   const existing = editing ? state.events.find(x=>x.id===eventId) : null;
   const allDay = existing ? !!existing.allDay : false;
+  // AI-2.3: mismo criterio que openTaskModal (ver comentario allí) — el
+  // prefill del chat solo se aplica al crear un evento nuevo, nunca al
+  // editar uno existente, y solo rellena los campos que trae
+  // explícitamente (title/date/time -> startTime); allDay/endDate/
+  // endTime/categoría/recurrencia/recordatorio conservan siempre sus
+  // defaults normales, nunca se inventan a partir del chat.
+  const pre = (!editing && prefill) ? prefill : null;
   // Fase 3 de recordatorios: estado inicial del <select> de recordatorio.
   // Un evento allDay (o sin hora de inicio) nunca tiene datetime válido
   // en esta fase — sin regla especial todavía para allDay, simplemente
@@ -2775,11 +2791,11 @@ function openEventModal({eventId=null, date=null}={}){
     <h3>${editing?'Editar':'Añadir'} evento</h3>
     <form id="event-form">
       <div class="form-group"><label>Título</label>
-        <input type="text" name="title" required value="${existing?esc(existing.title):''}" placeholder="Ej. Reunión de equipo">
+        <input type="text" name="title" required value="${existing?esc(existing.title):esc((pre&&pre.title)||'')}" placeholder="Ej. Reunión de equipo">
       </div>
       <div class="form-row-2">
         <div class="form-group"><label>Fecha</label>
-          <input type="date" name="date" required value="${existing?existing.date:(date||'')}">
+          <input type="date" name="date" required value="${existing?existing.date:((pre&&pre.date)||date||'')}">
         </div>
         <div class="form-group"><label>Fecha de fin (opcional)</label>
           <input type="date" name="endDate" value="${existing?existing.endDate||'':''}">
@@ -2790,7 +2806,7 @@ function openEventModal({eventId=null, date=null}={}){
         <label for="event-allday" style="margin:0;">Todo el día</label>
       </div>
       <div class="form-row-2" id="event-time-row" style="${allDay?'display:none;':''}">
-        <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':''}"></div>
+        <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':((pre&&pre.time)||'')}"></div>
         <div class="form-group"><label>Hora fin (opcional)</label><input type="time" name="endTime" value="${existing?existing.endTime||'':''}"></div>
       </div>
       <div class="form-group"><label>Categoría (opcional)</label>
@@ -5048,13 +5064,82 @@ async function runIAWeek(anchorDate){
   }
 }
 
+/* ---------- AI-2.3: abrir el formulario existente desde el chat con datos prellenados ----------
+   openSmartFormFromChat() traduce el "formulario pendiente" que ya
+   devuelve AIActions.detectSmartFormIntent() (AI-2.1: { type, fields,
+   missingFields, sourceText }) a una llamada al modal EXISTENTE
+   correspondiente (openTaskModal/openEventModal, UX-8) — nunca crea la
+   tarea/evento por su cuenta: solo abre el formulario ya existente para
+   que el usuario lo revise y pulse Guardar él mismo (la creación real
+   sigue pasando por addTask/addEvent de siempre, disparada por el propio
+   submit del formulario, no por aquí).
+   AI-2.2: la propia construcción del prefill (qué campos pasar, ya
+   validados y normalizados) es responsabilidad EXCLUSIVA de
+   AIActions.buildSmartFormPrefill() — openSmartFormFromChat() ya NO lee
+   el título/fecha/hora directamente de "intent" (como hacía en AI-2.3
+   antes de esta fase): solo consume el objeto ya normalizado que
+   devuelve AI-2.2, sin reinterpretar nada. Arquitectura completa:
+   AI-2.1 detectSmartFormIntent() -> AI-2.2 buildSmartFormPrefill() ->
+   AI-2.3 openSmartFormFromChat() -> modal existente. */
+function openSmartFormFromChat(intent){
+  const prefill = (typeof AIActions.buildSmartFormPrefill === 'function') ? AIActions.buildSmartFormPrefill(intent) : null;
+  if(!prefill) return;
+  if(prefill.type === 'event') openEventModal({ prefill });
+  else if(prefill.type === 'task') openTaskModal({ prefill });
+}
+
+/* ---------- AI-2.6: aclaraciones pendientes del chat (arquitectura mínima) ----------
+   Contexto TEMPORAL, en memoria, de la última aclaración que el chat le
+   pidió al usuario — NUNCA persistente, NUNCA parte de `state` (no toca
+   state.tasks/state.events, no se guarda con el resto de la app). Sirve
+   solo para dejar preparado el terreno de una fase posterior que retome
+   la respuesta del usuario a esa pregunta; esta fase (AI-2.6) todavía NO
+   implementa esa continuación multi-turno, solo guarda el mínimo dato
+   para no perderlo. Se sobrescribe en cada pregunta nueva. */
+let smartFormPendingClarification = null;
+
 /* ---------- Chat con la IA (acciones aplicadas automáticamente) ----------
    Usa AIActions.runIAAction() (js/ai-actions.js) para crear/mover/cancelar
    tareas y eventos directamente a partir de lo que el usuario escribe en
    lenguaje natural, y para las tareas sin hora deja que Scheduler
-   (js/scheduler.js) decida el hueco libre real. */
+   (js/scheduler.js) decida el hueco libre real.
+   AI-2.3: antes de llamar a la IA, se comprueba localmente (sin red, sin
+   modelo) si el mensaje encaja con una intención de formulario
+   inteligente ya detectada por AI-2.1 (AIActions.detectSmartFormIntent,
+   determinista — mismos helpers de AI-1.2/1.3/1.4/1.5, sin un segundo
+   parser). Si es así, se abre directamente el formulario existente con
+   ese prefill y se deja la creación real en manos del usuario (Guardar);
+   NO se llama a AIActions.runIAAction ni se crea nada automáticamente en
+   ese turno. Si detectSmartFormIntent no encuentra nada (null —
+   comentarios, mensajes ambiguos, o algo que en realidad es mover/
+   cancelar/repriorizar un elemento existente), el flujo sigue exactamente
+   igual que siempre.
+   AI-2.6: justo antes de decidir si se abre el formulario, se comprueba
+   con AIActions.getSmartFormClarification (determinista, sin red, sin
+   modelo) si falta algún dato REALMENTE necesario para interpretar con
+   certeza qué formulario abrir. Si falta, NO se abre ningún formulario
+   todavía ni se llama a AIActions.runIAAction: se le hace al usuario una
+   pregunta concreta en el chat y se detiene el turno ahí — no se crea ni
+   persiste nada. Si no falta nada (null), el flujo sigue exactamente
+   igual que antes de AI-2.6. */
 async function runIAActionChat(question){
   const msgEl = iaThreadAddPending(question);
+  const smartFormIntent = (typeof AIActions.detectSmartFormIntent === 'function')
+    ? AIActions.detectSmartFormIntent(question, { todayStr: todayStr() })
+    : null;
+  const smartFormClarification = (typeof AIActions.getSmartFormClarification === 'function')
+    ? AIActions.getSmartFormClarification(smartFormIntent, { message: question, todayStr: todayStr() })
+    : null;
+  if(smartFormClarification){
+    smartFormPendingClarification = { question, intent: smartFormIntent, clarification: smartFormClarification };
+    iaThreadResolve(msgEl, esc(smartFormClarification.question));
+    return;
+  }
+  if(smartFormIntent){
+    openSmartFormFromChat(smartFormIntent);
+    iaThreadResolve(msgEl, 'He abierto el formulario con lo que he entendido — revísalo y completa lo que falte.');
+    return;
+  }
   try{
     const { answer, applied } = await AIActions.runIAAction(question);
     const appliedHtml = applied.length

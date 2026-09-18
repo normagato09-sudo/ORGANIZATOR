@@ -87,13 +87,13 @@ const modalCollapsibleSrc = extractBetween(
 );
 const openTaskModalSrc = extractBetween(
   html,
-  'function openTaskModal({taskId=null, date=null}={}){',
+  'function openTaskModal({taskId=null, date=null, prefill=null}={}){',
   '\n\n/* ==================================================================\n   MODAL: MINUTOS REALES',
   'función openTaskModal()'
 );
 const openEventModalSrc = extractBetween(
   html,
-  'function openEventModal({eventId=null, date=null}={}){',
+  'function openEventModal({eventId=null, date=null, prefill=null}={}){',
   '\n\n/* ==================================================================\n   MODAL: HORARIO BLOQUEADO',
   'función openEventModal()'
 );
