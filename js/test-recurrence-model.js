@@ -271,9 +271,13 @@ const dailyOnce = { type: 'daily', interval: 1, startDate: '2026-10-01', endDate
   // =====================================================================
   {
     const sb = makeSandbox();
-    const cases = ['yearly', 'Daily', '', null, undefined, 123, 'DAILY'];
+    // R-1.6: 'yearly' pasó a ser un type VÁLIDO (recurrencia anual) — se
+    // sustituye aquí por 'annual' (un type que sigue sin existir) para
+    // seguir probando exactamente lo mismo: un type desconocido nunca
+    // produce una recurrencia válida.
+    const cases = ['annual', 'Daily', '', null, undefined, 123, 'DAILY'];
     const results = cases.map(type => sb.sanitizeRecurrence({ ...dailyOnce, type }));
-    check('15. ningún type fuera de daily/weekly/monthly produce una recurrencia válida', results.every(r => r === null));
+    check('15. ningún type fuera de daily/weekly/monthly/yearly produce una recurrencia válida', results.every(r => r === null));
   }
 
   // =====================================================================
@@ -348,7 +352,9 @@ const dailyOnce = { type: 'daily', interval: 1, startDate: '2026-10-01', endDate
 
     // Un backup con recurrencia corrupta (editado a mano) no debe colarse
     // como válida al importar: debe normalizarse a null, no lanzar.
-    const corruptImport = sb.sanitizeImportedEvents([{ title: 'Ev corrupto', date: '2026-10-05', recurrence: { type: 'yearly', interval: 1, startDate: '2026-10-01' } }]);
+    // R-1.6: 'yearly' ya es válido, así que se usa 'annual' (inexistente)
+    // para seguir probando un type realmente corrupto.
+    const corruptImport = sb.sanitizeImportedEvents([{ title: 'Ev corrupto', date: '2026-10-05', recurrence: { type: 'annual', interval: 1, startDate: '2026-10-01' } }]);
     check('19b. recurrencia corrupta en un evento importado se normaliza a null (no rompe la importación)', corruptImport.kept[0].recurrence === null);
     const importedCorruptTask = sb.sanitizeRecurrence({ type: 'weekly', interval: 0, startDate: '2026-10-01' });
     check('19b. recurrencia corrupta en una tarea importada se normaliza a null', importedCorruptTask === null);

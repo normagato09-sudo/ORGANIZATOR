@@ -2371,6 +2371,7 @@ function recurrenceUnitLabel(type){
   if(type === 'daily') return 'días';
   if(type === 'weekly') return 'semanas';
   if(type === 'monthly') return 'meses';
+  if(type === 'yearly') return 'años';
   return '';
 }
 
@@ -2393,6 +2394,7 @@ function recurrenceControlsHtml(prefix, existingRecurrence){
         <option value="daily" ${type==='daily'?'selected':''}>Cada día</option>
         <option value="weekly" ${type==='weekly'?'selected':''}>Cada semana</option>
         <option value="monthly" ${type==='monthly'?'selected':''}>Cada mes</option>
+        <option value="yearly" ${type==='yearly'?'selected':''}>Cada año</option>
       </select>
     </div>
     <div id="${prefix}-repeat-detail" style="${type==='none'?'display:none;':''}">
@@ -2461,12 +2463,24 @@ function wireRecurrenceControls(modalBox, prefix){
  * si se eligió "No repetir". NO valida: eso lo sigue haciendo
  * exclusivamente sanitizeRecurrence (R-1) cuando addTask/updateTask/
  * addEvent/updateEvent guardan `data.recurrence`. Pura: no lee ni
- * escribe `state`, no toca el DOM. */
+ * escribe `state`, no toca el DOM.
+ * R-5.1: `daysOfWeek` solo se lee de las casillas marcadas cuando
+ * `type === 'weekly'` (si el usuario marcó días y luego cambia de tipo
+ * sin desmarcarlos, esas casillas ocultas no deben colarse en una
+ * recurrencia diaria/mensual/anual (R-1.6), que no usan daysOfWeek para
+ * nada — ver isDateInRecurrence/getNextRecurrenceDate, R-2, sin tocar). Siempre sin
+ * duplicados y en orden ascendente determinista (misma convención
+ * 0=Lunes..6=Domingo que ya usan DOW_SHORT/DOW_FULL_MONFIRST y el resto
+ * de la app — no se inventa ninguna numeración nueva), para que guardar
+ * dos veces las mismas casillas marcadas produzca siempre el mismo
+ * array, sin importar en qué orden el navegador las haya enumerado. */
 function readRecurrenceFromForm(fd, anchorDate){
   const type = fd.get('repeatType');
   if(!type || type === 'none') return null;
   const intervalRaw = parseInt(fd.get('repeatInterval'), 10);
-  const daysOfWeek = fd.getAll('repeatDaysOfWeek').map(v => parseInt(v, 10));
+  const daysOfWeek = type === 'weekly'
+    ? [...new Set(fd.getAll('repeatDaysOfWeek').map(v => parseInt(v, 10)))].sort((a, b) => a - b)
+    : [];
   const endMode = fd.get('repeatEnd');
   const endDateRaw = fd.get('repeatEndDate');
   return {
@@ -3537,15 +3551,20 @@ function isValidYMDDate(str){
 }
 
 /* ==================================================================
-   RECURRENCIA — modelo de datos (Fase R-1)
+   RECURRENCIA — modelo de datos (Fase R-1, ampliada en R-1.6)
    Campo opcional `recurrence` en tareas/eventos: null si no hay
-   recurrencia, o { type:'daily'|'weekly'|'monthly', interval, daysOfWeek,
-   startDate, endDate }. Esta fase SOLO guarda el dato saneado: nadie
-   calcula todavía próximas ocurrencias ni genera copias — eso es de una
-   fase posterior. daysOfWeek usa el mismo índice que customSchedules.days
-   y DOW_SHORT (0=Lunes...6=Domingo).
-   ================================================================== */
-const RECURRENCE_TYPES = ['daily', 'weekly', 'monthly'];
+   recurrencia, o { type:'daily'|'weekly'|'monthly'|'yearly', interval,
+   daysOfWeek, startDate, endDate }. Esta fase SOLO guarda el dato
+   saneado: nadie calcula todavía próximas ocurrencias ni genera copias —
+   eso es de una fase posterior. daysOfWeek usa el mismo índice que
+   customSchedules.days y DOW_SHORT (0=Lunes...6=Domingo); solo se usa
+   con `type:'weekly'` (ver R-5.1) — `yearly`, como `daily`/`monthly`, lo
+   ignora por completo.
+   R-1.6: `yearly` reutiliza EXACTAMENTE el mismo modelo — `interval`
+   entero positivo (cada N años), `startDate` como fecha ancla y
+   `endDate` con la misma semántica de siempre (límite inclusivo). No se
+   añade ningún campo nuevo solo para `yearly`. */
+const RECURRENCE_TYPES = ['daily', 'weekly', 'monthly', 'yearly'];
 
 function isValidRecurrenceInterval(n){
   return typeof n === 'number' && Number.isInteger(n) && n >= 1;
@@ -3634,6 +3653,18 @@ function daysInMonthOf(year, month){
  *   lanzar: 31/01 → 28/02 (o 29/02 en año bisiesto). Este recorte es
  *   solo para ese mes concreto: el mes siguiente vuelve a usar el día
  *   original de startDate si cabe (ver getNextRecurrenceDate).
+ * - yearly (R-1.6): cada `interval` años desde startDate, en el mismo
+ *   mes y día que startDate (pensado para cumpleaños/aniversarios).
+ *   MISMO criterio de recorte que monthly (reutiliza daysInMonthOf, sin
+ *   duplicar esa lógica): un startDate de 29 de febrero cae el 28 de
+ *   febrero en un año de destino no bisiesto, y el 29 de febrero en uno
+ *   que sí lo es — nunca se salta ese año ni se mueve a otro mes. Esta
+ *   es la única fecha de startDate para la que el mes de destino puede
+ *   variar de longitud según el año (el resto de días de todos los
+ *   demás meses son válidos en cualquier año), así que es la única que
+ *   necesita recorte; el resto de meses siempre reproduce el mismo día
+ *   exacto de startDate. Regla determinista, sin excepción ni caso
+ *   especial oculto: mismo mecanismo exacto que ya usa monthly arriba.
  */
 function isDateInRecurrence(dateStr, recurrence){
   if(!isValidYMDDate(dateStr)) return false;
@@ -3666,6 +3697,16 @@ function isDateInRecurrence(dateStr, recurrence){
     return d === expectedDay;
   }
 
+  if(type === 'yearly'){
+    const [sy, sm, sd] = startDate.split('-').map(Number);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if(m !== sm) return false;
+    const yearDiff = y - sy;
+    if(yearDiff % interval !== 0) return false;
+    const expectedDay = Math.min(sd, daysInMonthOf(y, sm));
+    return d === expectedDay;
+  }
+
   return false;
 }
 
@@ -3675,7 +3716,8 @@ function isDateInRecurrence(dateStr, recurrence){
  * muta `recurrence`. Devuelve `null` de forma segura si `recurrence` es
  * null/inválida, si `dateStr` no es una fecha YYYY-MM-DD real, o si no
  * queda ninguna ocurrencia futura antes de `endDate` (nunca lanza).
- * Ver isDateInRecurrence para el criterio de recorte usado en monthly.
+ * Ver isDateInRecurrence para el criterio de recorte usado en monthly y
+ * en yearly (R-1.6).
  */
 function getNextRecurrenceDate(dateStr, recurrence){
   if(!isValidYMDDate(dateStr)) return null;
@@ -3735,6 +3777,27 @@ function getNextRecurrenceDate(dateStr, recurrence){
       return `${y}-${pad(m)}-${pad(day)}`;
     };
     let steps = Math.floor(monthDiff / interval);
+    let candidate = candidateForStep(steps);
+    if(candidate <= dateStr){
+      steps += 1;
+      candidate = candidateForStep(steps);
+    }
+    return withinEnd(candidate) ? candidate : null;
+  }
+
+  if(type === 'yearly'){
+    // Mismo mecanismo exacto que monthly (candidateForStep + recorte vía
+    // daysInMonthOf), sustituyendo "meses desde startDate" por "años
+    // desde startDate": el mes/día de destino siempre son los de
+    // startDate, salvo el recorte de 29 de febrero (ver isDateInRecurrence).
+    const [sy, sm, sd] = startDate.split('-').map(Number);
+    const yearDiff = Number(dateStr.split('-')[0]) - sy;
+    const candidateForStep = (k) => {
+      const y = sy + k * interval;
+      const day = Math.min(sd, daysInMonthOf(y, sm));
+      return `${y}-${pad(sm)}-${pad(day)}`;
+    };
+    let steps = Math.floor(yearDiff / interval);
     let candidate = candidateForStep(steps);
     if(candidate <= dateStr){
       steps += 1;

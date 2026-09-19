@@ -296,12 +296,14 @@ section('17) recurrencia inválida → resultado seguro (sin lanzar)');
 {
   check('17. isDateInRecurrence(fecha, null) → false', sb.isDateInRecurrence('2026-09-01', null) === false);
   check('17. isDateInRecurrence(fecha, undefined) → false', sb.isDateInRecurrence('2026-09-01', undefined) === false);
-  check('17. isDateInRecurrence con type inválido → false', sb.isDateInRecurrence('2026-09-01', { ...daily1, type: 'yearly' }) === false);
+  // R-1.6: 'yearly' ya es un type válido, así que se usa 'annual'
+  // (inexistente) para seguir probando un type realmente desconocido.
+  check('17. isDateInRecurrence con type inválido → false', sb.isDateInRecurrence('2026-09-01', { ...daily1, type: 'annual' }) === false);
   check('17. isDateInRecurrence con interval inválido → false', sb.isDateInRecurrence('2026-09-01', { ...daily1, interval: 0 }) === false);
   check('17. isDateInRecurrence con startDate inválida → false', sb.isDateInRecurrence('2026-09-01', { ...daily1, startDate: 'no-es-fecha' }) === false);
   check('17. isDateInRecurrence con fecha inválida → false', sb.isDateInRecurrence('no-es-fecha', daily1) === false);
   check('17. getNextRecurrenceDate(fecha, null) → null', sb.getNextRecurrenceDate('2026-09-01', null) === null);
-  check('17. getNextRecurrenceDate con recurrencia inválida → null', sb.getNextRecurrenceDate('2026-09-01', { ...daily1, type: 'yearly' }) === null);
+  check('17. getNextRecurrenceDate con recurrencia inválida → null', sb.getNextRecurrenceDate('2026-09-01', { ...daily1, type: 'annual' }) === null);
   check('17. getNextRecurrenceDate con fecha inválida → null', sb.getNextRecurrenceDate('no-es-fecha', daily1) === null);
   check('17. ninguna de las llamadas anteriores lanza una excepción (si llegamos aquí, es así)', true);
 }

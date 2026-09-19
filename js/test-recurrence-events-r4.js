@@ -348,7 +348,9 @@ section('20) Evento base mantiene su id');
 section('21) Recurrencia inválida → resultado seguro');
 // =====================================================================
 {
-  const badType = makeWeeklyEvent({ recurrence: { type: 'yearly', interval: 1, daysOfWeek: [], startDate: '2026-09-18', endDate: null } });
+  // R-1.6: 'yearly' ya es un type válido, así que se usa 'annual'
+  // (inexistente) para seguir probando un type realmente desconocido.
+  const badType = makeWeeklyEvent({ recurrence: { type: 'annual', interval: 1, daysOfWeek: [], startDate: '2026-09-18', endDate: null } });
   check('21. type inválido → sin ocurrencias (no lanza)', sb.getEventOccurrences(badType, '2026-09-01', '2026-12-31').length === 0);
 
   const badInterval = makeWeeklyEvent({ recurrence: { type: 'daily', interval: 0, daysOfWeek: [], startDate: '2026-09-18', endDate: null } });
