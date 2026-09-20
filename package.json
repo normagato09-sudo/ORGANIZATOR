@@ -5,7 +5,9 @@
   "description": "ORGANIZATOR — funciones serverless (auth + IA) para Vercel",
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
+    "@upstash/qstash": "^2.11.3",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "web-push": "^3.6.7"
   }
 }

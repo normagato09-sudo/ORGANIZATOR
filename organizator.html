@@ -843,6 +843,17 @@
      principal para que loadState() ya lo encuentre disponible fuera de Claude. -->
 <script src="/js/storage-polyfill.js"></script>
 
+<!-- R-8.2-D: ledger persistente (IndexedDB propio, independiente de
+     window.storage) de qué reminderId ya mostró un push el Service
+     Worker — el MISMO archivo que carga sw.js vía importScripts, para
+     que ambos realms compartan una única implementación. Debe cargarse
+     antes del script principal para que triggerDueReminders() ya
+     encuentre window.SWPushLedger disponible (ver bloque RECORDATORIOS
+     — robustez de Web Push, más abajo). Si falla al cargar,
+     window.SWPushLedger simplemente no existe y ese bloque ya está
+     preparado para ese caso (nunca lanza, ver su propia doc). -->
+<script src="/js/sw-push-ledger.js"></script>
+
 <!-- Duration Learning (aprendizaje de duración real de tareas): debe
      cargarse antes que scheduler.js para que Scheduler.estimateDuration()
      ya encuentre window.DurationLearning disponible como segunda fuente
@@ -901,6 +912,11 @@ let state = {
   customSchedules: [],
   eventCategories: [], // Fase 6A-3: categorías configurables para eventos (color + blocksSchedule)
   reminders: [], // recordatorios de tareas/eventos — estructura de datos mínima (Fase 1, sin notificaciones todavía)
+  // R-8.2-C: registro de reconciliación local↔Web Push, SEPARADO del
+  // modelo funcional de reminders — {[reminderId]: timestampMs}. Nunca
+  // sustituye reminder.status ni forma parte de su modelo (ver bloque
+  // RECORDATORIOS — reconciliación local↔Web Push más abajo).
+  reminderNotificationLedger: {},
   prefs: defaultPrefs(),
   ia: defaultIA(),
 };
@@ -1017,6 +1033,10 @@ async function loadState(){
     const r = await window.storage.get('reminders', false);
     state.reminders = r ? JSON.parse(r.value) : [];
   }catch(e){ state.reminders = []; }
+  try{
+    const rnl = await window.storage.get('reminderNotificationLedger', false);
+    state.reminderNotificationLedger = rnl ? JSON.parse(rnl.value) : {};
+  }catch(e){ state.reminderNotificationLedger = {}; }
   // Ajustes: se cargan por separado y se combinan con los valores por defecto,
   // así si en el futuro se añaden más claves no se rompe con datos antiguos.
   try{
@@ -1216,7 +1236,18 @@ async function updateReminder(id, data){
  * ningún otro campo ni ningún otro recordatorio. Devuelve el
  * recordatorio actualizado, o null si el id no existe (no lanza). */
 async function cancelReminder(id){
-  return updateReminder(id, { status: 'cancelled' });
+  const updated = await updateReminder(id, { status: 'cancelled' });
+  // R-8.2-B: intenta cancelar también el equivalente server-side
+  // (best-effort, ver bloque RECORDATORIOS — integración con Web Push
+  // más abajo). El try/catch de aquí es un cinturón de seguridad extra
+  // sobre el que ya tiene cancelReminderPush(): cubre incluso el caso
+  // de que ese helper no exista en el entorno (p.ej. un sandbox de test
+  // que no lo cargó) sin que eso rompa la cancelación local, que ya
+  // quedó aplicada en la línea de arriba.
+  if(updated){
+    try{ await cancelReminderPush(id); }catch(e){ console.warn('No se pudo cancelar el recordatorio en Web Push', e); }
+  }
+  return updated;
 }
 
 /* ==================================================================
@@ -1406,7 +1437,17 @@ async function createReminderForTarget(targetType, targetId, targetDateTime, min
   if(!targetId) return null;
   const remindAt = calculateReminderAt(targetDateTime, minutesBefore);
   if(remindAt === null) return null;
-  return addReminder({ targetType, targetId, remindAt, status: 'pending' });
+  const reminder = await addReminder({ targetType, targetId, remindAt, status: 'pending' });
+  // R-8.2-B: tras crear el reminder local (fuente de verdad), intenta
+  // sincronizar su equivalente server-side (best-effort, ver bloque
+  // RECORDATORIOS — integración con Web Push más abajo). El try/catch
+  // de aquí es un cinturón de seguridad extra sobre el que ya tiene
+  // scheduleReminderPush(): el reminder local YA quedó creado en la
+  // línea de arriba pase lo que pase con la red.
+  if(reminder){
+    try{ await scheduleReminderPush(reminder); }catch(e){ console.warn('No se pudo sincronizar el recordatorio con Web Push', e); }
+  }
+  return reminder;
 }
 
 /* ==================================================================
@@ -1499,7 +1540,18 @@ async function syncReminderForTarget(targetType, targetId, targetDateTime, minut
     if(existing) await cancelReminder(existing.id);
     return null;
   }
-  if(existing) return updateReminder(existing.id, { remindAt, status: 'pending' });
+  if(existing){
+    const updated = await updateReminder(existing.id, { remindAt, status: 'pending' });
+    // R-8.2-B: reprograma el equivalente server-side con el MISMO
+    // reminderId (existing.id) — nunca crea un segundo reminder local
+    // ni un segundo mensaje QStash (schedule-reminder.js ya cancela el
+    // mensaje anterior antes de programar el nuevo, ver R-8.2-A).
+    // Best-effort, mismo cinturón de seguridad que createReminderForTarget().
+    if(updated){
+      try{ await scheduleReminderPush(updated); }catch(e){ console.warn('No se pudo reprogramar el recordatorio con Web Push', e); }
+    }
+    return updated;
+  }
   return createReminderForTarget(targetType, targetId, targetDateTime, minutes);
 }
 /** Cancela (status:'cancelled') todos los reminders no-cancelados de un
@@ -1654,7 +1706,50 @@ async function triggerDueReminders(now = new Date()){
       // permiso, o falla al crear la notificación, simplemente no se
       // muestra nada — el reminder YA quedó triggered de forma correcta
       // y el bucle sigue con el siguiente sin interrumpirse.
-      showReminderNotification(updated);
+      // R-8.2-C: si el push server-side YA avisó de este reminder
+      // (handleServiceWorkerMessage ya registró la entrega), el
+      // polling local NO vuelve a mostrarlo — el reminder sigue
+      // pasando a 'triggered' arriba exactamente igual, la
+      // reconciliación de "ya avisado" es un concepto aparte.
+      if(!reminderAlreadyNotified(updated.id)){
+        // R-8.2-D: cubre el caso en el que el push YA llegó con
+        // ORGANIZATOR completamente cerrado (sin ninguna pestaña a la
+        // que el Service Worker pudiera avisar por postMessage, así que
+        // reminderAlreadyNotified() de arriba no puede saberlo — se
+        // alimenta solo de mensajes recibidos con la app ya abierta).
+        // Antes de notificar localmente, se consulta (solo lectura,
+        // nunca se escribe desde aquí) el ledger PERSISTENTE del propio
+        // Service Worker (window.SWPushLedger, ver
+        // js/sw-push-ledger.js) — sobrevive cierres/reinicios y no
+        // depende de que hubiera una pestaña abierta cuando llegó el
+        // push. Si no existe (navegador sin Service Worker, fallo de
+        // carga) se trata como "no entregado" y se sigue el
+        // comportamiento de siempre.
+        let alreadyDeliveredByPush = false;
+        if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.hasDelivered === 'function'){
+          try{ alreadyDeliveredByPush = await self.SWPushLedger.hasDelivered(updated.id); }
+          catch(e){ alreadyDeliveredByPush = false; }
+        }
+        if(alreadyDeliveredByPush){
+          // El Service Worker ya mostró el aviso mientras la app estaba
+          // cerrada: se registra en el ledger de la PÁGINA (para que
+          // futuros ticks de este mismo tab ya no vuelvan a consultar
+          // el ledger del Service Worker para este id) pero NUNCA se
+          // muestra una segunda notificación local.
+          try{ await markReminderNotified(updated.id); }catch(e){ console.error('No se pudo registrar la entrega ya realizada por el push', e); }
+        } else {
+          showReminderNotification(updated);
+          try{ await markReminderNotified(updated.id); }catch(e){ console.error('No se pudo registrar la entrega local del aviso', e); }
+          // Best-effort: el canal local ya avisó, así que intenta
+          // cancelar el push server-side todavía pendiente (reutiliza
+          // cancelReminderPush ya existente de R-8.2-B) para que QStash
+          // no entregue una segunda notificación del MISMO reminder. Si
+          // el push ya se envió, cancel-reminder.js ya es idempotente
+          // (no hace nada); si falla la red, no revierte nada de lo de
+          // arriba.
+          try{ await cancelReminderPush(updated.id); }catch(e){ console.warn('No se pudo cancelar el push pendiente tras notificar localmente', e); }
+        }
+      }
     }
   }
   return triggered;
@@ -1721,12 +1816,24 @@ function reminderNotificationBody(reminder){
  * si `Notification` no existe, si el permiso no es 'granted', o si
  * `new Notification(...)` falla por cualquier motivo, devuelve null en
  * vez de propagar el error. Devuelve la notificación creada si tuvo
- * éxito. */
+ * éxito. Sigue siendo síncrona y devolviendo la MISMA forma que antes de
+ * R-8 (una instancia real de `Notification`, nunca una Promise) para no
+ * romper ningún llamador ni test existente.
+ * R-8: única adición — al pulsar la notificación se enfoca la ventana de
+ * ORGANIZATOR (antes no hacía nada). Esto solo cubre el caso "la app
+ * sigue abierta" (aunque la pestaña esté en segundo plano/minimizada):
+ * ver sw.js para la limitación real de R-8 con la app COMPLETAMENTE
+ * cerrada (requiere un backend de Web Push que no existe). */
 function showReminderNotification(reminder){
   if(typeof Notification === 'undefined' || !Notification) return null;
   if(Notification.permission !== 'granted') return null;
   try{
-    return new Notification('ORGANIZATOR', { body: reminderNotificationBody(reminder) });
+    const notif = new Notification('ORGANIZATOR', { body: reminderNotificationBody(reminder) });
+    notif.onclick = () => {
+      try{ if(typeof window !== 'undefined' && typeof window.focus === 'function') window.focus(); }catch(e){}
+      try{ notif.close(); }catch(e){}
+    };
+    return notif;
   }catch(e){
     return null;
   }
@@ -1769,12 +1876,31 @@ const REMINDER_POLLING_INTERVAL_MS = 20000; // 20s: frecuencia razonable (rango 
  * lanza) — un fallo puntual no debe dejar de detectar el siguiente
  * recordatorio 20s después. */
 async function reminderPollingTick(now = new Date()){
+  let triggered = [];
   try{
-    return await triggerDueReminders(now);
+    triggered = await triggerDueReminders(now);
   }catch(e){
     console.error('Fallo comprobando recordatorios vencidos', e);
-    return [];
   }
+  // R-8.2-C: aprovecha el mismo ciclo de polling para limpiar marcas de
+  // reconciliación caducadas (ver pruneReminderNotificationLedger, no
+  // crea ningún setInterval nuevo). Un fallo aquí nunca hace que el
+  // tick deje de devolver los reminders que sí se dispararon arriba.
+  const nowMs = now instanceof Date ? now.getTime() : Number(now);
+  try{
+    await pruneReminderNotificationLedger(nowMs);
+  }catch(e){
+    console.error('Fallo limpiando el registro de notificaciones entregadas', e);
+  }
+  // R-8.2-D: mismo criterio, reutilizando el mismo ciclo (sin
+  // setInterval propio) para limpiar también el ledger PERSISTENTE del
+  // Service Worker (window.SWPushLedger, ver js/sw-push-ledger.js). Si
+  // no existe (sin Service Worker, fallo de carga), no hace nada.
+  if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.pruneDelivered === 'function'){
+    try{ await self.SWPushLedger.pruneDelivered(nowMs); }
+    catch(e){ console.error('Fallo limpiando el ledger persistente de push del Service Worker', e); }
+  }
+  return triggered;
 }
 /** Arranca el polling de recordatorios si no está ya en marcha.
  * Idempotente (ver nota de la fase más arriba): llamarlo varias veces
@@ -1795,6 +1921,271 @@ function stopReminderPolling(){
   if(reminderPollingIntervalId === null) return;
   clearInterval(reminderPollingIntervalId);
   reminderPollingIntervalId = null;
+}
+
+/* ==================================================================
+   RECORDATORIOS — integración con Web Push (Fase R-8.2-B)
+   Conecta la infraestructura de Web Push ya existente (R-8.1/R-8.2-A:
+   claves de servidor, QStash, api/push/*, ver sw.js) con el ciclo de
+   vida real de los reminders. state.reminders (IndexedDB local, vía
+   window.storage) sigue siendo la ÚNICA fuente de verdad de
+   ORGANIZATOR: todo lo de este bloque es sincronización BEST-EFFORT
+   hacia el servidor para que QStash pueda avisar aunque la app esté
+   cerrada — un fallo de red, de servidor, o que el navegador no
+   soporte Push, NUNCA impide crear/editar/cancelar el reminder local,
+   nunca lanza desde los puntos que lo llaman (Fases 1-3, más abajo) y
+   nunca solicita permiso de notificaciones por su cuenta: eso lo
+   sigue decidiendo exclusivamente requestReminderNotificationPermission()
+   (Fase 5), llamada solo tras una acción explícita del usuario — este
+   bloque solo se activa DESPUÉS de que esa función haya devuelto true.
+   Sin reconciliación todavía entre "reminder local triggered" y "push
+   ya entregado por el servidor con la app abierta a la vez": eso queda
+   explícitamente para R-8.2-C.
+   ================================================================== */
+
+/** Convierte a Uint8Array la clave pública que expone
+ * /api/push/vapid-public-key (base64url, formato que espera
+ * pushManager.subscribe({ applicationServerKey })). Nunca lanza: una
+ * cadena inválida devuelve un Uint8Array vacío en vez de romper el
+ * flujo (subscribe() fallará de forma controlada, capturado igual que
+ * el resto de este bloque). */
+function urlBase64ToUint8Array(base64String){
+  try{
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for(let i=0; i<rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
+    return outputArray;
+  }catch(e){
+    return new Uint8Array();
+  }
+}
+
+/** Suscribe este navegador a Web Push y registra la suscripción en el
+ * servidor (POST /api/push/subscribe). Idempotente: si ya hay una
+ * PushSubscription activa la reutiliza (nunca crea una segunda). NO
+ * solicita permiso por su cuenta — solo debe llamarse después de que
+ * requestReminderNotificationPermission() haya devuelto true (ver los
+ * puntos de conexión de la Fase 5, más arriba); aquí se vuelve a
+ * comprobar Notification.permission==='granted' como cinturón de
+ * seguridad, sin volver a pedir permiso nunca. Nunca lanza: cualquier
+ * paso que falte (contexto no seguro, API no soportada, permiso no
+ * concedido, Service Worker no listo, red caída, servidor caído)
+ * resuelve a { ok:false, reason } en vez de romper la UI que la
+ * llama. */
+async function subscribeToPushNotifications(){
+  try{
+    if(typeof window === 'undefined' || !window.isSecureContext) return { ok:false, reason:'insecure-context' };
+    if(typeof Notification === 'undefined' || !Notification) return { ok:false, reason:'notification-unsupported' };
+    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return { ok:false, reason:'sw-unsupported' };
+    if(!('PushManager' in window)) return { ok:false, reason:'push-unsupported' };
+    if(Notification.permission !== 'granted') return { ok:false, reason:'permission-not-granted' };
+
+    let registration;
+    try{
+      registration = await navigator.serviceWorker.ready;
+    }catch(e){ return { ok:false, reason:'sw-not-ready' }; }
+    if(!registration || !registration.pushManager) return { ok:false, reason:'sw-not-ready' };
+
+    let subscription = null;
+    try{
+      subscription = await registration.pushManager.getSubscription();
+    }catch(e){ subscription = null; }
+
+    if(!subscription){
+      let publicKey;
+      try{
+        const keyRes = await fetch('/api/push/vapid-public-key', { credentials:'same-origin' });
+        if(!keyRes.ok) return { ok:false, reason:'public-key-unavailable' };
+        const keyData = await keyRes.json();
+        publicKey = keyData && keyData.publicKey;
+        if(!publicKey) return { ok:false, reason:'public-key-unavailable' };
+      }catch(e){ return { ok:false, reason:'public-key-unavailable' }; }
+
+      try{
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }catch(e){ return { ok:false, reason:'subscribe-failed' }; }
+    }
+    if(!subscription) return { ok:false, reason:'subscribe-failed' };
+
+    try{
+      const subJson = subscription.toJSON ? subscription.toJSON() : subscription;
+      const res = await fetch('/api/push/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
+      });
+      if(!res.ok) return { ok:false, reason:'subscribe-endpoint-failed' };
+    }catch(e){ return { ok:false, reason:'network-error' }; }
+
+    return { ok:true, subscription };
+  }catch(e){
+    return { ok:false, reason:'unexpected-error' };
+  }
+}
+
+/** Programa (o reprograma) el equivalente server-side de un reminder
+ * pending vía POST /api/push/schedule-reminder. SOLO envía
+ * {reminderId, remindAt, title, body} — nunca la tarea/evento
+ * completos (ver doc de ese endpoint, R-8.2-A). El body se reconstruye
+ * con reminderNotificationBody() (Fase 5, sin duplicar esa lógica) a
+ * partir del target actual; el title es el mismo literal fijo que ya
+ * usa showReminderNotification(). Best-effort: cualquier fallo (sin
+ * red, HTTP no-ok, endpoint no configurado, o que el propio helper no
+ * exista en este entorno) se registra con console.warn y se resuelve a
+ * { ok:false } — nunca lanza. */
+async function scheduleReminderPush(reminder){
+  if(!reminder || reminder.status !== 'pending' || !reminder.remindAt) return { ok:false, reason:'not-applicable' };
+  try{
+    const res = await fetch('/api/push/schedule-reminder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        reminderId: reminder.id,
+        remindAt: reminder.remindAt,
+        title: 'ORGANIZATOR',
+        body: reminderNotificationBody(reminder),
+      }),
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return { ok:true };
+  }catch(e){
+    console.warn('No se pudo sincronizar el recordatorio con Web Push (se mantiene el recordatorio local)', e);
+    return { ok:false, reason:'network-or-server-error' };
+  }
+}
+
+/** Cancela el equivalente server-side de un reminder vía POST
+ * /api/push/cancel-reminder. Best-effort e idempotente (mismo espíritu
+ * que cancelReminder(), Fase 1): un fallo se registra con console.warn
+ * y se resuelve a { ok:false } sin lanzar ni afectar al estado local,
+ * que ya queda 'cancelled' antes de llamar a esto. */
+async function cancelReminderPush(reminderId){
+  if(!reminderId) return { ok:false, reason:'no-id' };
+  try{
+    const res = await fetch('/api/push/cancel-reminder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ reminderId }),
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    return { ok:true };
+  }catch(e){
+    console.warn('No se pudo cancelar el recordatorio en Web Push (el recordatorio local sigue cancelado)', e);
+    return { ok:false, reason:'network-or-server-error' };
+  }
+}
+
+/* ==================================================================
+   RECORDATORIOS — reconciliación local↔Web Push (Fase R-8.2-C)
+   Evita que un mismo reminder produzca dos avisos al usuario cuando la
+   app está abierta: uno del polling local (triggerDueReminders, Fase 4)
+   y otro del push server-side (QStash → sw.js → esta pestaña).
+   state.reminders sigue siendo la ÚNICA fuente de verdad funcional
+   (pending/triggered/cancelled, sin cambios de modelo ni de ids). Esta
+   estructura es DELIBERADAMENTE independiente
+   (state.reminderNotificationLedger, {[reminderId]: timestampMs}):
+   solo registra que YA se mostró un aviso al usuario para ese
+   reminderId, sea cual sea el canal que lo mostró primero — nunca
+   toca reminder.status ni sustituye 'triggered'. Se persiste con el
+   MISMO mecanismo que el resto de state (window.storage, ver
+   saveReminders()) en vez de inventar uno nuevo.
+   Idempotencia/carreras: markReminderNotified() es "quien llega
+   primero, gana" — la primera llamada para un reminderId crea la
+   marca: showReminderNotification()/loop de invocaciones
+   posteriores en cualquier orden ya no vuelven a mostrar nada para el
+   mismo reminderId. Esto cubre las carreras entre polling y push con
+   la app abierta en cualquier orden (polling primero, push primero, o
+   casi simultáneos) de forma determinista: gana quien registre la
+   marca antes, el otro canal se abstiene al comprobarla.
+   LÍMITE que tenía esta fase, RESUELTO en R-8.2-D (se deja documentado
+   aquí para quien lea solo este bloque): con la app COMPLETAMENTE
+   cerrada, el Service Worker nunca escribía aquí (no tenía página
+   abierta a la que avisar, y a propósito no toca
+   state.reminders/window.storage desde sw.js — ver más abajo), así que
+   si el push llegaba con la app cerrada y el usuario reabría
+   ORGANIZATOR después de que ese reminder ya venciera, el polling
+   local no tenía forma de saber que el push ya había avisado. R-8.2-D
+   añade un ledger PERSISTENTE aparte (window.SWPushLedger, IndexedDB
+   propio, ver js/sw-push-ledger.js) que el Service Worker sí puede
+   escribir sin ninguna pestaña abierta y que la página consulta (solo
+   lectura) en triggerDueReminders() antes de notificar localmente — ver
+   el bloque RECORDATORIOS — robustez de Web Push (R-8.2-D), más abajo,
+   para el detalle completo. Esta estructura (state.reminderNotificationLedger)
+   sigue exactamente igual que antes: solo cubre el caso "la app ya
+   estaba abierta cuando llegó el push".
+   ================================================================== */
+
+/** true si YA se registró una entrega (por cualquier canal) para este
+ * reminderId. Nunca lanza: lee un objeto plano, nunca state.reminders. */
+function reminderAlreadyNotified(reminderId){
+  return !!(state.reminderNotificationLedger && Object.prototype.hasOwnProperty.call(state.reminderNotificationLedger, reminderId));
+}
+
+/** Registra que un reminder YA fue notificado. Idempotente: si ya
+ * había una marca para ese reminderId, no la reescribe ni vuelve a
+ * guardar (devuelve false); si es la primera vez, la crea y persiste
+ * (devuelve true). Nunca modifica reminder.status ni state.reminders. */
+async function markReminderNotified(reminderId, when = Date.now()){
+  if(!reminderId) return false;
+  if(!state.reminderNotificationLedger) state.reminderNotificationLedger = {};
+  if(Object.prototype.hasOwnProperty.call(state.reminderNotificationLedger, reminderId)) return false;
+  state.reminderNotificationLedger[reminderId] = when;
+  await saveReminderNotificationLedger();
+  return true;
+}
+
+async function saveReminderNotificationLedger(){
+  try{ await window.storage.set('reminderNotificationLedger', JSON.stringify(state.reminderNotificationLedger||{}), false); }
+  catch(e){ console.error('No se pudo guardar el registro de notificaciones entregadas', e); }
+}
+
+// 24h: margen generoso para cualquier carrera real entre el polling
+// (cada ~20s con la app abierta) y la entrega de un push — esto solo
+// acota el crecimiento del registro a largo plazo; nunca debería
+// afectar a una carrera legítima entre canales.
+const REMINDER_NOTIFICATION_LEDGER_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** Limpieza simple y determinista: elimina marcas con más de
+ * REMINDER_NOTIFICATION_LEDGER_TTL_MS de antigüedad (recibe `now`
+ * explícito para que los tests sean deterministas). Nunca borra
+ * reminders funcionales ni toca state.reminders — solo esta
+ * estructura aparte. Devuelve true si limpió algo (y lo persiste). */
+async function pruneReminderNotificationLedger(now = Date.now()){
+  const ledger = state.reminderNotificationLedger;
+  if(!ledger) return false;
+  let changed = false;
+  for(const id of Object.keys(ledger)){
+    if(typeof ledger[id] !== 'number' || (now - ledger[id]) > REMINDER_NOTIFICATION_LEDGER_TTL_MS){
+      delete ledger[id];
+      changed = true;
+    }
+  }
+  if(changed) await saveReminderNotificationLedger();
+  return changed;
+}
+
+/** Maneja los mensajes que el Service Worker envía a esta pestaña (ver
+ * sw.js, evento 'push': self.clients.matchAll()+postMessage). Cuando
+ * un push YA mostró un aviso al usuario, esta pestaña se entera aquí
+ * para que el polling local no vuelva a mostrar un segundo aviso del
+ * MISMO reminder. Idempotente (markReminderNotified ya lo es: dos
+ * mensajes iguales tienen el mismo resultado que uno). Nunca cambia
+ * reminder.status ni muestra ninguna notificación por su cuenta —
+ * solo registra la entrega. */
+function handleServiceWorkerMessage(event){
+  const data = event && event.data;
+  if(!data || data.type !== 'REMINDER_PUSH_DELIVERED') return;
+  const reminderId = typeof data.reminderId === 'string' ? data.reminderId : '';
+  if(!reminderId) return;
+  markReminderNotified(reminderId).catch(e => console.error('No se pudo registrar la entrega del push', e));
 }
 
 /* ==================================================================
@@ -2671,7 +3062,17 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
   // completamente aparte de esto.
   const taskReminderSelect = modalBox.querySelector('#task-reminder-select');
   if(taskReminderSelect) taskReminderSelect.addEventListener('change', ()=>{
-    if(taskReminderSelect.value !== '') requestReminderNotificationPermission();
+    // R-8.2-B: si el permiso queda concedido, encadena la suscripción a
+    // Web Push (best-effort, nunca bloquea ni rompe este formulario —
+    // ver subscribeToPushNotifications, bloque RECORDATORIOS — Web
+    // Push). Promise.resolve(...) tolera incluso un
+    // requestReminderNotificationPermission() que no devolviera una
+    // Promise real (p.ej. en un stub de test).
+    if(taskReminderSelect.value !== ''){
+      Promise.resolve(requestReminderNotificationPermission()).then(granted=>{
+        if(granted && typeof subscribeToPushNotifications === 'function') subscribeToPushNotifications();
+      }).catch(()=>{});
+    }
   });
 
   // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
@@ -2869,7 +3270,14 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
   // desde este formulario, nunca al cargar la app.
   const eventReminderSelect = modalBox.querySelector('#event-reminder-select');
   if(eventReminderSelect) eventReminderSelect.addEventListener('change', ()=>{
-    if(eventReminderSelect.value !== '') requestReminderNotificationPermission();
+    // R-8.2-B: mismo criterio que en openTaskModal (ver comentario
+    // allí) — encadena la suscripción a Web Push solo si el permiso
+    // queda concedido, best-effort.
+    if(eventReminderSelect.value !== ''){
+      Promise.resolve(requestReminderNotificationPermission()).then(granted=>{
+        if(granted && typeof subscribeToPushNotifications === 'function') subscribeToPushNotifications();
+      }).catch(()=>{});
+    }
   });
 
   // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
@@ -3468,7 +3876,15 @@ function renderAjustes(){
   const enableNotifBtn = el.querySelector('#btn-enable-notifications');
   if(enableNotifBtn) enableNotifBtn.addEventListener('click', async ()=>{
     enableNotifBtn.disabled = true;
-    await requestReminderNotificationPermission();
+    const granted = await requestReminderNotificationPermission();
+    // R-8.2-B: solo tras el permiso concedido, intenta suscribirse a
+    // Web Push (best-effort, sin romper esta pantalla si falla — ver
+    // subscribeToPushNotifications). renderAjustes() de abajo ya
+    // refleja el nuevo Notification.permission con los helpers
+    // existentes (reminderNotificationStatusInfo), sin pantalla nueva.
+    if(granted && typeof subscribeToPushNotifications === 'function'){
+      try{ await subscribeToPushNotifications(); }catch(e){}
+    }
     renderAjustes();
   });
 
@@ -4084,13 +4500,31 @@ function initSettingsDataIO(){
     // igual que tasks/customSchedules — el saneamiento por-campo (como el
     // que ya tienen events/eventCategories) es de una fase posterior.
     state.reminders = Array.isArray(data.reminders) ? data.reminders : [];
+    // R-8.2-C: el registro de reconciliación es puramente interno (no
+    // forma parte del formato exportado/importado, ver exportData()) —
+    // se reinicia al importar, porque cualquier marca antigua ya no
+    // tiene sentido para el conjunto de reminders que se acaba de
+    // reemplazar por completo.
+    state.reminderNotificationLedger = {};
     state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
     state.ia = { ...defaultIA(), ...(data.ia||{}) };
+
+    // R-8.2-D: mismo criterio que el registro de arriba, aplicado al
+    // ledger PERSISTENTE del Service Worker (window.SWPushLedger) —
+    // igualmente interno, ajeno al formato importado/exportado. Sin
+    // esto, una marca de "reminderId X ya avisó" de un conjunto de
+    // reminders anterior podría "contaminar" un reminderId nuevo que
+    // coincidiera tras el import (ids reutilizados, datos de otra
+    // exportación...). Best-effort: un fallo aquí no debe impedir
+    // completar el resto del import.
+    if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
+      try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push tras importar', e); }
+    }
 
     try{
       await Promise.all([
         saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
-        savePrefs(), saveIA(),
+        saveReminderNotificationLedger(), savePrefs(), saveIA(),
       ]);
       const discardedParts = [];
       if(sanitizedEvents.discarded) discardedParts.push(`${sanitizedEvents.discarded} evento(s)`);
@@ -4117,13 +4551,21 @@ async function deleteAllData(){
   state.customSchedules = [];
   state.eventCategories = [];
   state.reminders = [];
+  state.reminderNotificationLedger = {}; // R-8.2-C: interno, se borra junto con los reminders
   state.prefs = defaultPrefs();
   state.ia = defaultIA();
+
+  // R-8.2-D: mismo criterio, aplicado al ledger PERSISTENTE del Service
+  // Worker — ver el mismo razonamiento en importData(), más arriba.
+  // Best-effort: un fallo aquí no debe impedir borrar el resto de datos.
+  if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
+    try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push al borrar los datos', e); }
+  }
 
   try{
     await Promise.all([
       saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
-      savePrefs(), saveIA(),
+      saveReminderNotificationLedger(), savePrefs(), saveIA(),
     ]);
     showToast('Todos los datos se han borrado');
     showView('inicio');
@@ -5276,6 +5718,17 @@ function initPWA(){
     reloading = true;
     location.reload();
   });
+
+  // R-8.2-C: escucha los mensajes que el Service Worker envía a esta
+  // pestaña (ver handleServiceWorkerMessage, bloque RECORDATORIOS —
+  // reconciliación local↔Web Push, y sw.js evento 'push') —
+  // independiente del registro/actualización de arriba. El `typeof`
+  // evita romper initPWA() si se extrae/ejecuta aislado (p.ej. en
+  // tests que solo cargan esta función) sin el resto del bloque de
+  // recordatorios.
+  if(typeof handleServiceWorkerMessage === 'function'){
+    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+  }
 }
 function showUpdateBanner(reg){
   const banner = document.getElementById('update-banner');
