@@ -293,12 +293,16 @@ function makePageSandbox({
     check('3a. devuelve { ok:false, reason:"permission-not-granted" } (nunca fuerza el permiso)', result.ok === false && result.reason === 'permission-not-granted');
     check('3b. Notification.requestPermission() NUNCA se llama desde aquí (solo requestReminderNotificationPermission lo hace, tras acción explícita)', sandbox.Notification.requestPermissionCalls === 0);
     check('3c. no se llama a ningún endpoint de push', fetchMock.calls.length === 0);
-    // Estructural: subscribeToPushNotifications tampoco se invoca nunca
-    // desde el arranque de la app (mismo criterio que
-    // requestReminderNotificationPermission, sección 6 de
-    // test-reminders-r8-closed-app.js).
-    check('3d. startApp() no llama a subscribeToPushNotifications', !/subscribeToPushNotifications/.test(startAppSrc));
-    check('3e. init() (arranque) tampoco la llama', !/subscribeToPushNotifications/.test(initSrc));
+    // Estructural: startApp()/init() nunca llaman a subscribeToPushNotifications
+    // DIRECTAMENTE (mismo criterio que requestReminderNotificationPermission,
+    // sección 6 de test-reminders-r8-closed-app.js) — desde R-8.2-E,
+    // startApp() sí dispara reconcilePushSubscriptionOnStartup() en segundo
+    // plano, pero esa función NUNCA pide permiso ni se salta el chequeo de
+    // 'granted' (ver sección R-8.2-E más abajo y
+    // test-reminders-r8-2-e-startup-reconciliation.js, que cubre ese
+    // wrapper en detalle).
+    check('3d. startApp() no llama a subscribeToPushNotifications directamente', !/subscribeToPushNotifications/.test(startAppSrc));
+    check('3e. init() (arranque) tampoco la llama directamente', !/subscribeToPushNotifications/.test(initSrc));
   }
 
   // =====================================================================

@@ -2029,6 +2029,44 @@ async function subscribeToPushNotifications(){
   }
 }
 
+/** R-8.2-E: reconciliación silenciosa de la suscripción Web Push al
+ * arrancar la app. Corrige el caso detectado en el diagnóstico R-8.2 (3ª
+ * prueba real): el usuario ya había concedido el permiso de
+ * notificaciones y el navegador ya tenía una PushSubscription activa,
+ * pero el POST /api/push/subscribe de aquel momento falló en el
+ * servidor (por ejemplo, las tablas de Web Push aún no existían) y
+ * nunca se reintentó — send-due.js no encontraba ninguna fila en
+ * push_subscriptions y no llegaba ni a intentar web-push. Sin este
+ * helper, la única forma de recuperarse era que el usuario volviera a
+ * pulsar "Activar notificaciones" en Ajustes.
+ *
+ * NUNCA pide permiso (a diferencia de requestReminderNotificationPermission,
+ * Fase 5, que solo se llama tras una acción explícita del usuario): si
+ * Notification.permission sigue en 'default' o 'denied', no hace nada.
+ * Reutiliza subscribeToPushNotifications() tal cual, sin reimplementar
+ * su lógica — su propia idempotencia (reusa la PushSubscription del
+ * navegador si ya existe, nunca crea una segunda) es la que garantiza
+ * que esto nunca duplica nada, tanto a nivel de navegador como de fila
+ * en `push_subscriptions` (el INSERT server-side tiene
+ * ON CONFLICT (endpoint) DO UPDATE, ver sql/002_push_subscriptions.sql).
+ * Estrictamente best-effort: cualquier fallo se ignora en silencio,
+ * nunca lanza y nunca se muestra al usuario. startApp() la llama SIN
+ * esperar su resultado (fire-and-forget), así que tampoco puede
+ * retrasar el arranque. */
+async function reconcilePushSubscriptionOnStartup(){
+  try{
+    if(typeof Notification === 'undefined' || !Notification) return;
+    if(Notification.permission !== 'granted') return;
+    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    if(typeof window === 'undefined' || !('PushManager' in window)) return;
+    if(typeof subscribeToPushNotifications !== 'function') return;
+    await subscribeToPushNotifications();
+  }catch(e){
+    // Best-effort: un fallo reconciliando la suscripción nunca debe
+    // afectar al arranque de la app ni mostrarse al usuario.
+  }
+}
+
 /** Programa (o reprograma) el equivalente server-side de un reminder
  * pending vía POST /api/push/schedule-reminder. SOLO envía
  * {reminderId, remindAt, title, body} — nunca la tarea/evento
@@ -5877,6 +5915,11 @@ async function startApp(){
   // automático más arriba). startReminderPolling() es idempotente, así
   // que no pasa nada si startApp() llegara a ejecutarse más de una vez.
   startReminderPolling();
+  // R-8.2-E: reconcilia en segundo plano la suscripción Web Push si el
+  // usuario ya tenía el permiso concedido de una sesión anterior. SIN
+  // await a propósito (best-effort, ver reconcilePushSubscriptionOnStartup):
+  // nunca debe retrasar ni poder bloquear el arranque de la app.
+  reconcilePushSubscriptionOnStartup();
   showView(state.prefs.defaultHome || 'inicio');
 }
 
