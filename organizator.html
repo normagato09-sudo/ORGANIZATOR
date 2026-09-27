@@ -3821,6 +3821,13 @@ function renderAjustes(){
           </div>
           <button class="btn btn-danger" id="btn-logout">Cerrar sesión</button>
         </div>
+        <div class="settings-row">
+          <div class="left stack">
+            <div>Sincronización</div>
+            <div class="row-sub" id="sync-status-text">${esc(syncStatusText())}</div>
+          </div>
+          <button class="btn" id="btn-sync-now">Sincronizar ahora</button>
+        </div>
       </div>
     </section>`;
 
@@ -3898,7 +3905,7 @@ function renderAjustes(){
           <button class="btn" id="btn-import-data">⬆️ Importar datos</button>
           <button class="btn btn-danger" id="btn-delete-data">🗑️ Borrar todos los datos</button>
         </div>
-        <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con todos tus datos. Importar y borrar piden confirmación explícita antes de aplicarse.</p>
+        <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con los datos de tu cuenta. Importar y borrar cambian los datos de tu cuenta en todos tus dispositivos, y piden confirmación explícita antes de aplicarse.</p>
       </section>`;
 
   const informacionHtml = `
@@ -4013,6 +4020,7 @@ function renderAjustes(){
   });
 
   el.querySelector('#btn-logout').addEventListener('click', logout);
+  el.querySelector('#btn-sync-now').addEventListener('click', syncNow);
   el.querySelector('#btn-export-data').addEventListener('click', exportData);
   el.querySelector('#btn-import-data').addEventListener('click', ()=> document.getElementById('import-file-input').click());
   el.querySelector('#btn-delete-data').addEventListener('click', deleteAllData);
@@ -4593,7 +4601,7 @@ function initSettingsDataIO(){
       showToast('El archivo no tiene el formato esperado');
       return;
     }
-    const ok = confirm('Vas a reemplazar TODOS los datos actuales de ORGANIZATOR por los del archivo importado. Esta acción no se puede deshacer. ¿Quieres continuar?');
+    const ok = confirm('Vas a reemplazar TODOS los datos actuales de ORGANIZATOR de tu cuenta por los del archivo importado. El cambio se aplicará en todos tus dispositivos y no se puede deshacer. ¿Quieres continuar?');
     if(!ok) return;
 
     const sanitizedEvents = sanitizeImportedEvents(data.events);
@@ -4641,9 +4649,13 @@ function initSettingsDataIO(){
       const discardedParts = [];
       if(sanitizedEvents.discarded) discardedParts.push(`${sanitizedEvents.discarded} evento(s)`);
       if(sanitizedCategories.discarded) discardedParts.push(`${sanitizedCategories.discarded} categoría(s)`);
-      showToast(discardedParts.length
+      // SYNC: se sube ya a la cuenta (sin esperar al debounce) para poder
+      // decir si el cambio ha llegado a los demás dispositivos.
+      const uploaded = (typeof flushAccountChanges === 'function') ? await flushAccountChanges() : true;
+      const pendingNote = uploaded ? '' : ' (se subirán a tu cuenta al volver la conexión)';
+      showToast((discardedParts.length
         ? `Datos importados; se ignoraron ${discardedParts.join(' y ')} por estar incompletos`
-        : 'Datos importados correctamente');
+        : 'Datos importados correctamente') + pendingNote);
       showView('inicio');
     }catch(err){
       console.error(err);
@@ -4653,9 +4665,9 @@ function initSettingsDataIO(){
 }
 
 async function deleteAllData(){
-  const ok1 = confirm('Esto borrará PERMANENTEMENTE todos tus datos de ORGANIZATOR (tareas, eventos y ajustes). Esta acción no se puede deshacer. ¿Seguro que quieres continuar?');
+  const ok1 = confirm('Esto borrará PERMANENTEMENTE todos los datos de ORGANIZATOR de tu cuenta (tareas, eventos y ajustes) en TODOS tus dispositivos. Esta acción no se puede deshacer. ¿Seguro que quieres continuar?');
   if(!ok1) return;
-  const ok2 = confirm('Última confirmación: se van a borrar todos tus datos ahora mismo. ¿Confirmas el borrado?');
+  const ok2 = confirm('Última confirmación: se van a borrar todos los datos de tu cuenta ahora mismo. ¿Confirmas el borrado?');
   if(!ok2) return;
 
   state.tasks = [];
@@ -4679,7 +4691,11 @@ async function deleteAllData(){
       saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
       saveReminderNotificationLedger(), savePrefs(), saveIA(),
     ]);
-    showToast('Todos los datos se han borrado');
+    // SYNC: mismo criterio que al importar (ver initSettingsDataIO).
+    const uploaded = (typeof flushAccountChanges === 'function') ? await flushAccountChanges() : true;
+    showToast(uploaded
+      ? 'Todos los datos se han borrado'
+      : 'Todos los datos se han borrado en este dispositivo; se borrarán de tu cuenta al volver la conexión');
     showView('inicio');
   }catch(err){
     console.error(err);
@@ -6031,10 +6047,58 @@ async function activateAccountStorage(){
     await SyncStorage.activate(currentUser, {
       onRemoteChange: handleRemoteDataChange,
       onUnauthorized: handleSessionExpired,
-      onStatusChange: (status)=>{ syncStatus = status; },
+      onStatusChange: (status)=>{ syncStatus = status; updateSyncStatusIndicator(); },
     });
     return true;
   }catch(err){ return fail(err); }
+}
+
+/** Texto de la línea "Sincronización" de Ajustes → Cuenta. */
+function syncStatusText(){
+  const store = (typeof SyncStorage !== 'undefined' && SyncStorage) ? SyncStorage.current() : null;
+  if(!store) return 'No disponible';
+  const info = store.getStatus();
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const when = info.lastSyncAt ? (()=>{ const d = new Date(info.lastSyncAt); return ` · última vez a las ${pad2(d.getHours())}:${pad2(d.getMinutes())}`; })() : '';
+  let text;
+  switch(info.status){
+    case 'synced': text = `Todo guardado en tu cuenta${when}`; break;
+    case 'syncing': text = 'Sincronizando…'; break;
+    case 'pending': text = 'Hay cambios que todavía no se han subido a tu cuenta…'; break;
+    case 'offline': text = 'Sin conexión: tus cambios se guardan en este dispositivo y se subirán al volver la red.'; break;
+    case 'unauthorized': text = 'Tu sesión ha caducado. Vuelve a iniciar sesión para sincronizar.'; break;
+    case 'error': text = 'No se pudo sincronizar ahora. Se volverá a intentar automáticamente.'; break;
+    default: text = 'Preparando…';
+  }
+  if(info.persistent === false) text += ' (Este navegador no permite guardar una copia en el dispositivo: sin conexión no se conservarán los cambios.)';
+  return text;
+}
+
+/** Actualiza solo esa línea (sin repintar Ajustes entero). */
+function updateSyncStatusIndicator(){
+  const el = document.getElementById('sync-status-text');
+  if(el) el.textContent = syncStatusText();
+}
+
+/** Botón "Sincronizar ahora" de Ajustes. */
+async function syncNow(){
+  const store = (typeof SyncStorage !== 'undefined' && SyncStorage) ? SyncStorage.current() : null;
+  if(!store) return;
+  const btn = document.getElementById('btn-sync-now');
+  if(btn) btn.disabled = true;
+  try{ await store.sync(); }
+  finally{
+    if(btn) btn.disabled = false;
+    updateSyncStatusIndicator();
+  }
+}
+
+/** Sube ya lo pendiente de la cuenta (tras importar o borrar todo).
+ * Devuelve true si todo quedó guardado en el servidor. Nunca lanza. */
+async function flushAccountChanges(){
+  const store = (typeof SyncStorage !== 'undefined' && SyncStorage) ? SyncStorage.current() : null;
+  if(!store) return true;
+  try{ return await store.flush(); }catch(e){ return false; }
 }
 
 /** Han llegado cambios de otro dispositivo: se recarga el estado y se

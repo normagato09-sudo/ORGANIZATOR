@@ -40,6 +40,8 @@ const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\
 const ledgerSaveSrc = extractBetween(html, 'async function saveReminderNotificationLedger(){', '\n\n', 'saveReminderNotificationLedger');
 const authBlockSrc = extractBetween(html, `${HDR}AUTENTICACIÓN`, '\n</script>', 'bloque AUTENTICACIÓN + INICIALIZACIÓN');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n(async function init(){', 'startApp()');
+// Paso 8: bloque real de Exportar / Importar / Borrar datos (incluye el saneamiento de importación).
+const dataIOSrc = extractBetween(html, '/* ---------- Exportar / Importar / Borrar datos ---------- */', `\n\n${HDR}IA — ASISTENTE PERSONAL`, 'bloque Exportar/Importar/Borrar');
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -212,11 +214,13 @@ function makeElement(id) {
 async function loadPage(device, { withSyncStorage = true, legacyStorage = null, confirmAnswer = true } = {}) {
   const elements = new Map();
   const el = (id) => { if (!elements.has(id)) elements.set(id, makeElement(id)); return elements.get(id); };
-  const page = { reloads: 0, toasts: [], confirms: [], calls: [], elements: el };
+  const page = { reloads: 0, toasts: [], confirms: [], calls: [], downloads: [], elements: el };
   const sb = {
     console,
     structuredClone,
     TextEncoder,
+    Blob,
+    URL: { createObjectURL: (b) => { page.lastBlob = b; return 'blob:x'; }, revokeObjectURL() {} },
     setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms || 0, 20)), // el tiempo "corre" rápido
     clearTimeout,
     indexedDB: device.idb,
@@ -241,7 +245,11 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     },
     SWPushLedger: { clearAll: async () => { device.ledgerClears++; } },
     addEventListener() {}, removeEventListener() {},
-    document: { getElementById: el, visibilityState: 'visible', addEventListener() {}, removeEventListener() {} },
+    document: {
+      getElementById: el, visibilityState: 'visible', addEventListener() {}, removeEventListener() {},
+      body: { appendChild() {} },
+      createElement: () => ({ remove() {}, click() { page.downloads.push(page.lastBlob); } }),
+    },
     __page: page,
   };
   sb.window = sb; sb.self = sb;
@@ -250,12 +258,13 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
   vm.runInContext(`
     let state = { tasks: [], events: [], customSchedules: [], eventCategories: [], reminders: [], reminderNotificationLedger: {}, prefs: {}, ia: {} };
     const cal = {};
+    const APP_NAME = 'ORGANIZATOR';
+    const APP_VERSION = 'test';
     const overlay = document.getElementById('modal-overlay');
     function todayStr(){ return '2026-09-27'; }
     function showToast(m){ __page.toasts.push(m); }
     function renderCurrentView(){ __page.calls.push('render'); }
     function initIA(){ __page.calls.push('initIA'); }
-    function initSettingsDataIO(){}
     function initPWA(){}
     function startReminderPolling(){}
     function reconcilePushSubscriptionOnStartup(){ __page.calls.push('reconcilePush'); }
@@ -267,11 +276,13 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     vm.runInContext(syncStorageSrc, sb, { filename: 'js/sync-storage.js' });
   }
   vm.runInContext(storageBlockSrc + '\n' + ledgerSaveSrc, sb, { filename: 'organizator.html (ALMACENAMIENTO)' });
+  vm.runInContext(dataIOSrc, sb, { filename: 'organizator.html (Exportar/Importar/Borrar)' });
   vm.runInContext(authBlockSrc + `
     this.__app = {
       get state(){ return state; },
       get currentUser(){ return currentUser; },
       saveTasks, saveEvents, saveReminderNotificationLedger, logout, handleRemoteDataChange,
+      exportData, deleteAllData, syncStatusText, syncNow,
     };`, sb, { filename: 'organizator.html (AUTENTICACIÓN + INICIALIZACIÓN)' });
   await settle();
   const app = sb.__app;
@@ -444,6 +455,76 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   const brokenPage = await loadPage(broken, { withSyncStorage: false, legacyStorage: legacy });
   check('J1. no se cargan datos del almacén antiguo (compartido entre cuentas)', brokenPage.app.state.tasks.length === 0);
   check('J2. se avisa al usuario y la app no sigue arrancando', brokenPage.toasts.some(t => /no se pudieron cargar/i.test(t)) && !brokenPage.calls.includes('initIA'));
+
+  // =====================================================================
+  section('K) Ajustes: estado, exportar, importar y borrar actúan sobre la cuenta actual (paso 8)');
+  // =====================================================================
+  {
+    const idsOf = (list) => (list || []).map(t => t.id).sort().join(',');
+    const tablet = makeDevice();
+    tablet.cookieUserId = SIS.id;
+    const tp = await loadPage(tablet);
+    check('K1. tras sincronizar, Ajustes dice "Todo guardado en tu cuenta"', /Todo guardado en tu cuenta · última vez a las \d\d:\d\d/.test(tp.app.syncStatusText()));
+    tablet.online = false;
+    await tp.addTask('k-off', 'Hecha sin conexión');
+    await tp.store().flush();
+    check('K2. sin conexión, lo indica', /Sin conexión/.test(tp.app.syncStatusText()));
+    tablet.online = true;
+    const getsBefore = tablet.log.filter(l => l === 'GET /api/data').length;
+    await tp.app.syncNow();
+    check('K3. "Sincronizar ahora" descarga y sube lo pendiente', tablet.log.filter(l => l === 'GET /api/data').length === getsBefore + 1 && fakeDb.valueOf(SIS.id, 'tasks').some(t => t.id === 'k-off') && /Todo guardado/.test(tp.app.syncStatusText()));
+
+    // Exportar
+    const broDevice = makeDevice();
+    broDevice.cookieUserId = BRO.id;
+    const bp = await loadPage(broDevice);
+    bp.app.exportData();
+    const exported = JSON.parse(await bp.downloads[0].text());
+    check('K4. exportar contiene SOLO los datos de la cuenta actual', idsOf(exported.data.tasks) === 'b1');
+
+    // Importar (con conexión)
+    const brotherBefore = JSON.stringify(fakeDb.valueOf(BRO.id, 'tasks'));
+    const importFile = (data) => ({ target: { files: [{ text: async () => JSON.stringify({ app: 'ORGANIZATOR', data }) }] } });
+    const confirmsBefore = tp.confirms.length;
+    await tp.elements('import-file-input').fire('change', importFile({ tasks: [{ id: 'imp1', title: 'Importada' }], events: [], prefs: { defaultHome: 'calendario' } }));
+    await settle();
+    check('K5. la confirmación de importar avisa de que afecta a todos sus dispositivos', /todos tus dispositivos/.test(tp.confirms[confirmsBefore] || ''));
+    check('K6. importar reemplaza los datos de SU cuenta en el servidor al momento', idsOf(fakeDb.valueOf(SIS.id, 'tasks')) === 'imp1' && fakeDb.valueOf(SIS.id, 'settingsPrefs').defaultHome === 'calendario');
+    check('K7. y no toca la cuenta del hermano', JSON.stringify(fakeDb.valueOf(BRO.id, 'tasks')) === brotherBefore);
+    check('K8. aviso normal (subido)', tp.toasts[tp.toasts.length - 1] === 'Datos importados correctamente');
+    await pcPage.store().sync();
+    await settle();
+    check('K9. su otro dispositivo recibe lo importado', idsOf(pcPage.app.state.tasks) === 'imp1');
+
+    // Importar sin conexión
+    tablet.online = false;
+    await tp.elements('import-file-input').fire('change', importFile({ tasks: [{ id: 'imp2', title: 'Importada sin red' }] }));
+    await settle();
+    check('K10. importar sin conexión avisa de que se subirá al volver la red', /al volver la conexión/.test(tp.toasts[tp.toasts.length - 1]));
+    check('K11. ...y el servidor todavía no lo tiene', idsOf(fakeDb.valueOf(SIS.id, 'tasks')) === 'imp1');
+    tablet.online = true;
+    await tp.store().sync();
+    check('K12. al volver la conexión se sube', idsOf(fakeDb.valueOf(SIS.id, 'tasks')) === 'imp2');
+
+    // Borrar todos los datos
+    const confirmsBeforeDelete = tp.confirms.length;
+    await tp.app.deleteAllData();
+    await settle();
+    check('K13. la confirmación de borrar avisa de que es en TODOS sus dispositivos', /TODOS tus dispositivos/.test(tp.confirms[confirmsBeforeDelete] || ''));
+    check('K14. borrar todo vacía SU cuenta en el servidor', idsOf(fakeDb.valueOf(SIS.id, 'tasks')) === '' && fakeDb.valueOf(SIS.id, 'settingsPrefs').defaultHome === 'inicio');
+    check('K15. y no toca la cuenta del hermano', JSON.stringify(fakeDb.valueOf(BRO.id, 'tasks')) === brotherBefore);
+    check('K16. aviso normal (subido)', tp.toasts[tp.toasts.length - 1] === 'Todos los datos se han borrado');
+    await pcPage.store().sync();
+    await settle();
+    check('K17. su otro dispositivo también queda vacío', pcPage.app.state.tasks.length === 0);
+
+    tablet.online = false;
+    await tp.addTask('late', 'x');
+    await tp.app.deleteAllData();
+    await settle();
+    check('K18. borrar sin conexión avisa de que se aplicará a la cuenta al volver la red', /al volver la conexión/.test(tp.toasts[tp.toasts.length - 1]));
+    tablet.online = true;
+  }
 
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);
   process.exit(fail ? 1 : 0);
