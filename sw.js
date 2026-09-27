@@ -13,7 +13,7 @@
  * que alguien se quede atascado con una versión vieja.
  */
 
-const CACHE_VERSION = 'v2.2.1';
+const CACHE_VERSION = 'v2.3.0';
 const CACHE_NAME = `organizator-shell-${CACHE_VERSION}`;
 
 // Recursos propios de la app que se pueden precachear con seguridad.
@@ -26,6 +26,8 @@ const PRECACHE_URLS = [
   '/manifest.json',
   '/js/storage-polyfill.js',
   '/js/sw-push-ledger.js',
+  '/js/sync-merge.js',
+  '/js/sync-storage.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/icons/icon-maskable-512.png',

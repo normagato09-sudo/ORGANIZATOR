@@ -843,6 +843,14 @@
      principal para que loadState() ya lo encuentre disponible fuera de Claude. -->
 <script src="/js/storage-polyfill.js"></script>
 
+<!-- SYNC: datos de la app asociados a la cuenta. sync-storage.js sustituye
+     window.storage (tras iniciar sesión, ver activateAccountStorage más
+     abajo) por una caché local POR USUARIO que se sincroniza con
+     /api/data; sync-merge.js es la fusión que usa en caso de conflicto
+     (debe cargarse antes que sync-storage.js). -->
+<script src="/js/sync-merge.js"></script>
+<script src="/js/sync-storage.js"></script>
+
 <!-- R-8.2-D: ledger persistente (IndexedDB propio, independiente de
      window.storage) de qué reminderId ya mostró un push el Service
      Worker — el MISMO archivo que carga sw.js vía importScripts, para
@@ -887,7 +895,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.2.1';
+const APP_VERSION = '2.3.0';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -5844,18 +5852,53 @@ function showUpdateBanner(reg){
 
 /* ==================================================================
    AUTENTICACIÓN (registro / inicio de sesión)
-   Los datos (tareas, eventos…) se siguen guardando con window.storage
-   como siempre — esta pantalla solo controla quién puede abrir la app.
+   Los datos (tareas, eventos…) se siguen guardando con window.storage,
+   pero desde SYNC ese window.storage es el de la CUENTA que ha iniciado
+   sesión (js/sync-storage.js): caché local propia de cada usuario,
+   sincronizada con /api/data. Ver activateAccountStorage() más abajo.
    ================================================================== */
 let currentUser = null;
+let appStarted = false;
 
-async function fetchMe(){
+// Último usuario que inició sesión en ESTE dispositivo: solo id/email/
+// nombre (nunca el token, que sigue en la cookie httpOnly). Permite abrir
+// la app sin conexión con su caché. Se borra al cerrar sesión.
+const LAST_USER_KEY = 'organizator:lastUser';
+// Si se cerró sesión sin conexión, la cookie no se pudo borrar en el
+// servidor: esta marca hace que se termine de cerrar al volver la red, en
+// vez de volver a entrar solo en esa cuenta.
+const LOGOUT_PENDING_KEY = 'organizator:logoutPending';
+
+function rememberLastUser(user){
+  try{ localStorage.setItem(LAST_USER_KEY, JSON.stringify({ id:user.id, email:user.email, name:user.name||null })); }catch(e){}
+}
+function readLastUser(){
   try{
-    const res = await fetch('/api/auth/me', { credentials:'same-origin' });
-    if(!res.ok) return null;
-    const data = await res.json();
-    return data.user || null;
+    const u = JSON.parse(localStorage.getItem(LAST_USER_KEY) || 'null');
+    return (u && u.id !== undefined && u.id !== null) ? u : null;
   }catch(e){ return null; }
+}
+function forgetLastUser(){
+  try{ localStorage.removeItem(LAST_USER_KEY); }catch(e){}
+}
+function isLogoutPending(){
+  try{ return localStorage.getItem(LOGOUT_PENDING_KEY) === '1'; }catch(e){ return false; }
+}
+function setLogoutPending(pending){
+  try{ if(pending) localStorage.setItem(LOGOUT_PENDING_KEY, '1'); else localStorage.removeItem(LOGOUT_PENDING_KEY); }catch(e){}
+}
+
+/** Comprueba la sesión distinguiendo "no hay sesión" (401) de "no se
+ * pudo comprobar" (sin red o fallo del servidor): en el segundo caso la
+ * app puede abrirse sin conexión con el último usuario. Nunca lanza. */
+async function checkSession(){
+  try{
+    const res = await fetch('/api/auth/me', { credentials:'same-origin', cache:'no-store' });
+    if(res.status === 401) return { user:null, offline:false };
+    if(!res.ok) return { user:null, offline:true };
+    const data = await res.json();
+    return { user: data.user || null, offline:false };
+  }catch(e){ return { user:null, offline:true }; }
 }
 
 function showAuthScreen(){
@@ -5916,9 +5959,7 @@ function initAuthScreen(){
       });
       const data = await res.json();
       if(!res.ok){ setAuthError(data.error || 'No se pudo iniciar sesión.'); return; }
-      currentUser = data.user;
-      hideAuthScreen();
-      await startApp();
+      await onSignedIn(data.user);
     }catch(err){
       console.error(err);
       setAuthError('No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.');
@@ -5944,9 +5985,7 @@ function initAuthScreen(){
       });
       const data = await res.json();
       if(!res.ok){ setAuthError(data.error || 'No se pudo crear la cuenta.'); return; }
-      currentUser = data.user;
-      hideAuthScreen();
-      await startApp();
+      await onSignedIn(data.user);
     }catch(err){
       console.error(err);
       setAuthError('No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.');
@@ -5956,9 +5995,124 @@ function initAuthScreen(){
   });
 }
 
+/** Tras un login/registro correcto. Si la app ya estaba abierta (sesión
+ * caducada a mitad de uso), se recarga para empezar limpia con la cuenta
+ * que acaba de entrar, en vez de arrancarla por segunda vez encima. */
+async function onSignedIn(user){
+  currentUser = user;
+  setLogoutPending(false);
+  rememberLastUser(user);
+  if(appStarted){ location.reload(); return; }
+  hideAuthScreen();
+  await startApp();
+}
+
+/* ---------- SYNC: almacén de datos de la cuenta ---------- */
+let syncStatus = 'idle';
+let remoteReloadTimer = null;
+
+/** Sustituye window.storage por el almacén de la cuenta actual (caché
+ * propia de este usuario + sincronización con /api/data) y hace la
+ * primera descarga si hay red. Si la capa de sincronización no se pudo
+ * cargar, NO se sigue con el almacén antiguo del navegador (compartido
+ * entre cuentas): se avisa y la app no carga datos. */
+async function activateAccountStorage(){
+  const fail = (err) => {
+    if(err) console.error('No se pudo activar el almacén de la cuenta', err);
+    document.getElementById('today-timeline').innerHTML = `<div class="empty-state small">No se pudieron cargar tus datos. Recarga la página.</div>`;
+    showToast('No se pudieron cargar tus datos. Recarga la página.');
+    return false;
+  };
+  if(typeof SyncStorage === 'undefined' || !SyncStorage || typeof SyncStorage.activate !== 'function') return fail(null);
+  try{
+    await SyncStorage.activate(currentUser, {
+      onRemoteChange: handleRemoteDataChange,
+      onUnauthorized: handleSessionExpired,
+      onStatusChange: (status)=>{ syncStatus = status; },
+    });
+    return true;
+  }catch(err){ return fail(err); }
+}
+
+/** Han llegado cambios de otro dispositivo: se recarga el estado y se
+ * repinta. Si hay un formulario abierto se espera a que se cierre, para
+ * no cambiarle los datos al usuario mientras edita. */
+async function handleRemoteDataChange(){
+  if(remoteReloadTimer){ clearTimeout(remoteReloadTimer); remoteReloadTimer = null; }
+  if(overlay && overlay.classList.contains('open')){
+    remoteReloadTimer = setTimeout(handleRemoteDataChange, 2000);
+    return;
+  }
+  await loadState();
+  renderCurrentView();
+}
+
+/** La cookie de sesión ya no es válida (caducó o se cerró en otro sitio):
+ * se vuelve a la pantalla de login. Los cambios pendientes siguen en la
+ * caché de este usuario y se subirán cuando vuelva a entrar. */
+function handleSessionExpired(){
+  setAuthError('Tu sesión ha caducado. Inicia sesión de nuevo; tus cambios se guardan en este dispositivo hasta entonces.');
+  showAuthScreen();
+}
+
+/** Da de baja las notificaciones push de ESTE dispositivo para la cuenta
+ * actual. Sin esto, la suscripción seguiría a nombre de esta cuenta y
+ * otra persona que entrara después en el mismo dispositivo recibiría sus
+ * recordatorios. Primero en el servidor (necesita la sesión, así que va
+ * antes de /api/auth/logout) y después en el navegador: aunque el
+ * servidor no responda, una suscripción dada de baja en el navegador deja
+ * de ser válida y el servidor la elimina en el siguiente envío (404/410,
+ * ver api/push/send-due.js). Nunca lanza. */
+async function unsubscribePushForThisDevice(){
+  try{
+    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+    const registration = await navigator.serviceWorker.getRegistration();
+    if(!registration || !registration.pushManager) return;
+    const subscription = await registration.pushManager.getSubscription();
+    if(!subscription) return;
+    try{
+      await fetch('/api/push/unsubscribe', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body: JSON.stringify({ endpoint: subscription.endpoint }),
+      });
+    }catch(e){ /* sin red: basta con la baja del navegador, ver arriba */ }
+    try{ await subscription.unsubscribe(); }catch(e){}
+  }catch(e){ /* best-effort: nunca impide cerrar sesión */ }
+}
+
+/** Cerrar sesión: sube lo pendiente (o avisa si no se puede), da de baja
+ * el push de este dispositivo, borra la caché local de ESTA cuenta y
+ * cierra la sesión en el servidor. Al volver a entrar con otra cuenta no
+ * queda nada de esta en el dispositivo. */
 async function logout(){
-  try{ await fetch('/api/auth/logout', { method:'POST', credentials:'same-origin' }); }
-  catch(e){ /* si falla igualmente recargamos, para forzar a comprobar la sesión de nuevo */ }
+  const store = (typeof SyncStorage !== 'undefined' && SyncStorage) ? SyncStorage.current() : null;
+  if(store){
+    let allUploaded = false;
+    try{ allUploaded = await store.flush(); }catch(e){ allUploaded = false; }
+    if(!allUploaded){
+      const ok = confirm('Hay cambios que todavía no se han podido subir a tu cuenta (¿sin conexión?). Si cierras sesión ahora, se perderán. ¿Cerrar sesión igualmente?');
+      if(!ok) return;
+    }
+  }
+  await unsubscribePushForThisDevice();
+  // Mismo criterio que importar/borrar datos: el registro de avisos push
+  // de este dispositivo no debe pasar a la siguiente cuenta.
+  if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
+    try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push al cerrar sesión', e); }
+  }
+  if(store){
+    try{ await SyncStorage.deactivate(); }catch(e){}
+    try{ await store.destroy(); }catch(e){ console.error('No se pudo borrar la caché local de la cuenta', e); }
+  }
+  forgetLastUser();
+  let loggedOut = false;
+  try{
+    const res = await fetch('/api/auth/logout', { method:'POST', credentials:'same-origin' });
+    loggedOut = res.ok;
+  }catch(e){ /* sin red: se termina al volver la conexión, ver init() */ }
+  if(!loggedOut) setLogoutPending(true);
   location.reload();
 }
 
@@ -5966,9 +6120,12 @@ async function logout(){
    INICIALIZACIÓN
    ================================================================== */
 async function startApp(){
+  appStarted = true;
   document.getElementById('today-timeline').innerHTML = `<div class="empty-state small">Cargando…</div>`;
   const d = new Date();
   cal.year = d.getFullYear(); cal.month = d.getMonth(); cal.selected = todayStr();
+  // SYNC: window.storage pasa a ser el de la cuenta ANTES de leer nada.
+  if(!(await activateAccountStorage())) return;
   await loadState();
   initIA();
   initSettingsDataIO();
@@ -5988,13 +6145,36 @@ async function startApp(){
 
 (async function init(){
   initAuthScreen();
-  currentUser = await fetchMe();
-  if(currentUser){
+  if(isLogoutPending()){
+    // Se cerró sesión sin conexión: se termina de cerrar ahora (si hay red)
+    // y se pide login, en vez de volver a entrar solo en esa cuenta.
+    try{
+      const res = await fetch('/api/auth/logout', { method:'POST', credentials:'same-origin' });
+      if(res.ok) setLogoutPending(false);
+    }catch(e){}
+    showAuthScreen();
+    return;
+  }
+  const session = await checkSession();
+  if(session.user){
+    currentUser = session.user;
+    rememberLastUser(session.user);
     hideAuthScreen();
     await startApp();
-  } else {
-    showAuthScreen();
+    return;
   }
+  // Sin conexión (o servidor caído): se abre con el último usuario de este
+  // dispositivo y su caché; se sincronizará al volver la red. Con un 401
+  // real (sesión caducada o cerrada) se pide login.
+  const lastUser = session.offline ? readLastUser() : null;
+  if(lastUser){
+    currentUser = lastUser;
+    hideAuthScreen();
+    await startApp();
+    return;
+  }
+  if(!session.offline) forgetLastUser();
+  showAuthScreen();
 })();
 </script>
 
