@@ -13,7 +13,7 @@
  * que alguien se quede atascado con una versión vieja.
  */
 
-const CACHE_VERSION = 'v2.1.1';
+const CACHE_VERSION = 'v2.2.0';
 const CACHE_NAME = `organizator-shell-${CACHE_VERSION}`;
 
 // Recursos propios de la app que se pueden precachear con seguridad.
@@ -87,6 +87,15 @@ self.addEventListener('fetch', (event) => {
   // Solo gestionamos peticiones GET del propio origen; todo lo demás
   // (fuentes de Google, la API de la IA, etc.) va directo a la red tal cual.
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) {
+    return;
+  }
+
+  // Las respuestas de la API (/api/*) NUNCA se cachean ni se sirven desde
+  // caché: dependen de la sesión (cookie) y del usuario, así que servir una
+  // copia guardada podría mostrar la sesión o los datos de OTRA cuenta
+  // (p. ej. un GET /api/auth/me cacheado tras cerrar sesión). Van siempre
+  // directas a la red, igual que las peticiones que no son GET.
+  if (new URL(req.url).pathname.startsWith('/api/')) {
     return;
   }
 
