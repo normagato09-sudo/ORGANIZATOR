@@ -2994,6 +2994,12 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
   // detectSmartFormIntent (AI-2.1): título/fecha/hora ya interpretados,
   // nunca recalculados ni inventados aquí.
   const pre = (!editing && prefill) ? prefill : null;
+  // AI-2.8: la protección contra duplicados SOLO se activa cuando el
+  // formulario se abrió desde el chat con un prefill de Smart Form para
+  // CREAR algo nuevo — nunca al editar (donde `existing` ya manda sobre
+  // sus propios valores) ni al abrir el formulario a mano con el botón
+  // de siempre (prefill null, "envío normal" fuera del alcance de AI-2.8).
+  const smartFormOrigin = !editing && !!prefill;
   // UX-8: "Más opciones" empieza cerrado al crear una tarea nueva; al
   // editar una que ya tenga algo configurado ahí dentro (hora, prioridad
   // distinta de la media por defecto, minutos estimados o un recordatorio
@@ -3160,12 +3166,44 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
     // sanitización real la hace sanitizeRecurrence dentro de
     // addTask/updateTask — aquí no se duplica esa validación.
     data.recurrence = readRecurrenceFromForm(fd, data.dueDate);
+    // R-5.1: una recurrencia semanal sin ningún día marcado no tiene
+    // sentido (no ocurriría nunca) — se avisa y no se guarda nada, mismo
+    // mecanismo que la validación de fecha de fin de arriba. No se toca
+    // sanitizeRecurrence/isValidRecurrenceDaysOfWeek (R-1): ahí un
+    // daysOfWeek vacío sigue siendo válido a propósito (una recurrencia
+    // ya guardada con datos antiguos no debe romperse al leerla), esta
+    // comprobación es solo del lado del formulario, antes de guardar.
+    if(data.recurrence && data.recurrence.type === 'weekly' && data.recurrence.daysOfWeek.length === 0){
+      showToast('Elige al menos un día de la semana para la recurrencia semanal');
+      return;
+    }
     // Fase 3 de recordatorios: id real del target ANTES de crear (para
     // que targetId del reminder coincida con el id real de la tarea; se
     // apoya en que addTask() usa el id incluido en `data` si se le pasa,
     // igual que ya hace con cualquier otro campo).
     const taskTargetId = editing ? taskId : uid();
     if(!editing) data.id = taskTargetId;
+    // AI-2.8: solo para creaciones que vienen de un Smart Form (ver
+    // smartFormOrigin arriba) — comprueba, con el contenido YA enviado
+    // (incluidas las ediciones manuales del usuario, nunca los valores
+    // detectados originalmente por la IA), si ya existe una tarea
+    // equivalente. Si la hay, no se
+    // crea un segundo elemento: se informa y se corta aquí, antes de
+    // tocar `state`/persistencia — el resto del submit (recordatorio,
+    // cierre de modal, toast, render) sigue exactamente igual para
+    // cualquier otro caso (edición, creación manual, o creación de Smart
+    // Form sin duplicado).
+    if(smartFormOrigin && typeof AIActions !== 'undefined' && typeof AIActions.findExistingSmartFormEquivalent === 'function'){
+      const duplicate = AIActions.findExistingSmartFormEquivalent(
+        { type: 'task', title: data.title, date: data.dueDate, time: data.dueTime },
+        { tasks: state.tasks, events: state.events }
+      );
+      if(duplicate){
+        showToast('Ya existe una tarea igual — no se ha creado un duplicado.');
+        closeModal();
+        return;
+      }
+    }
     if(editing) await updateTask(taskId, data); else await addTask(data);
     const reminderDateTime = reminderTargetDateTime(data.dueDate, data.dueTime);
     await syncReminderForTarget('task', taskTargetId, reminderDateTime, fd.get('reminderMinutes'));
@@ -3227,6 +3265,10 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
   // endTime/categoría/recurrencia/recordatorio conservan siempre sus
   // defaults normales, nunca se inventan a partir del chat.
   const pre = (!editing && prefill) ? prefill : null;
+  // AI-2.8: mismo criterio exacto que openTaskModal (ver comentario allí)
+  // — solo se activa al CREAR un evento nuevo desde el chat (prefill de
+  // Smart Form), nunca al editar ni al abrir el formulario a mano.
+  const smartFormOrigin = !editing && !!prefill;
   // Fase 3 de recordatorios: estado inicial del <select> de recordatorio.
   // Un evento allDay (o sin hora de inicio) nunca tiene datetime válido
   // en esta fase — sin regla especial todavía para allDay, simplemente
@@ -3365,10 +3407,31 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
     // data.recurrence SIEMPRE se incluye (aunque sea null): mismo
     // criterio que en openTaskModal (ver comentario allí).
     data.recurrence = readRecurrenceFromForm(fd, data.date);
+    // R-5.1: mismo criterio exacto que openTaskModal (ver comentario
+    // allí) — una recurrencia semanal sin ningún día marcado no se guarda.
+    if(data.recurrence && data.recurrence.type === 'weekly' && data.recurrence.daysOfWeek.length === 0){
+      showToast('Elige al menos un día de la semana para la recurrencia semanal');
+      return;
+    }
     // Fase 3 de recordatorios: ver comentario equivalente en el submit de
     // openTaskModal() sobre por qué se genera el id antes de addEvent().
     const eventTargetId = editing ? eventId : uid();
     if(!editing) data.id = eventTargetId;
+    // AI-2.8: mismo criterio exacto que openTaskModal (ver comentario
+    // allí) — comprueba, con el contenido YA enviado (incluidas las
+    // ediciones manuales, allDay incluido), si ya existe un evento
+    // equivalente antes de crear uno nuevo desde un Smart Form.
+    if(smartFormOrigin && typeof AIActions !== 'undefined' && typeof AIActions.findExistingSmartFormEquivalent === 'function'){
+      const duplicate = AIActions.findExistingSmartFormEquivalent(
+        { type: 'event', title: data.title, date: data.date, time: data.startTime, allDay: data.allDay },
+        { tasks: state.tasks, events: state.events }
+      );
+      if(duplicate){
+        showToast('Ya existe un evento igual — no se ha creado un duplicado.');
+        closeModal();
+        return;
+      }
+    }
     if(editing) await updateEvent(eventId, data); else await addEvent(data);
     const reminderDateTime = reminderTargetDateTime(data.date, data.allDay ? '' : data.startTime);
     await syncReminderForTarget('event', eventTargetId, reminderDateTime, fd.get('reminderMinutes'));

@@ -256,7 +256,7 @@ const sb = makeSandbox();
     } catch (e) { threw = true; }
     check('13/14. no llama a resolveDateExpression/resolveTimeExpression (ni siquiera están cargadas y no lanza)', threw === false);
     // El propio código fuente del bloque AI-2.2 tampoco las menciona.
-    const ai22Only = extractBetween(aiActionsSrc, '/* ==================================================================\n     AI-2.2', '\n\n  /* ---------------- Contexto con IDs', 'bloque AI-2.2 en solitario');
+    const ai22Only = extractBetween(aiActionsSrc, '/* ==================================================================\n     AI-2.2', '\n\n  /* ==================================================================\n     AI-2.6', 'bloque AI-2.2 en solitario');
     check('13b/14b. el código fuente de AI-2.2 no llama a resolveDateExpression ni resolveTimeExpression', !/resolveDateExpression\(/.test(ai22Only) && !/resolveTimeExpression\(/.test(ai22Only));
     check('13c. AI-2.2 valida el FORMATO de fecha ya resuelta (regex YYYY-MM-DD) en vez de recalcularla — fechas mal formadas se descartan, no se "arreglan"', sb.buildSmartFormPrefill({ type: 'event', fields: { title: 'x', date: 'no-es-una-fecha' } }).date === undefined);
     check('14c. igual para horas: formato HH:MM inválido se descarta, no se "arregla"', sb.buildSmartFormPrefill({ type: 'event', fields: { title: 'x', time: '25:99' } }).time === undefined);
