@@ -654,6 +654,125 @@
     await createIdbBackend(db, dbNameForUser(userId)).destroy();
   }
 
+  /* ---------------- Datos antiguos (antes de las cuentas) ----------------
+     Hasta SYNC, storage-polyfill.js guardaba todo en UNA base compartida
+     por todo el navegador: 'organizator-storage', almacén 'kv', claves
+     'user:<clave>'. Estas funciones la leen y la borran para migrarla a
+     la cuenta (la decisión y el aviso al usuario viven en organizator.html,
+     bloque "SYNC — migración de datos antiguos"). */
+  const LEGACY_DB_NAME = 'organizator-storage';
+  const LEGACY_STORE = 'kv';
+  const LEGACY_LOCAL_KEYS = ['reminderNotificationLedger'];
+  const LIST_KEYS = SYNCED_KEYS.filter(k => k !== 'settingsPrefs' && k !== 'settingsIA');
+
+  /** Lee la base antigua SIN crearla si no existe (abrir una base que no
+   * existe la crearía vacía: se aborta esa creación). Devuelve null si no
+   * hay base o no tiene nada útil, o { values: { clave: valorParseado } }
+   * con las claves sincronizadas y las locales que tengan un valor válido. */
+  function readLegacyData(idb) {
+    return new Promise((resolve) => {
+      if (!idb) { resolve(null); return; }
+      let req;
+      let created = false;
+      try { req = idb.open(LEGACY_DB_NAME); } catch (e) { resolve(null); return; }
+      req.onupgradeneeded = () => {
+        // No existía: se cancela la creación para no dejar una base vacía.
+        created = true;
+        try { req.transaction.abort(); } catch (e) { /* ignorado */ }
+      };
+      req.onerror = () => resolve(null);
+      req.onsuccess = () => {
+        const db = req.result;
+        if (created || !db.objectStoreNames.contains(LEGACY_STORE)) { db.close(); resolve(null); return; }
+        const tx = db.transaction(LEGACY_STORE, 'readonly');
+        const store = tx.objectStore(LEGACY_STORE);
+        const keysReq = store.getAllKeys();
+        const valuesReq = store.getAll();
+        tx.oncomplete = () => {
+          db.close();
+          const values = {};
+          (keysReq.result || []).forEach((k, i) => {
+            if (typeof k !== 'string' || !k.startsWith('user:')) return;
+            const key = k.slice(5);
+            if (!isSyncedKey(key) && LEGACY_LOCAL_KEYS.indexOf(key) === -1) return;
+            const raw = valuesReq.result[i];
+            if (typeof raw !== 'string') return;
+            const parsed = parseJSON(raw);
+            if (!parsed.ok) return;
+            if (isSyncedKey(key) && !hasSyncedShape(key, parsed.value)) return;
+            values[key] = parsed.value;
+          });
+          resolve(Object.keys(values).length ? { values } : null);
+        };
+        tx.onerror = () => { db.close(); resolve(null); };
+      };
+    });
+  }
+
+  /** Borra la base antigua. { deleted: true } solo cuando el navegador
+   * confirma el borrado; si otra pestaña con una versión vieja la tiene
+   * abierta ('blocked'), { deleted: false } para reintentarlo más tarde. */
+  function deleteLegacyData(idb) {
+    return new Promise((resolve) => {
+      if (!idb) { resolve({ deleted: false }); return; }
+      let req;
+      try { req = idb.deleteDatabase(LEGACY_DB_NAME); } catch (e) { resolve({ deleted: false }); return; }
+      req.onsuccess = () => resolve({ deleted: true });
+      req.onerror = () => resolve({ deleted: false });
+      req.onblocked = () => resolve({ deleted: false, blocked: true });
+    });
+  }
+
+  /** Recuento de lo que hay en un conjunto de valores { clave: valor }
+   * (datos antiguos o de la cuenta), para el aviso al usuario. */
+  function summarizeData(values) {
+    const v = values || {};
+    const counts = {};
+    let total = 0;
+    for (const key of LIST_KEYS) {
+      counts[key] = Array.isArray(v[key]) ? v[key].length : 0;
+      total += counts[key];
+    }
+    const titles = [];
+    for (const key of ['tasks', 'events']) {
+      for (const item of (Array.isArray(v[key]) ? v[key] : [])) {
+        if (titles.length >= 3) break;
+        if (item && typeof item.title === 'string' && item.title.trim()) titles.push(item.title.trim());
+      }
+    }
+    return { counts, total, hasListData: total > 0, sampleTitles: titles };
+  }
+
+  /** Valores a guardar en la cuenta al pasar los datos antiguos:
+   *  - Listas: unión por id; si un mismo elemento está en los dos lados,
+   *    se queda la versión de la CUENTA (es la que ya ven los demás
+   *    dispositivos).
+   *  - Ajustes: en modo 'upload' (la cuenta no tenía datos) mandan los
+   *    antiguos; en 'combine' manda la cuenta y los antiguos solo rellenan
+   *    lo que falte.
+   * Solo claves sincronizadas; no modifica sus argumentos. */
+  function buildMigratedValues(legacyValues, accountValues, mode) {
+    const merge = SyncMerge.threeWayMerge;
+    const out = {};
+    for (const key of SYNCED_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(legacyValues || {}, key)) continue;
+      const legacy = legacyValues[key];
+      const account = accountValues ? accountValues[key] : undefined;
+      if (account === undefined || account === null) { out[key] = JSON.parse(JSON.stringify(legacy)); continue; }
+      const isList = LIST_KEYS.indexOf(key) !== -1;
+      out[key] = (isList || mode === 'combine') ? merge(null, account, legacy) : merge(null, legacy, account);
+    }
+    return out;
+  }
+
+  const legacy = {
+    DB_NAME: LEGACY_DB_NAME,
+    readLegacyData,
+    deleteLegacyData,
+    summarizeData,
+    buildMigratedValues,
+  };
+
   return {
     SYNCED_KEYS,
     dbNameForUser,
@@ -663,6 +782,7 @@
     activate,
     deactivate,
     deleteUserCache,
+    legacy,
     current: () => current,
   };
 });

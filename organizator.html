@@ -512,6 +512,9 @@
   .form-check input{width:auto;}
   .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px;}
   .modal-actions .right{display:flex;gap:8px;}
+  /* SYNC: aviso de datos antiguos — botones apilados, cómodos en el móvil */
+  .migration-actions{display:flex;flex-direction:column;gap:8px;margin-top:18px;}
+  .migration-actions .btn{width:100%;text-align:center;padding:10px 14px;}
 
   /* UX-8: secciones desplegables dentro de los modales de tarea/evento
      (⚙️ Más opciones / 🔁 Repetición / 🔔 Recordatorio). Mismo lenguaje
@@ -6055,6 +6058,222 @@ function handleSessionExpired(){
   showAuthScreen();
 }
 
+/* ---------- SYNC — migración de datos antiguos (antes de las cuentas) ----------
+   Hasta ahora los datos se guardaban en una base del navegador compartida
+   por todas las cuentas ('organizator-storage'). La primera vez que
+   alguien entra tras este cambio y esa base tiene datos, se le pregunta
+   qué hacer con ellos (ver showLegacyMigrationDialog). Reglas:
+   - Nunca se sube nada sin que el usuario lo elija, y antes de subir o
+     descartar se descarga una copia de seguridad (.json, mismo formato que
+     "Exportar datos", así que se puede volver a importar).
+   - La base antigua solo se borra cuando el servidor ha CONFIRMADO la
+     subida (o, si se descartan, tras la copia). Sin conexión se conserva
+     y se termina la próxima vez que se abra la app.
+   - Los datos antiguos no tienen dueño: "No son míos" no borra nada, solo
+     deja de preguntar a esa cuenta. Cuando una cuenta los pasa a su
+     nombre quedan reservados (marca en localStorage) y ya no se ofrecen a
+     otras cuentas mientras se termina la subida. */
+const LEGACY_MIGRATION_KEY = 'organizator:legacyMigration';
+
+function readLegacyMigrationMarker(){
+  try{
+    const m = JSON.parse(localStorage.getItem(LEGACY_MIGRATION_KEY) || 'null') || {};
+    return {
+      claimedBy: (m.claimedBy !== undefined && m.claimedBy !== null) ? String(m.claimedBy) : null,
+      declinedBy: Array.isArray(m.declinedBy) ? m.declinedBy.map(String) : [],
+    };
+  }catch(e){ return { claimedBy:null, declinedBy:[] }; }
+}
+function writeLegacyMigrationMarker(m){
+  try{
+    if(!m || (!m.claimedBy && !(m.declinedBy || []).length)) localStorage.removeItem(LEGACY_MIGRATION_KEY);
+    else localStorage.setItem(LEGACY_MIGRATION_KEY, JSON.stringify(m));
+  }catch(e){}
+}
+
+/** Valores actuales de la cuenta (ya descargados en su caché). */
+async function readAccountValues(store){
+  const out = {};
+  for(const key of SyncStorage.SYNCED_KEYS){
+    const r = await store.storage.get(key);
+    if(!r) continue;
+    try{ out[key] = JSON.parse(r.value); }catch(e){}
+  }
+  return out;
+}
+
+/** Copia de seguridad de los datos antiguos, con el mismo formato que
+ * "Exportar datos" (Ajustes) para poder importarla si hiciera falta. */
+function downloadLegacyBackup(values){
+  const payload = {
+    app: APP_NAME,
+    version: APP_VERSION,
+    exportedAt: new Date().toISOString(),
+    source: 'Datos guardados en este dispositivo antes de las cuentas',
+    data: {
+      tasks: values.tasks || [],
+      events: values.events || [],
+      customSchedules: values.customSchedules || [],
+      eventCategories: values.eventCategories || [],
+      reminders: values.reminders || [],
+      prefs: values.settingsPrefs || {},
+      ia: values.settingsIA || {},
+    }
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `organizator-backup-datos-antiguos-${todayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1000);
+}
+
+/** "12 tareas, 5 eventos y 3 recordatorios" */
+function legacyCountsText(counts){
+  const parts = [];
+  const add = (n, one, many) => { if(n) parts.push(`${n} ${n === 1 ? one : many}`); };
+  add(counts.tasks, 'tarea', 'tareas');
+  add(counts.events, 'evento', 'eventos');
+  add(counts.reminders, 'recordatorio', 'recordatorios');
+  add(counts.customSchedules, 'horario bloqueado', 'horarios bloqueados');
+  add(counts.eventCategories, 'categoría de eventos', 'categorías de eventos');
+  if(parts.length <= 1) return parts[0] || '';
+  return parts.slice(0, -1).join(', ') + ' y ' + parts[parts.length - 1];
+}
+
+/** Aviso al usuario. Resuelve con 'upload' | 'combine' | 'discard' |
+ * 'notMine' | 'later'. Cerrarlo pulsando fuera equivale a "Ahora no". */
+function showLegacyMigrationDialog(legacySummary, accountSummary){
+  return new Promise(resolve => {
+    const accountHasData = accountSummary.hasListData;
+    const email = currentUser && currentUser.email ? esc(currentUser.email) : 'tu cuenta';
+    const samples = legacySummary.sampleTitles.length
+      ? `<p class="row-sub">Por ejemplo: ${legacySummary.sampleTitles.map(t => `«${esc(t)}»`).join(', ')}.</p>`
+      : '';
+    modalBox.innerHTML = `
+      <h3>Datos guardados en este dispositivo</h3>
+      <p>En este dispositivo hay datos de ORGANIZATOR de antes de que existieran las cuentas: <strong>${esc(legacyCountsText(legacySummary.counts))}</strong>.</p>
+      ${samples}
+      <p>${accountHasData
+        ? `Tu cuenta (${email}) ya tiene datos: ${esc(legacyCountsText(accountSummary.counts))}.`
+        : `Tu cuenta (${email}) todavía está vacía.`} ¿Estos datos son tuyos?</p>
+      <p class="row-sub">Antes de cambiar nada se descargará una copia de seguridad (.json) de estos datos.</p>
+      <div class="migration-actions">
+        ${accountHasData
+          ? `<button type="button" class="btn btn-dark" data-choice="combine">Combinar con mi cuenta</button>
+             <button type="button" class="btn" data-choice="discard">Usar solo los de mi cuenta</button>`
+          : `<button type="button" class="btn btn-dark" data-choice="upload">Subir a mi cuenta</button>`}
+        <button type="button" class="btn" data-choice="notMine">No son míos</button>
+        <button type="button" class="btn btn-ghost" data-choice="later">Ahora no</button>
+      </div>`;
+    overlay.classList.add('open');
+    let done = false;
+    const onOutside = (e) => { if(e.target === overlay) finish('later'); };
+    const finish = (choice) => {
+      if(done) return;
+      done = true;
+      overlay.removeEventListener('click', onOutside);
+      closeModal();
+      resolve(choice);
+    };
+    overlay.addEventListener('click', onOutside);
+    modalBox.querySelectorAll('[data-choice]').forEach(b => b.addEventListener('click', ()=> finish(b.dataset.choice)));
+  });
+}
+
+/** Sube lo pendiente y, SOLO si el servidor lo confirma todo, borra la
+ * base antigua. Si no hay conexión, la conserva (se reintenta al abrir la
+ * app). Devuelve true si la base antigua quedó borrada. */
+async function finishLegacyMigrationIfUploaded(store, announce, choice){
+  const uploaded = await store.flush();
+  if(!uploaded){
+    if(announce){
+      showToast(choice === 'discard'
+        ? 'Los datos antiguos se quitarán de este dispositivo cuando se termine de sincronizar tu cuenta.'
+        : 'Tus datos antiguos se subirán a tu cuenta en cuanto haya conexión. Mientras tanto se conservan en este dispositivo.');
+    }
+    return false;
+  }
+  const result = await SyncStorage.legacy.deleteLegacyData(window.indexedDB);
+  if(result.deleted) writeLegacyMigrationMarker(null);
+  if(announce){
+    showToast(choice === 'discard'
+      ? 'Listo: te quedas con los datos de tu cuenta (tienes la copia descargada).'
+      : 'Listo: tus datos antiguos ya están en tu cuenta.');
+  }
+  return !!result.deleted;
+}
+
+/** Punto de entrada (desde startApp, antes de loadState). Nunca lanza:
+ * un fallo aquí no debe impedir abrir la app. */
+async function maybeMigrateLegacyData(){
+  try{
+    const store = (typeof SyncStorage !== 'undefined' && SyncStorage) ? SyncStorage.current() : null;
+    const idb = window.indexedDB;
+    if(!store || !SyncStorage.legacy || !idb || !currentUser) return;
+    const uid = String(currentUser.id);
+    const legacyData = await SyncStorage.legacy.readLegacyData(idb);
+    const marker = readLegacyMigrationMarker();
+    if(!legacyData){
+      if(marker.claimedBy || marker.declinedBy.length) writeLegacyMigrationMarker(null);
+      return;
+    }
+    // Ya se decidió qué hacer con ellos y falta terminar (p. ej. no había
+    // conexión): lo termina la misma cuenta; a otras no se les ofrecen.
+    if(marker.claimedBy){
+      if(marker.claimedBy === uid) await finishLegacyMigrationIfUploaded(store, false);
+      return;
+    }
+    if(marker.declinedBy.includes(uid)) return;
+    const legacySummary = SyncStorage.legacy.summarizeData(legacyData.values);
+    if(!legacySummary.hasListData) return;
+    // Para ofrecer las opciones correctas hay que saber qué tiene ya la
+    // cuenta: solo si la primera sincronización de esta sesión fue bien.
+    if(!store.getStatus().lastSyncAt) return;
+    const accountValues = await readAccountValues(store);
+    const accountSummary = SyncStorage.legacy.summarizeData(accountValues);
+
+    const choice = await showLegacyMigrationDialog(legacySummary, accountSummary);
+    if(choice === 'later') return;
+    if(choice === 'notMine'){
+      marker.declinedBy.push(uid);
+      writeLegacyMigrationMarker(marker);
+      return;
+    }
+
+    // Copia de seguridad ANTES de subir o descartar nada.
+    try{ downloadLegacyBackup(legacyData.values); }
+    catch(err){
+      console.error('No se pudo descargar la copia de seguridad de los datos antiguos', err);
+      showToast('No se pudo descargar la copia de seguridad, así que no se ha cambiado nada.');
+      return;
+    }
+
+    // Reservados para esta cuenta desde ya (por si la subida tiene que
+    // esperar a que vuelva la conexión).
+    marker.claimedBy = uid;
+    writeLegacyMigrationMarker(marker);
+
+    if(choice === 'upload' || choice === 'combine'){
+      const values = SyncStorage.legacy.buildMigratedValues(legacyData.values, accountValues, choice);
+      for(const key of Object.keys(values)){
+        await store.storage.set(key, JSON.stringify(values[key]));
+      }
+      // El registro local de avisos (solo de este dispositivo) también pasa
+      // a la caché de la cuenta, si todavía no tenía uno.
+      if(legacyData.values.reminderNotificationLedger && !(await store.storage.get('reminderNotificationLedger'))){
+        await store.storage.set('reminderNotificationLedger', JSON.stringify(legacyData.values.reminderNotificationLedger));
+      }
+    }
+    await finishLegacyMigrationIfUploaded(store, true, choice);
+  }catch(err){
+    console.error('No se pudo completar la migración de los datos antiguos', err);
+  }
+}
+
 /** Da de baja las notificaciones push de ESTE dispositivo para la cuenta
  * actual. Sin esto, la suscripción seguiría a nombre de esta cuenta y
  * otra persona que entrara después en el mismo dispositivo recibiría sus
@@ -6094,6 +6313,14 @@ async function logout(){
     if(!allUploaded){
       const ok = confirm('Hay cambios que todavía no se han podido subir a tu cuenta (¿sin conexión?). Si cierras sesión ahora, se perderán. ¿Cerrar sesión igualmente?');
       if(!ok) return;
+      // Si entre lo que se pierde estaban los datos antiguos que esta
+      // cuenta había reservado, se liberan: siguen en la base antigua y se
+      // volverán a ofrecer (nunca se borran sin haberse subido).
+      const marker = readLegacyMigrationMarker();
+      if(currentUser && marker.claimedBy === String(currentUser.id)){
+        marker.claimedBy = null;
+        writeLegacyMigrationMarker(marker);
+      }
     }
   }
   await unsubscribePushForThisDevice();
@@ -6126,6 +6353,9 @@ async function startApp(){
   cal.year = d.getFullYear(); cal.month = d.getMonth(); cal.selected = todayStr();
   // SYNC: window.storage pasa a ser el de la cuenta ANTES de leer nada.
   if(!(await activateAccountStorage())) return;
+  // SYNC: datos de antes de las cuentas en este dispositivo (pregunta al
+  // usuario qué hacer con ellos; ver maybeMigrateLegacyData).
+  await maybeMigrateLegacyData();
   await loadState();
   initIA();
   initSettingsDataIO();
