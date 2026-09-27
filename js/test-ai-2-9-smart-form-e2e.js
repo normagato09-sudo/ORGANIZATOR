@@ -280,7 +280,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
     check('1a. detectSmartFormIntent devuelve type "task"', intent !== null && intent.type === 'task');
 
     const prefill = sb.AIActions.buildSmartFormPrefill(intent);
-    check('1b. buildSmartFormPrefill produce el prefill esperado (título/fecha)', prefill.type === 'task' && prefill.title === 'Tengo que estudiar biología' && prefill.date === '2026-09-18');
+    check('1b. buildSmartFormPrefill produce el prefill esperado (título/fecha)', prefill.type === 'task' && prefill.title === 'Estudiar biología' && prefill.date === '2026-09-18');
 
     sb.openSmartFormFromChat(intent);
     check('1c. se abre el formulario de TAREA (openTaskModal llamado, openEventModal no)', sb.__calls.openTaskModal === 1 && sb.__calls.openEventModal === 0);
@@ -305,7 +305,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
     check('2a. detectSmartFormIntent devuelve type "event"', intent !== null && intent.type === 'event');
 
     const prefill = sb.AIActions.buildSmartFormPrefill(intent);
-    check('2b. buildSmartFormPrefill produce el prefill esperado (título/fecha)', prefill.type === 'event' && prefill.title === 'Tengo médico' && prefill.date === '2026-09-21');
+    check('2b. buildSmartFormPrefill produce el prefill esperado (título/fecha)', prefill.type === 'event' && prefill.title === 'Médico' && prefill.date === '2026-09-21');
 
     sb.openSmartFormFromChat(intent);
     check('2c. se abre el formulario de EVENTO (openEventModal llamado, openTaskModal no)', sb.__calls.openEventModal === 1 && sb.__calls.openTaskModal === 0);
@@ -326,7 +326,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
     const sb = makeFullSandbox();
     const message = 'mañana tengo que estudiar biología';
     const intent = sb.AIActions.detectSmartFormIntent(message, { todayStr: TODAY });
-    const prefill = sb.AIActions.buildSmartFormPrefill(intent); // { title: 'Tengo que estudiar biología', date: '2026-09-18' }, sin hora
+    const prefill = sb.AIActions.buildSmartFormPrefill(intent); // { title: 'Estudiar biología', date: '2026-09-18' }, sin hora
     sb.openSmartFormFromChat(intent);
 
     // El usuario cambia TÍTULO, FECHA y añade una HORA que la IA no detectó.
@@ -351,7 +351,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
     sb.openSmartFormFromChat(intent);
     check('4a. el formulario se abrió antes de cancelar', sb.__calls.openTaskModal === 1);
 
-    seedTaskDefaults(sb, { title: 'Tengo que estudiar biología', dueDate: '2026-09-18' });
+    seedTaskDefaults(sb, { title: 'Estudiar biología', dueDate: '2026-09-18' });
     await clickBtn(sb, 'task-cancel-btn');
 
     check('4b. cancelar no crea ninguna tarea nueva', sb.state.tasks.length === 1 && sb.__calls.addTask === 0);
@@ -386,7 +386,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
   // =====================================================================
   {
     // --- Tarea ---
-    const existingTask = { id: 'dup-task-1', title: 'Tengo que estudiar biología', dueDate: '2026-09-18', dueTime: '', priority: 'media' };
+    const existingTask = { id: 'dup-task-1', title: 'Estudiar biología', dueDate: '2026-09-18', dueTime: '', priority: 'media' };
     const sbTask = makeFullSandbox({ tasks: [existingTask] });
     const messageTask = 'mañana tengo que estudiar biología';
     const intentTask = sbTask.AIActions.detectSmartFormIntent(messageTask, { todayStr: TODAY });
@@ -400,7 +400,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
     check('6d. se informa del duplicado (showToast llamado)', sbTask.__calls.showToast === 1);
 
     // --- Evento ---
-    const existingEvent = { id: 'dup-event-1', title: 'Tengo médico', date: '2026-09-21', startTime: '', endTime: '', allDay: false };
+    const existingEvent = { id: 'dup-event-1', title: 'Médico', date: '2026-09-21', startTime: '', endTime: '', allDay: false };
     const sbEvent = makeFullSandbox({ events: [existingEvent] });
     const messageEvent = 'el lunes tengo médico';
     const intentEvent = sbEvent.AIActions.detectSmartFormIntent(messageEvent, { todayStr: TODAY });
@@ -417,7 +417,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
   section('7) CAMBIO MANUAL EVITA EL BLOQUEO DE DUPLICADO');
   // =====================================================================
   {
-    const existingTask = { id: 'dup-task-2', title: 'Tengo que estudiar biología', dueDate: '2026-09-18', dueTime: '', priority: 'media' };
+    const existingTask = { id: 'dup-task-2', title: 'Estudiar biología', dueDate: '2026-09-18', dueTime: '', priority: 'media' };
 
     // 7a. el usuario cambia el TÍTULO -> ya no coincide -> se crea.
     {
@@ -433,7 +433,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
       const sb = makeFullSandbox({ tasks: [JSON.parse(JSON.stringify(existingTask))] });
       const intent = sb.AIActions.detectSmartFormIntent('mañana tengo que estudiar biología', { todayStr: TODAY });
       sb.openSmartFormFromChat(intent);
-      seedTaskDefaults(sb, { title: 'Tengo que estudiar biología', dueDate: '2026-09-30' }); // fecha editada
+      seedTaskDefaults(sb, { title: 'Estudiar biología', dueDate: '2026-09-30' }); // fecha editada
       await submitTaskForm(sb);
       check('7b. fecha editada (ya no coincide) → SÍ se crea la nueva tarea', sb.state.tasks.length === 2 && sb.__calls.addTask === 1);
     }
@@ -442,7 +442,7 @@ async function clickBtn(sb, id) { await fire(sb.__registry.byIdEl(id), 'click', 
       const sb = makeFullSandbox({ tasks: [JSON.parse(JSON.stringify(existingTask))] });
       const intent = sb.AIActions.detectSmartFormIntent('mañana tengo que estudiar biología', { todayStr: TODAY });
       sb.openSmartFormFromChat(intent);
-      seedTaskDefaults(sb, { title: 'Tengo que estudiar biología', dueDate: '2026-09-18', dueTime: '09:00' }); // hora añadida
+      seedTaskDefaults(sb, { title: 'Estudiar biología', dueDate: '2026-09-18', dueTime: '09:00' }); // hora añadida
       await submitTaskForm(sb);
       check('7c. hora añadida (ya no coincide) → SÍ se crea la nueva tarea', sb.state.tasks.length === 2 && sb.__calls.addTask === 1);
     }

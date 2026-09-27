@@ -694,14 +694,64 @@ Reglas estrictas, sin excepción:
     return text.trim();
   }
 
+  // Muletillas y fórmulas de obligación/petición con las que la gente
+  // suele EMPEZAR lo que escribe en el chat ("pues hoy tengo que hacer
+  // una tarea de mates", "recuérdame que llame a mamá") y que no forman
+  // parte del nombre de la tarea/evento. Solo se quitan al PRINCIPIO del
+  // título (nunca en medio). A propósito NO se incluyen verbos que pueden
+  // ser la propia tarea ("pon la lavadora", "crear presentación").
+  const SMART_FORM_TITLE_FILLERS = [
+    'pues', 'bueno', 'vale', 'oye', 'mira', 'venga', 'entonces', 'y', 'pero', 'ah', 'eh', 'ok',
+    'tengo que', 'tenemos que', 'tengo', 'tenemos', 'tendría que', 'tendria que', 'tendré que', 'tendre que',
+    'hay que', 'habrá que', 'habra que', 'habría que', 'habria que',
+    'debo', 'debemos', 'debería', 'deberia', 'deberíamos', 'deberiamos', 'he de',
+    'me toca', 'nos toca', 'toca', 'necesito', 'necesitamos', 'quiero', 'queremos',
+    'me gustaría', 'me gustaria', 'voy a', 'vamos a',
+    'recuérdame que', 'recuerdame que', 'recuérdame', 'recuerdame',
+    'acuérdate de', 'acuerdate de', 'no te olvides de', 'no olvides', 'no olvidar',
+    'apúntame', 'apuntame', 'apunta', 'anótame', 'anotame', 'anota',
+    'añade', 'añadir', 'agrega', 'agenda', 'agendar', 'que',
+  ];
+  const SMART_FORM_TITLE_EDGE_PUNCT = '\\s,;:.!?¡¿…';
+
+  /** Quita del PRINCIPIO del texto (repetidamente: "pues tengo que...")
+   * las muletillas de SMART_FORM_TITLE_FILLERS, el artículo indeterminado
+   * tras "hacer" ("hacer una tarea de mates" -> "hacer tarea de mates";
+   * nunca se quita el verbo, y el artículo determinado se conserva:
+   * "hacer la compra"), un artículo indeterminado inicial ("una reunión"
+   * -> "reunión") y la puntuación sobrante de los extremos. Cada muletilla solo cuenta si va seguida de
+   * espacio, puntuación o fin de texto (nunca "pero" dentro de "perro").
+   * Puede devolver '' si no queda nada: decide el llamador. */
+  function stripLeadingFillerForTitle(text) {
+    const alt = SMART_FORM_TITLE_FILLERS
+      .slice().sort((a, b) => b.length - a.length)
+      .map(w => w.replace(/\s+/g, '\\s+'))
+      .join('|');
+    const fillerRe = new RegExp(`^(?:${alt})(?=$|[${SMART_FORM_TITLE_EDGE_PUNCT}])`, 'i');
+    const lightVerbArticleRe = /^(hacer\s+)(?:un|una|unos|unas)\s+/i;
+    const indefiniteArticleRe = /^(?:un|una|unos|unas)\s+/i;
+    const leadingPunctRe = new RegExp(`^[${SMART_FORM_TITLE_EDGE_PUNCT}]+`);
+    const trailingPunctRe = new RegExp(`[${SMART_FORM_TITLE_EDGE_PUNCT}]+$`);
+    let t = String(text || '').replace(leadingPunctRe, '');
+    let prev;
+    do {
+      prev = t;
+      t = t.replace(fillerRe, '').replace(leadingPunctRe, '').replace(lightVerbArticleRe, '$1').replace(indefiniteArticleRe, '');
+    } while (t !== prev);
+    return t.replace(trailingPunctRe, '').trim();
+  }
+
   /** Título candidato para el formulario inteligente: el mensaje sin las
-   * referencias de fecha/hora ya reconocidas, con la primera letra en
-   * mayúscula — nunca resumido, reescrito ni inventado. Devuelve null si
-   * no queda ningún texto sustantivo tras la limpieza. */
+   * referencias de fecha/hora ya reconocidas ni las muletillas del
+   * principio, con la primera letra en mayúscula — nunca resumido,
+   * reescrito ni inventado. Devuelve null si SOLO había fecha/hora (no
+   * hay nada que crear). Si lo único que quedaba eran muletillas, nunca
+   * devuelve un título vacío: usa la frase original tal cual. */
   function extractTitleForSmartForm(message) {
     const cleaned = stripDateTimePhrasesForTitle(message);
     if (!cleaned) return null;
-    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+    const title = stripLeadingFillerForTitle(cleaned) || String(message).replace(/\s+/g, ' ').trim();
+    return title.charAt(0).toUpperCase() + title.slice(1);
   }
 
   /** Punto de entrada de AI-2.1. Devuelve `null` si el mensaje no
