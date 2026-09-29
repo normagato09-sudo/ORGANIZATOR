@@ -54,6 +54,19 @@ const categoriesSrc = extractBetween(
   '\n/* ==================================================================\n   TOAST',
   'bloque CATEGORÍAS DE EVENTOS (6A-3)'
 );
+// eventsForScheduler() expande los eventos recurrentes (fallo 3 de
+// DIAGNOSTICO-IA.md) y para eso usa todayStr()/addDays() de este bloque.
+const dateUtilsSrc = extractBetween(
+  html,
+  '/* ==================================================================\n   UTILIDADES DE FECHA',
+  '\n\n/* ==================================================================\n   HORARIOS BLOQUEADOS',
+  'bloque UTILIDADES DE FECHA'
+) + '\n' + extractBetween(
+  html,
+  'function addDays(dateStr, n){',
+  '\nfunction getWeekMonday(dateStr){',
+  'addDays'
+);
 
 // ---------------- Utilidades de test ----------------
 let pass = 0, fail = 0;
@@ -94,6 +107,7 @@ function makeSandbox() {
     sandbox, { filename: 'state-setup' }
   );
   sandbox.storage = makeStorage();
+  vm.runInContext(dateUtilsSrc, sandbox, { filename: 'organizator.html (utilidades de fecha)' });
   vm.runInContext(categoriesSrc, sandbox, { filename: 'organizator.html (categorías de eventos, 6A-3)' });
   vm.runInContext(
     `this.addEventCategory = addEventCategory;

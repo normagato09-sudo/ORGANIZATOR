@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.1';
+const APP_VERSION = '2.3.2';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1326,9 +1326,19 @@ function resolveEventColor(categoryId){
 /** Copia de state.events con blocksSchedule YA resuelto a partir de
  * categoryId, lista para pasar a Scheduler. Scheduler.js no conoce
  * eventCategories ni categoryId: solo lee este booleano ya calculado,
- * igual que ya lee allDay/startTime/endTime. */
-function eventsForScheduler(){
-  return state.events.map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
+ * igual que ya lee allDay/startTime/endTime.
+ * Los eventos recurrentes se expanden en sus ocurrencias dentro de
+ * [fromDate, toDate] (mismo cálculo que la vista Semana, ver
+ * eventsForSchedulerInRange); sin rango, desde hoy hasta
+ * SCHEDULER_EVENTS_HORIZON_DAYS días vista, que cubre cualquier búsqueda
+ * de hueco de Scheduler (horizonte de 21 días o la fecha límite). Antes
+ * no se expandían: una clase semanal solo ocupaba su primera fecha y la
+ * IA podía proponer cosas encima del resto de repeticiones. */
+const SCHEDULER_EVENTS_HORIZON_DAYS = 366;
+function eventsForScheduler(fromDate, toDate){
+  const from = fromDate || todayStr();
+  const to = toDate || addDays(from, SCHEDULER_EVENTS_HORIZON_DAYS);
+  return eventsForSchedulerInRange(from, to);
 }
 
 /* ==================================================================
@@ -1386,10 +1396,8 @@ function eventsOnDate(events, recurringOccurrences, dateStr){
 /** Mismo criterio que eventsForScheduler() (resuelve blocksSchedule vía
  * categoryId; Scheduler.js sigue sin conocer categorías) pero con los
  * eventos recurrentes ya expandidos en sus ocurrencias dentro de
- * [fromDate, toDate]. Se usa SOLO en las vistas de calendario (Semana,
- * R-6): los flujos de IA (Organizar mi día/semana, huecos libres para
- * el contexto de la IA) siguen llamando a eventsForScheduler() tal
- * cual, sin tocar — fuera de alcance de esta fase. Scheduler.js no
+ * [fromDate, toDate]. La usan la vista Semana y, a través de
+ * eventsForScheduler(), los flujos de IA. Scheduler.js no
  * recibe ningún cambio: solo se le pasa una lista de eventos ya
  * expandida, con la misma forma (date/endDate/allDay/startTime/
  * endTime/blocksSchedule/title/id) que ya esperaba antes de R-6, así
@@ -4899,7 +4907,8 @@ function buildContext(scope, anchorDate){
   const rangeTasks = pend.filter(t => t.dueDate && t.dueDate >= today && t.dueDate <= rangeEnd)
     .sort((a,b) => (a.dueDate+(a.dueTime||'')).localeCompare(b.dueDate+(b.dueTime||'')));
 
-  const eventsInRange = state.events.filter(e => {
+  // Con las repeticiones de los eventos recurrentes ya expandidas.
+  const eventsInRange = (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, rangeEnd) : state.events).filter(e => {
     const end = e.endDate || e.date;
     return end >= today && e.date <= rangeEnd;
   }).sort((a,b) => a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''));
@@ -4936,7 +4945,7 @@ function buildContext(scope, anchorDate){
 
   lines.push('');
   lines.push('HUECOS LIBRES REALES POR DÍA (calculados por el sistema restando horario bloqueado + eventos + tareas ya colocadas — usa ESTOS datos para decidir en qué día tiene sentido cada propuesta; NO calcules tú la disponibilidad ni inventes huecos):');
-  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, rangeEnd) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
   const daysForSlots = (scope === 'day') ? [today] : (() => {
     const out = []; const base = parseYMD(today);
     for(let i=0;i<7;i++){ const d = new Date(base); d.setDate(d.getDate()+i); out.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`); }
@@ -5000,7 +5009,7 @@ function resolveProposalSlot(item, dateStr, workingTasks){
   const duration = (item.estimatedMinutes && item.estimatedMinutes > 0) ? item.estimatedMinutes : 45;
   item.time = null;
   if(!window.Scheduler) return item;
-  const ctx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: workingTasks, customSchedules: state.customSchedules };
+  const ctx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(dateStr, dateStr) : state.events), tasks: workingTasks, customSchedules: state.customSchedules };
   const slots = window.Scheduler.getFreeSlots(dateStr, ctx);
   const usable = slots.find(([s,e]) => (e - s) >= duration);
   if(usable){
@@ -5267,7 +5276,7 @@ function revalidateIAProposalBeforeApply(it){
     : startMin + (it._durationMinutes || it.estimatedMinutes || 60);
   const endTimeStr = (it._endTime && HHMM.test(it._endTime)) ? it._endTime : minToTime(endMin);
 
-  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(applyDate, applyDate) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
 
   // Evento, tarea u horario fijo/custom schedule ya ocupando el hueco
   // exacto ahora mismo — getBusyIntervals fusiona las tres fuentes.
@@ -5610,7 +5619,7 @@ async function runIADay(){
     }));
 
     // 2) Colocación determinista de cada propuesta en un hueco real.
-    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, today) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
     const scheduled = window.Scheduler.autoSchedule(pseudoTasks, schedCtx);
     const placed = scheduled.filter(t => t.scheduledStart && t.scheduledEnd);
     const unplaced = scheduled.filter(t => !t.scheduledStart);
@@ -5695,7 +5704,7 @@ async function runIAWeek(anchorDate){
     // por UNA sola pasada de Scheduler.autoSchedule (planWeekProposals),
     // en vez de resolverse una a una día a día. El día que devuelve cada
     // item ("_finalDate") es el que decide Scheduler, no el de la IA.
-    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler() : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(todayStr() < today ? todayStr() : today, weekEnd) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
     const plannedDays = planWeekProposals(data.days || [], today, weekEnd, schedCtx);
 
     // Validación (5E-3): segunda barrera de seguridad justo antes de
