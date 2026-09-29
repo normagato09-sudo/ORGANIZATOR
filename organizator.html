@@ -416,6 +416,15 @@
      conflicto (semana-ag-conflict): fondo de tarea pero con borde
      discontinuo, igual que .ia-tag.proposal ya usa borde discontinuo en
      Inicio. Si tiene schedulingWarning se refuerza con semana-ag-warning. */
+  /* Tareas/eventos del día sin franja en la agenda (ver semanaDayUnplacedItems). */
+  .semana-day-items{display:flex;flex-direction:column;gap:4px;}
+  .semana-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;font-size:11.5px;border-radius:8px;padding:4px 6px;min-width:0;}
+  .semana-item-task{background:var(--task-bg);color:var(--task);}
+  .semana-item-event{background:var(--event-bg);color:var(--event);}
+  .semana-item-title{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere;}
+  .semana-item-time{font-size:10px;color:var(--ink-soft);}
+  .semana-item-done{opacity:.6;}
+  .semana-item-done .semana-item-title{text-decoration:line-through;}
   .semana-day-body .semana-ag-proposal{background:var(--task-bg);border:1px dashed var(--task);border-radius:8px;padding:4px 6px;}
   .semana-day-body .semana-ag-proposal .ia-ag-title{color:var(--task);}
   .semana-day-body .semana-ag-warning{background:#FBEAE8;border:1px dashed var(--alta);}
@@ -898,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.3.1';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2741,6 +2750,40 @@ function renderEventContextBadges(eventContext){
     `<span class="semana-context-badge" data-context-id="${esc(e.id)}" title="Evento de contexto: ${esc(e.title)}">📌 ${esc(e.title)}</span>`
   ).join('')}</div>`;
 }
+/* ---------- Semana: lo del día que NO ocupa un bloque de la agenda ----------
+   buildDayBlocks() solo convierte en bloque 🔒/📚 lo que tiene franja
+   horaria dentro de [dayStart, dayEnd]: horario fijo, eventos con hora y
+   tareas con scheduledDate/Start/End. Todo lo demás de ese día (tareas con
+   fecha límite ese día —con o sin hora—, ocurrencias de tareas
+   recurrentes, eventos sin hora, eventos fuera de 07:00–23:00) no aparecía
+   en Semana aunque sí en Inicio y Calendario. Esta función devuelve
+   exactamente eso, usando las mismas ocurrencias que Calendario
+   (taskOccurrencesInRange) y la misma lista de eventos que ya recibe
+   buildDayBlocks; lo que ya está en algún bloque (por id) no se repite.
+   Los eventos all-day ya se pintan siempre (bloque o 📌) y se excluyen. */
+function semanaDayUnplacedItems(dateStr, dayBlocks, weekTaskOccurrences, weekEvents){
+  const shownIds = new Set();
+  dayBlocks.forEach(b => (b.ids || []).forEach(id => shownIds.add(id)));
+  const events = weekEvents
+    .filter(e => !e.allDay && isDateInRange(dateStr, e.date, e.endDate) && !shownIds.has(e.id))
+    .map(e => ({ type: 'event', id: e.eventId || e.id, title: e.title, time: e.startTime || '', done: false }));
+  const tasks = weekTaskOccurrences
+    .filter(t => t.occurrenceDate === dateStr && !shownIds.has(t.taskId || t.id))
+    .map(t => ({ type: 'task', id: t.taskId || t.id, title: t.title, time: t.dueTime || '', done: !!t.done }));
+  return events.concat(tasks).sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
+}
+function renderSemanaDayItems(items){
+  if(!items.length) return '';
+  return `<div class="semana-day-items">${items.map(it => {
+    const icon = it.type === 'event' ? '📅' : (it.done ? '✅' : '📝');
+    const time = it.time ? esc(it.time) : 'sin hora';
+    return `<div class="semana-item semana-item-${it.type}${it.done ? ' semana-item-done' : ''}" data-item-id="${esc(it.id)}">
+      <span class="semana-item-icon">${icon}</span>
+      <span class="semana-item-title">${esc(it.title)}</span>
+      <span class="semana-item-time">${time}</span>
+    </div>`;
+  }).join('')}</div>`;
+}
 function renderSemana(){
   const days = getWeekDays(week.anchorDate);
   document.getElementById('semana-title').textContent = weekRangeLabel(days);
@@ -2761,18 +2804,21 @@ function renderSemana(){
   // Los flujos de IA (fuera de alcance de R-6) siguen usando
   // eventsForScheduler() sin tocar.
   const schedCtx = { events: (typeof eventsForSchedulerInRange === 'function' ? eventsForSchedulerInRange(days[0], days[days.length-1]) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  // Tareas del rango visible (mismas ocurrencias que Calendario), para
+  // pintar las que no tienen bloque en la agenda (ver semanaDayUnplacedItems).
+  const weekTaskOccurrences = taskOccurrencesInRange(state.tasks, days[0], days[days.length-1]);
   grid.innerHTML = days.map((dateStr, i) => {
     const d = parseYMD(dateStr);
     const dayName = DOW_FULL_MONFIRST[i];
     const dayDate = `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
+    const dayResult = window.Scheduler ? window.Scheduler.buildDayBlocks(dateStr, schedCtx) : { blocks: [], eventContext: [] };
     const agendaHtml = window.Scheduler
       ? renderSemanaAgenda(buildSemanaDayAgendaBlocks(dateStr, schedCtx))
       : `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación).</p>`;
     // 6A-4.2: eventos all-day contextuales de ese día, pintados aparte de
     // la agenda (no son un bloque 🔒/📚/🟢 más, ver renderEventContextBadges).
-    const contextHtml = window.Scheduler
-      ? renderEventContextBadges(window.Scheduler.buildDayBlocks(dateStr, schedCtx).eventContext)
-      : '';
+    const contextHtml = renderEventContextBadges(dayResult.eventContext);
+    const itemsHtml = renderSemanaDayItems(semanaDayUnplacedItems(dateStr, dayResult.blocks, weekTaskOccurrences, schedCtx.events));
     return `
       <div class="semana-day ${dateStr===today?'today':''}" data-date="${dateStr}">
         <div class="semana-day-head">
@@ -2780,6 +2826,7 @@ function renderSemana(){
           <span class="semana-day-date">${dayDate}</span>
         </div>
         ${contextHtml}
+        ${itemsHtml}
         <div class="semana-day-body">${agendaHtml}</div>
       </div>`;
   }).join('');
