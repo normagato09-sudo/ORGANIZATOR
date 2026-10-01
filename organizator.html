@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.2';
+const APP_VERSION = '2.3.3';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -4918,13 +4918,13 @@ function buildContext(scope, anchorDate){
   if(scope === 'week' || scope === 'chat') lines.push(`RANGO CONSIDERADO: ${today} a ${rangeEnd}.`);
   lines.push('');
   lines.push('TAREAS ATRASADAS (fecha límite ya pasada, sin completar):');
-  lines.push(overdue.length ? overdue.map(t => `- ${t.title} (vencía ${t.dueDate}${t.dueTime?' '+t.dueTime:''}, prioridad ${t.priority||'media'})`).join('\n') : '(ninguna)');
+  lines.push(overdue.length ? overdue.map(t => `- [id:${t.id}] ${t.title} (vencía ${t.dueDate}${t.dueTime?' '+t.dueTime:''}, prioridad ${t.priority||'media'})`).join('\n') : '(ninguna)');
   lines.push('');
   lines.push(`TAREAS CON FECHA (${today} a ${rangeEnd}):`);
-  lines.push(rangeTasks.length ? rangeTasks.map(t => `- ${t.title} — vence ${t.dueDate}${t.scheduledDate ? `, YA PROGRAMADA el ${t.scheduledDate} de ${t.scheduledStart} a ${t.scheduledEnd}` : (t.dueTime?', HORA FIJA '+t.dueTime:', SIN HORA FIJA AÚN')}, prioridad ${t.priority||'media'}${t.notes?', notas: '+t.notes:''}`).join('\n') : '(ninguna)');
+  lines.push(rangeTasks.length ? rangeTasks.map(t => `- [id:${t.id}] ${t.title} — vence ${t.dueDate}${t.scheduledDate ? `, YA PROGRAMADA el ${t.scheduledDate} de ${t.scheduledStart} a ${t.scheduledEnd}` : (t.dueTime?', HORA FIJA '+t.dueTime:', SIN HORA FIJA AÚN')}, prioridad ${t.priority||'media'}${t.notes?', notas: '+t.notes:''}`).join('\n') : '(ninguna)');
   lines.push('');
   lines.push('TAREAS SIN FECHA ASIGNADA (no se les puede suponer una fecha):');
-  lines.push(noDate.length ? noDate.map(t => `- ${t.title}${t.priority?' (prioridad '+t.priority+')':''}`).join('\n') : '(ninguna)');
+  lines.push(noDate.length ? noDate.map(t => `- [id:${t.id}] ${t.title}${t.priority?' (prioridad '+t.priority+')':''}`).join('\n') : '(ninguna)');
   lines.push('');
   lines.push(`EVENTOS (${today} a ${rangeEnd}, con hora fija cuando existe):`);
   lines.push(eventsInRange.length ? eventsInRange.map(e => `- ${e.title} — ${e.date}${e.endDate&&e.endDate!==e.date?' a '+e.endDate:''}${e.allDay?', TODO EL DÍA':(e.startTime?', HORA FIJA '+e.startTime+(e.endTime?'–'+e.endTime:''):', sin hora')}${e.location?', lugar: '+e.location:''}`).join('\n') : '(ninguno)');
@@ -4966,7 +4966,8 @@ const PLAN_ITEM_SCHEMA = `{
   "durationMinutes": number|null,
   "estimatedMinutes": number|null,
   "title": string,
-  "reason": string|null
+  "reason": string|null,
+  "taskId": string|null
 }`;
 
 const IA_RULES = `Eres el asistente de organización integrado en la app ORGANIZATOR. Recibes un contexto con información REAL del usuario: tareas, eventos, su horario bloqueado (bloques fijos de rutina como la escuela, el trabajo o el gimnasio) y los HUECOS LIBRES REALES ya calculados por el sistema para cada día.
@@ -4980,6 +4981,7 @@ Reglas estrictas, sin excepción:
 - Elige el día de cada propuesta mirando los HUECOS LIBRES REALES de ese día: si un día apenas tiene huecos, no le añadas más propuestas de las que puedan caber ahí.
 - Si detectas una tarea, examen o entrega con fecha límite lejana que requiere preparación, NO concentres todo el estudio el día anterior ni en un solo bloque larguísimo: reparte varias propuestas de estudio (por ejemplo, 2 a 4 sesiones de 30-60 minutos) en distintos días disponibles ANTES de la fecha límite, cada una como una propuesta independiente en el día que corresponda.
 - Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, una tarea atrasada, un hueco libre real, etc.). Explica brevemente el motivo en "reason".
+- Si una propuesta sirve para hacer o avanzar una tarea pendiente del contexto, pon en "taskId" el id de esa tarea tal cual aparece entre corchetes (por ejemplo "[id:abc123]" → "abc123"). Si no corresponde a ninguna tarea del contexto, "taskId": null. Nunca inventes un id.
 - Si no hay información suficiente para un plan útil, dilo en "summary" y devuelve "planItems" vacío o muy reducido.
 - Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown ni bloques de código.`;
 
@@ -5372,7 +5374,7 @@ function spliceProposalsIntoBlocks(blocks, placedProposals){
       // nueva. runIADay (sin tocar) nunca los pasa, así que sigue
       // generando la propuesta él mismo en renderDayAgendaList como hasta
       // ahora (estos campos llegan como undefined y no afectan en nada).
-      replacement.push({ type: 'proposal', start: p.start, end: p.end, startTime: p.startTime, endTime: p.endTime, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId });
+      replacement.push({ type: 'proposal', start: p.start, end: p.end, startTime: p.startTime, endTime: p.endTime, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId, taskId: p.taskId });
       if(p.end < b.end) replacement.push(Object.assign({}, b, { start: p.end, startTime: p.endTime }));
       result.splice(idx, 1, ...replacement);
     });
@@ -5387,7 +5389,7 @@ function renderDayAgendaList(mergedBlocks, dateForApply, batchId){
       // a partir del propio bloque colocado por Scheduler.autoSchedule —
       // permiten que revalidateIAProposalBeforeApply compruebe el hueco
       // real en vez de adivinar una duración por defecto.
-      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: b.title, time: b.startTime, _endTime: b.endTime, _durationMinutes: (b.end - b.start), kind: b.kind || 'task', reason: b.reason, applyDate: dateForApply };
+      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: b.title, time: b.startTime, _endTime: b.endTime, _durationMinutes: (b.end - b.start), kind: b.kind || 'task', reason: b.reason, taskId: b.taskId || null, applyDate: dateForApply };
       iaProposals.push(proposal);
       return `<div class="ia-ag-row ia-ag-proposal">
         <div class="ia-ag-time">${esc(b.startTime)}–${esc(b.endTime)}</div>
@@ -5496,10 +5498,10 @@ function wireIAProposalButtons(container){
           if(currentView === 'semana') renderSemana();
           return;
         }
-        await applyIAProposal(it, it.applyDate || todayStr());
+        const appliedMessage = await applyIAProposal(it, it.applyDate || todayStr());
         setIAProposalStatus(it.id, 'applied');
         b.textContent = 'Añadido ✓';
-        showToast('Añadido al plan');
+        showToast(appliedMessage || 'Añadido al plan');
         // 5E-4, punto 5: Semana se vuelve a renderizar tras aplicar, para que
         // la propuesta deje de mostrarse como tal y aparezca el bloque real
         // vía Scheduler.buildDayBlocks(). Se hace DESPUÉS de setIAProposalStatus
@@ -5557,22 +5559,71 @@ function iaExpirePendingProposalsBeforeReset(){
     }
   });
 }
+/** Franja real de una propuesta IA con hora: inicio, fin y minutos. El
+ * fin sale de _endTime (lo calculó Scheduler al colocarla); si falta, de
+ * su duración. Devuelve null si la propuesta no tiene hora válida. */
+function iaProposalSlot(it){
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if(!it || !it.time || !HHMM.test(it.time)) return null;
+  const toMin = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+  const start = toMin(it.time);
+  let end;
+  if(it._endTime && HHMM.test(it._endTime)) end = toMin(it._endTime);
+  else end = start + (it._durationMinutes > 0 ? it._durationMinutes : (it.estimatedMinutes > 0 ? it.estimatedMinutes : 45));
+  end = Math.min(end, 24 * 60 - 1);
+  if(end <= start) return null;
+  return { start: it.time, end: `${pad(Math.floor(end / 60))}:${pad(end % 60)}`, minutes: end - start };
+}
+/** Tarea real de la que sale una propuesta IA: la IA indica su id en
+ * "taskId" (ver IA_RULES). Solo cuenta si existe, no está hecha y no es
+ * recurrente (una tarea recurrente comparte un único hueco programado
+ * entre todas sus repeticiones, así que no se le asigna uno). */
+function findIAProposalSourceTask(it){
+  if(!it || !it.taskId) return null;
+  const t = state.tasks.find(x => x.id === it.taskId);
+  if(!t || t.done || t.recurrence) return null;
+  return t;
+}
+/** Guarda una propuesta IA aceptada. Devuelve el texto del aviso.
+ * - Con hora: TAREA PLANIFICADA (scheduledDate/Start/End) con la duración
+ *   real de la propuesta, no un evento de 1 h. Si sale de una tarea
+ *   existente todavía sin planificar, se planifica ESA tarea; si esa
+ *   tarea ya tenía hueco (p.ej. otra sesión de estudio ya añadida), se
+ *   crea una tarea nueva para esta sesión, con la misma fecha límite.
+ * - Sin hora: tarea con fecha límite ese día; si sale de una tarea
+ *   existente no se duplica (ya está en tus tareas). */
 async function applyIAProposal(it, date){
-  // 5F-2: idempotencia por proposal.id. Si esta propuesta ya creó su
-  // entidad real (misma sourceProposalId ya presente en tasks/events),
-  // no se crea una segunda: applyIAProposal se convierte en no-op seguro
-  // ante cualquier invocación repetida, venga de donde venga.
-  const already = it.time
-    ? state.events.find(e => e.sourceProposalId === it.id)
-    : state.tasks.find(t => t.sourceProposalId === it.id);
-  if(already) return;
-  if(it.time){
-    await addEvent({ title: it.title, date, endDate:'', allDay:false, startTime: it.time, endTime:'', location:'', notes: it.reason||'', sourceProposalId: it.id });
+  // 5F-2: idempotencia por proposal.id. Si esta propuesta ya creó (o
+  // planificó) su entidad real, no se repite: applyIAProposal es no-op
+  // seguro ante cualquier invocación repetida, venga de donde venga.
+  // Se mira también en events por las propuestas aplicadas antes de
+  // este cambio, que se guardaban como evento.
+  const already = state.tasks.find(t => t.sourceProposalId === it.id) || state.events.find(e => e.sourceProposalId === it.id);
+  if(already) return 'Añadido al plan';
+  const source = findIAProposalSourceTask(it);
+  const slot = iaProposalSlot(it);
+  let message = 'Añadido al plan';
+  if(slot && source && !source.scheduledDate){
+    await updateTask(source.id, { scheduledDate: date, scheduledStart: slot.start, scheduledEnd: slot.end, estimatedMinutes: slot.minutes, schedulingWarning: null, sourceProposalId: it.id });
+    message = `«${source.title}» planificada de ${slot.start} a ${slot.end}`;
+  } else if(slot){
+    await addTask({
+      title: it.title,
+      dueDate: (source && source.dueDate) || date, dueTime: '',
+      priority: (source && source.priority) || 'media',
+      notes: it.reason || '',
+      scheduledDate: date, scheduledStart: slot.start, scheduledEnd: slot.end, estimatedMinutes: slot.minutes,
+      sourceProposalId: it.id,
+      ...(source ? { sourceTaskId: source.id } : {}),
+    });
+  } else if(source){
+    return `«${source.title}» ya está en tus tareas`;
   } else {
     await addTask({ title: it.title, dueDate: date, dueTime:'', priority:'media', notes: it.reason||'', sourceProposalId: it.id });
   }
   if(currentView === 'inicio') renderInicio();
   if(currentView === 'calendario') renderCalendar();
+  return message;
 }
 
 /* ---------- Organizar mi día ----------
@@ -5613,6 +5664,7 @@ async function runIADay(){
       title: it.title,
       reason: it.reason || null,
       kind: it.kind || 'task',
+      taskId: it.taskId || null, // tarea real de la que sale (ver applyIAProposal)
       dueDate: today, // acota autoSchedule a HOY: no tiene sentido moverla a otro día en "Organizar mi día"
       priority: 'media',
       estimatedMinutes: (it.estimatedMinutes && it.estimatedMinutes > 0) ? it.estimatedMinutes : 45,
@@ -5632,7 +5684,7 @@ async function runIADay(){
     const placedForSplice = placed.map(t => ({
       start: timeToMin(t.scheduledStart), end: timeToMin(t.scheduledEnd),
       startTime: t.scheduledStart, endTime: t.scheduledEnd,
-      title: t.title, reason: t.reason, kind: t.kind,
+      title: t.title, reason: t.reason, kind: t.kind, taskId: t.taskId,
     }));
     const mergedBlocks = spliceProposalsIntoBlocks(dayBlocks, placedForSplice);
     const batchId = nextIABatchId();
@@ -5645,7 +5697,7 @@ async function runIADay(){
     // 4) Propuestas que no encontraron hueco hoy: se muestran aparte,
     // sin hora, con el motivo (se pueden añadir igualmente como tarea).
     const unplacedHtml = unplaced.length ? `<div class="ia-timeline">${unplaced.map(t => {
-      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, applyDate: today };
+      const proposal = { id: nextIAProposalId(), batchId, source: 'day', status: 'pending', title: t.title, time: null, kind: t.kind, reason: t.reason, taskId: t.taskId || null, applyDate: today };
       iaProposals.push(proposal);
       return `<div class="ia-tl-item">
         <div class="ia-tl-time">—</div>

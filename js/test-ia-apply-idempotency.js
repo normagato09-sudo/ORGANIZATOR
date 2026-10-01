@@ -35,7 +35,7 @@ function check(cond, msg) {
 
 const ROOT = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT, 'organizator.html');
-const html = fs.readFileSync(HTML_PATH, 'utf8');
+const html = fs.readFileSync(HTML_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 // ---------------------------------------------------------------------
 // Extracción literal de las funciones reales de organizator.html.
@@ -56,11 +56,14 @@ const src = [
   extractFn(/async function saveTasks\(\)\{/, 'saveTasks'),
   extractFn(/async function saveEvents\(\)\{/, 'saveEvents'),
   extractFn(/async function addTask\(data\)\{/, 'addTask'),
+  extractFn(/async function updateTask\(id, data\)\{/, 'updateTask'),
   extractFn(/async function addEvent\(data\)\{/, 'addEvent'),
   extractFn(/function getIAProposalById\(id\) \{/, 'getIAProposalById'),
   extractFn(/function getIAProposalFromBatch\(id, batchId\) \{/, 'getIAProposalFromBatch'),
   transitionsMatch[0],
   extractFn(/function setIAProposalStatus\(id, status\) \{/, 'setIAProposalStatus'),
+  extractFn(/function iaProposalSlot\(it\)\{/, 'iaProposalSlot'),
+  extractFn(/function findIAProposalSourceTask\(it\)\{/, 'findIAProposalSourceTask'),
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
   // 5F-3C: wireIAProposalButtons ahora llama a revalidateIAProposalBeforeApply
   // justo antes de applyIAProposal — se extrae también, literal, para que el
@@ -78,7 +81,7 @@ check(typeof src === 'string' && src.length > 0, 'todas las funciones necesarias
 // tal y como se implementó en la Parte 3/4.
 check(src.includes('it._applying'), 'wireIAProposalButtons/applyIAProposal siguen usando el candado _applying');
 check(src.includes('sourceProposalId: it.id'), 'applyIAProposal sigue estampando sourceProposalId al crear la entidad');
-check(/const already = it\.time/.test(src), 'applyIAProposal conserva la comprobación de idempotencia antes de crear nada');
+check(/const already = state\.tasks\.find\(t => t\.sourceProposalId === it\.id\)/.test(src), 'applyIAProposal conserva la comprobación de idempotencia antes de crear nada');
 check(!/iaProposals\[\s*\d/.test(src), 'no hay acceso posicional a iaProposals (iaProposals[N]) en el código extraído');
 check(!/Number\(\s*(b\.dataset\.iaApply|dataset\.iaApply)/.test(src), 'no se usa Number(dataset.iaApply) en el código extraído');
 check(!/iaProposals\.splice/.test(src), 'no se usa iaProposals.splice(...) en el código extraído');
@@ -100,6 +103,9 @@ function buildSandbox({ storageDelayMs = 0, initialProposals = [] } = {}) {
   let uidSeq = 0;
   function uid() { uidSeq += 1; return 'uid-' + uidSeq; }
   function todayStr() { return '2026-09-12'; }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  // addTask/updateTask sanean la recurrencia; las propuestas IA nunca traen una.
+  function sanitizeRecurrence() { return null; }
   let toastCount = 0;
   function showToast() { toastCount++; }
   const currentView = 'inicio';
@@ -108,7 +114,7 @@ function buildSandbox({ storageDelayMs = 0, initialProposals = [] } = {}) {
   function renderSemana() {}
 
   const context = {
-    state, window: window_, uid, todayStr, showToast,
+    state, window: window_, uid, todayStr, pad, sanitizeRecurrence, showToast,
     currentView, renderInicio, renderCalendar, renderSemana,
     iaProposals: initialProposals, // variable de módulo real, compartida por todo el código extraído
     module: { exports: {} }, console,
@@ -292,7 +298,7 @@ function wireProposalButtons(env, id, batchId) {
     check(p.status === 'applied', 'I-bis. status termina en applied');
   }
 
-  console.log('\nJ — cubre tanto tarea (sin hora) como evento (con hora)');
+  console.log('\nJ — propuesta sin hora y con hora (ambas se guardan como tarea)');
   {
     const pTask = makeProposal({ id: 'ia-j-task', time: null });
     const pEvent = makeProposal({ id: 'ia-j-event', time: '09:30' });
@@ -301,14 +307,16 @@ function wireProposalButtons(env, id, batchId) {
     const { applyBtn: btnEvent } = wireProposalButtons(env, pEvent.id, pEvent.batchId);
     await btnTask.click();
     await btnEvent.click();
-    check(env.state.tasks.length === 1 && env.state.events.length === 1, 'J. se crea 1 tarea y 1 evento, cada uno en su colección real');
-    check(env.state.tasks[0].sourceProposalId === pTask.id, 'J. la tarea lleva su propio sourceProposalId');
-    check(env.state.events[0].sourceProposalId === pEvent.id, 'J. el evento lleva su propio sourceProposalId');
-    check(env.state.events[0].startTime === '09:30', 'J. el evento conserva la hora de la propuesta');
+    // Una propuesta con hora se guarda como tarea planificada, no como
+    // evento (fallo 2 de DIAGNOSTICO-IA.md).
+    const timed = env.state.tasks.find(t => t.sourceProposalId === pEvent.id);
+    check(env.state.tasks.length === 2 && env.state.events.length === 0, 'J. se crean 2 tareas y ningún evento');
+    check(!!env.state.tasks.find(t => t.sourceProposalId === pTask.id), 'J. la tarea sin hora lleva su propio sourceProposalId');
+    check(!!timed && timed.scheduledDate === '2026-09-12' && timed.scheduledStart === '09:30', 'J. la propuesta con hora queda planificada ese día a su hora');
 
-    // Doble apply sobre el evento ya aplicado: tampoco duplica.
+    // Doble apply sobre la propuesta con hora ya aplicada: tampoco duplica.
     await btnEvent.click();
-    check(env.state.events.length === 1, 'J. un segundo Apply sobre el evento no crea un segundo evento');
+    check(env.state.tasks.length === 2, 'J. un segundo Apply sobre la propuesta con hora no crea otra tarea');
   }
 
   console.log(`\n${passed} pasaron, ${failures} fallaron.`);

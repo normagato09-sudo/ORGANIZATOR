@@ -39,7 +39,7 @@ function section(title) { console.log(`\n${title}`); }
 const ROOT = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT, 'organizator.html');
 const SCHEDULER_PATH = path.join(ROOT, 'js', 'scheduler.js');
-const html = fs.readFileSync(HTML_PATH, 'utf8');
+const html = fs.readFileSync(HTML_PATH, 'utf8').replace(/\r\n/g, '\n');
 const schedulerSrc = fs.readFileSync(SCHEDULER_PATH, 'utf8');
 
 // ---------------------------------------------------------------------
@@ -74,7 +74,10 @@ const src = [
   extractFn(/async function saveTasks\(\)\{/, 'saveTasks'),
   extractFn(/async function saveEvents\(\)\{/, 'saveEvents'),
   extractFn(/async function addTask\(data\)\{/, 'addTask'),
+  extractFn(/async function updateTask\(id, data\)\{/, 'updateTask'),
   extractFn(/async function addEvent\(data\)\{/, 'addEvent'),
+  extractFn(/function iaProposalSlot\(it\)\{/, 'iaProposalSlot'),
+  extractFn(/function findIAProposalSourceTask\(it\)\{/, 'findIAProposalSourceTask'),
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
   extractFn(/function revalidateIAProposalBeforeApply\(it\)\{/, 'revalidateIAProposalBeforeApply'),
   extractFn(/function wireIAProposalButtons\(container\)\{/, 'wireIAProposalButtons'),
@@ -105,6 +108,9 @@ function buildSandbox({ initialProposals = [], events = [], tasks = [], customSc
   let uidSeq = 0;
   function uid() { uidSeq += 1; return 'uid-' + uidSeq; }
   function todayStr() { return '2026-09-14'; }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  // addTask/updateTask sanean la recurrencia; las propuestas IA nunca traen una.
+  function sanitizeRecurrence() { return null; }
   let toastMessages = [];
   function showToast(msg) { toastMessages.push(msg); }
   const currentView = 'inicio';
@@ -113,7 +119,7 @@ function buildSandbox({ initialProposals = [], events = [], tasks = [], customSc
   function renderSemana() {}
 
   const context = {
-    state, window: window_, uid, todayStr, showToast,
+    state, window: window_, uid, todayStr, pad, sanitizeRecurrence, showToast,
     currentView, renderInicio, renderCalendar, renderSemana,
     module: { exports: {} }, console,
   };
@@ -221,9 +227,8 @@ section('A — revalidateIAProposalBeforeApply(), comprobaciones directas');
     const env = buildSandbox({ initialProposals: [p], events: [conflictingEvent] });
     const btn = wireApplyButton(env, p.id, p.batchId);
     await btn.click();
-    // it.time está fijado -> de haberse aplicado, applyIAProposal habría
-    // creado un EVENTO (no una tarea). Solo debe seguir existiendo el
-    // evento conflictivo original, ninguno nuevo.
+    // Solo debe seguir existiendo el evento conflictivo original: ni
+    // tarea nueva ni evento nuevo.
     check(env.state.tasks.length === 0 && env.state.events.length === 1 && env.state.events[0] === conflictingEvent, 'B1. no se crea ninguna entidad cuando el hueco ya no está libre');
     check(p.status === 'pending', 'B1. la propuesta sigue pending (recuperable, no se descarta)');
     check(typeof p.schedulingWarning === 'string' && p.schedulingWarning.length > 0, 'B1. la propuesta recibe schedulingWarning con el motivo');
@@ -234,13 +239,13 @@ section('A — revalidateIAProposalBeforeApply(), comprobaciones directas');
 
   // B2: hueco sigue libre -> comportamiento exactamente igual que antes
   // de 5F-3C: se aplica, status termina en applied. it.time está fijado,
-  // así que applyIAProposal crea un EVENTO (no una tarea).
+  // así que applyIAProposal crea una TAREA PLANIFICADA en ese hueco.
   {
     const p = { id: 'ia-b2', batchId: 'batch-b2', source: 'day', status: 'pending', title: 'Repasar', time: '10:00', _endTime: '10:45', kind: 'task', reason: null, applyDate: '2026-09-15' };
     const env = buildSandbox({ initialProposals: [p] });
     const btn = wireApplyButton(env, p.id, p.batchId);
     await btn.click();
-    check(env.state.events.length === 1 && env.state.tasks.length === 0, 'B2. hueco libre -> se crea la entidad (evento) con normalidad');
+    check(env.state.events.length === 0 && env.state.tasks.length === 1 && env.state.tasks[0].scheduledStart === '10:00' && env.state.tasks[0].scheduledEnd === '10:45', 'B2. hueco libre -> se crea la tarea planificada 10:00–10:45');
     check(p.status === 'applied', 'B2. status termina en applied');
     check(p.schedulingWarning === undefined, 'B2. no se añade ningún aviso cuando la revalidación pasa');
   }
@@ -259,8 +264,8 @@ section('A — revalidateIAProposalBeforeApply(), comprobaciones directas');
   // B4: un segundo intento de Apply, ahora con el hueco liberado de nuevo
   // (se quita el evento que chocaba) -> la propuesta sigue pending tras
   // B1 y ahora sí se puede aplicar, demostrando que queda recuperable de
-  // verdad y no quedó en un estado roto. it.time está fijado -> crea un
-  // EVENTO (no una tarea) cuando por fin se aplica.
+  // verdad y no quedó en un estado roto. it.time está fijado -> crea una
+  // TAREA PLANIFICADA cuando por fin se aplica.
   {
     const p = { id: 'ia-b4', batchId: 'batch-b4', source: 'day', status: 'pending', title: 'Repasar', time: '10:00', _endTime: '10:45', kind: 'task', reason: null, applyDate: '2026-09-15' };
     const conflictingEvents = [{ id: 'ev1', date: '2026-09-15', startTime: '10:00', endTime: '10:30' }];
@@ -274,7 +279,7 @@ section('A — revalidateIAProposalBeforeApply(), comprobaciones directas');
     conflictingEvents.length = 0;
     await btn.click();
     check(p.status === 'applied', 'B4. segundo intento (hueco ya libre) sí la aplica: sigue siendo recuperable');
-    check(env.state.events.length === 1 && env.state.tasks.length === 0, 'B4. se crea exactamente 1 entidad (evento) en total (no quedó duplicada por el primer intento fallido)');
+    check(env.state.events.length === 0 && env.state.tasks.length === 1, 'B4. se crea exactamente 1 tarea en total (no quedó duplicada por el primer intento fallido)');
   }
 
   // =====================================================================

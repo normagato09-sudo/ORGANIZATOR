@@ -35,7 +35,7 @@ function check(cond, msg) {
 
 const ROOT = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT, 'organizator.html');
-const html = fs.readFileSync(HTML_PATH, 'utf8');
+const html = fs.readFileSync(HTML_PATH, 'utf8').replace(/\r\n/g, '\n');
 
 // ---------------------------------------------------------------------
 // Extracción literal (misma convención que el resto de la suite: cierres
@@ -55,11 +55,14 @@ const src = [
   extractFn(/async function saveTasks\(\)\{/, 'saveTasks'),
   extractFn(/async function saveEvents\(\)\{/, 'saveEvents'),
   extractFn(/async function addTask\(data\)\{/, 'addTask'),
+  extractFn(/async function updateTask\(id, data\)\{/, 'updateTask'),
   extractFn(/async function addEvent\(data\)\{/, 'addEvent'),
   extractFn(/function getIAProposalById\(id\) \{/, 'getIAProposalById'),
   extractFn(/function getIAProposalFromBatch\(id, batchId\) \{/, 'getIAProposalFromBatch'),
   transitionsMatch[0],
   extractFn(/function setIAProposalStatus\(id, status\) \{/, 'setIAProposalStatus'),
+  extractFn(/function iaProposalSlot\(it\)\{/, 'iaProposalSlot'),
+  extractFn(/function findIAProposalSourceTask\(it\)\{/, 'findIAProposalSourceTask'),
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
   // 5F-3C: wireIAProposalButtons ahora llama a revalidateIAProposalBeforeApply
   // justo antes de applyIAProposal — se extrae también, literal. Sin
@@ -75,7 +78,7 @@ check(typeof src === 'string' && src.length > 0, 'todas las funciones necesarias
 // Comprobaciones estáticas: 5F-3A no debe tocar nada de 5D/5F-2.
 check(src.includes('it._applying'), 'el candado _applying de 5F-2 sigue presente sin cambios');
 check(src.includes('sourceProposalId: it.id'), 'applyIAProposal sigue estampando sourceProposalId (sin cambios de 5F-2)');
-check(/const already = it\.time/.test(src), 'la idempotencia de applyIAProposal (5F-2) sigue intacta');
+check(/const already = state\.tasks\.find\(t => t\.sourceProposalId === it\.id\)/.test(src), 'la idempotencia de applyIAProposal (5F-2) sigue intacta');
 check(!/iaProposals\[\s*\d/.test(src), 'sigue sin haber acceso posicional a iaProposals');
 check(!/it\.status\s*=\s*['"]applied['"]/.test(src) && !/it\.status\s*=\s*['"]discarded['"]/.test(src),
   'el status nunca se asigna directamente en el código extraído: solo vía setIAProposalStatus()');
@@ -117,6 +120,9 @@ function buildSandbox({ initialProposals = [] } = {}) {
   let uidSeq = 0;
   function uid() { uidSeq += 1; return 'uid-' + uidSeq; }
   function todayStr() { return '2026-09-12'; }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  // addTask/updateTask sanean la recurrencia; las propuestas IA nunca traen una.
+  function sanitizeRecurrence() { return null; }
   const toastCalls = [];
   function showToast(msg) { toastCalls.push(msg); }
   const currentView = 'inicio';
@@ -133,7 +139,7 @@ function buildSandbox({ initialProposals = [] } = {}) {
   };
 
   const context = {
-    state, window: window_, uid, todayStr, showToast,
+    state, window: window_, uid, todayStr, pad, sanitizeRecurrence, showToast,
     currentView, renderInicio, renderCalendar, renderSemana,
     document: fakeDocument,
     iaProposals: initialProposals,
