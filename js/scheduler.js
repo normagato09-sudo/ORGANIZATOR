@@ -165,11 +165,14 @@
    * (o dentro del horizonte por defecto si no tiene fecha límite).
    * Devuelve una copia de la tarea con scheduledDate/scheduledStart/
    * scheduledEnd rellenos, o con schedulingWarning si no encajó.
+   * opts.fromDate (YYYY-MM-DD, opcional): primer día en el que buscar
+   * hueco, p.ej. el inicio de una semana futura. Nunca antes de hoy.
    */
   function scheduleTask(task, context, opts) {
     const cfg = Object.assign({}, DEFAULTS, opts);
     const duration = estimateDuration(task, cfg);
-    const start = todayStr();
+    const today = todayStr();
+    const start = (cfg.fromDate && cfg.fromDate > today) ? cfg.fromDate : today;
     const end = task.dueDate || addDays(start, cfg.horizonDays);
     const result = Object.assign({}, task, { estimatedMinutes: duration });
     delete result.schedulingWarning;

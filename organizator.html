@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.3';
+const APP_VERSION = '2.3.4';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -5089,7 +5089,9 @@ function planWeekProposals(days, today, weekEnd, schedCtx){
   });
 
   // 2) UNA pasada de planificación para todo el conjunto de la semana.
-  const scheduled = pseudoTasks.length ? window.Scheduler.autoSchedule(pseudoTasks, schedCtx) : [];
+  // fromDate: en una semana futura se busca hueco desde su primer día, no
+  // desde hoy (si no, todo caería hoy y quedaría fuera de la semana).
+  const scheduled = pseudoTasks.length ? window.Scheduler.autoSchedule(pseudoTasks, schedCtx, { fromDate: today }) : [];
   const scheduledById = {};
   scheduled.forEach(s => { scheduledById[s.id] = s; });
 
