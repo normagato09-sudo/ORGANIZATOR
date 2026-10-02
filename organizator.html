@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.7';
+const APP_VERSION = '2.3.8';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1027,6 +1027,15 @@ function weekGoBackward(){
 }
 function weekGoToToday(){
   week.anchorDate = todayStr();
+}
+/** Días que planifica "Planificar con IA" en la vista Semana: de lunes
+ * a domingo de la semana de anchorDate, sin días ya pasados (la semana
+ * actual empieza hoy). { from, to } o null si la semana ya pasó. */
+function semanaIAWeekRange(anchorDate){
+  const days = getWeekDays(anchorDate);
+  const today = todayStr();
+  const from = days[0] < today ? today : days[0];
+  return from <= days[6] ? { from, to: days[6] } : null;
 }
 
 /* ==================================================================
@@ -4999,7 +5008,7 @@ function iaErrorMessage(err){
 // 'week' (planificación de una semana objetivo distinta a la actual, p.ej.
 // desde la vista Semana). Sin argumento, comportamiento idéntico a siempre
 // (todayStr()). day/chat/otros modos no cambian.
-function buildContext(scope, anchorDate){
+function buildContext(scope, anchorDate, endDate){
   const today = (scope === 'week' && anchorDate) ? anchorDate : todayStr();
   // Las recurrentes van aparte, repetición a repetición (más abajo).
   const pend = state.tasks.filter(t => !t.done && !t.recurrence);
@@ -5007,7 +5016,10 @@ function buildContext(scope, anchorDate){
   const noDate = pend.filter(t => !t.dueDate);
 
   let rangeEnd = today;
-  if(scope === 'week' || scope === 'chat'){
+  if(scope === 'week' && endDate && endDate >= today){
+    // Rango explícito (vista Semana: hasta el domingo).
+    rangeEnd = endDate;
+  } else if(scope === 'week' || scope === 'chat'){
     const d = parseYMD(today); d.setDate(d.getDate() + 6);
     rangeEnd = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
   }
@@ -5062,8 +5074,8 @@ function buildContext(scope, anchorDate){
   lines.push('HUECOS LIBRES REALES POR DÍA (calculados por el sistema restando horario bloqueado + eventos + tareas ya colocadas — usa ESTOS datos para decidir en qué día tiene sentido cada propuesta; NO calcules tú la disponibilidad ni inventes huecos):');
   const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, rangeEnd) : state.events), tasks: tasksForScheduler(today, rangeEnd), customSchedules: state.customSchedules };
   const daysForSlots = (scope === 'day') ? [today] : (() => {
-    const out = []; const base = parseYMD(today);
-    for(let i=0;i<7;i++){ const d = new Date(base); d.setDate(d.getDate()+i); out.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`); }
+    const out = [];
+    for(let d = today; d <= rangeEnd; d = addDays(d, 1)) out.push(d);
     return out;
   })();
   lines.push(daysForSlots.map(d => {
@@ -5894,7 +5906,7 @@ async function runIADay(){
 // 5F-3B: `anchorDate` opcional — permite planificar la semana objetivo
 // visible en la vista Semana (week.anchorDate) en vez de siempre la semana
 // de hoy. Sin argumento, comportamiento idéntico a siempre (todayStr()).
-async function runIAWeek(anchorDate){
+async function runIAWeek(anchorDate, endDate){
   iaSetButtonsDisabled(true);
   iaSetStatus('Analizando tu semana…');
   const msgEl = iaThreadAddPending('✨ Organizar mi semana');
@@ -5907,9 +5919,11 @@ async function runIAWeek(anchorDate){
     // como anchorDate; cualquier otra cosa (incluido un MouseEvent) cae a
     // todayStr(), igual que "sin argumento".
     const today = (typeof anchorDate === 'string' && anchorDate) ? anchorDate : todayStr();
-    const weekEnd = addDays(today, 6);
-    const context = buildContext('week', today);
-    const system = IA_RULES + `\n\nGenera un plan para los 7 días del rango indicado en el contexto, agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": []. Como mucho 10 propuestas nuevas en toda la semana.`;
+    // endDate (opcional, vista Semana): último día del rango, p.ej. el
+    // domingo. Sin él, 7 días desde today, como siempre.
+    const weekEnd = (typeof endDate === 'string' && endDate >= today) ? endDate : addDays(today, 6);
+    const context = buildContext('week', today, weekEnd);
+    const system = IA_RULES + `\n\nGenera un plan para los días del rango indicado en el contexto, agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": []. Como mucho 10 propuestas nuevas en toda la semana.`;
     iaSetStatus('Generando planificación semanal…');
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
@@ -6082,11 +6096,15 @@ function initIA(){
   // función (no arrow) a propósito, igual que siempre.
   if(weekBtn) weekBtn.addEventListener('click', runIAWeek);
   // 5E-4, punto 11 + 5F-3B: mismo runIAWeek() de siempre, sin una segunda
-  // función de planificación ni una segunda llamada a la API — pero ahora
-  // pasando explícitamente week.anchorDate (la semana visible), envuelto en
-  // una arrow function para que el MouseEvent del click no se cuele como
-  // anchorDate.
-  if(semanaWeekBtn) semanaWeekBtn.addEventListener('click', () => runIAWeek(week.anchorDate));
+  // función de planificación ni una segunda llamada a la API. B3: planifica
+  // la semana visible de lunes a domingo (desde hoy si es la actual), ver
+  // semanaIAWeekRange. Arrow function para que el MouseEvent del click no
+  // se cuele como anchorDate.
+  if(semanaWeekBtn) semanaWeekBtn.addEventListener('click', () => {
+    const range = semanaIAWeekRange(week.anchorDate);
+    if(!range){ showToast('Esa semana ya pasó: no hay nada que planificar.'); return; }
+    runIAWeek(range.from, range.to);
+  });
   if(chatForm) chatForm.addEventListener('submit', (e)=>{
     e.preventDefault();
     const input = document.getElementById('ia-chat-input');

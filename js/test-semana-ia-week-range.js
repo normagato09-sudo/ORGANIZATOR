@@ -1,18 +1,20 @@
 /**
- * ORGANIZATOR — Tests: "Planificar con IA" en una semana futura coloca
- * las propuestas dentro de esa semana (fallo 1 de DIAGNOSTICO-IA.md)
+ * ORGANIZATOR — Tests: "Planificar con IA" desde Semana planifica de
+ * lunes a domingo (B3 de PLAN-FINAL.md)
  *
- * Antes, Scheduler siempre buscaba hueco desde HOY: en la semana
- * siguiente, las propuestas se colocaban hoy, quedaban fuera de la semana
- * elegida y salían "sin hora fija". Ahora scheduleTask/autoSchedule
- * aceptan opts.fromDate (nunca antes de hoy) y planWeekProposals pasa el
- * primer día de la semana planificada.
+ * Antes, el botón de la vista Semana llamaba a runIAWeek(week.anchorDate)
+ * y planificaba 7 días desde el día visible (p. ej. de jueves a
+ * miércoles), así que parte de las propuestas caían en la semana
+ * siguiente. Ahora planifica la semana visible de lunes a domingo, desde
+ * hoy si es la semana actual (semanaIAWeekRange), y no hace nada en una
+ * semana ya pasada. "Organizar mi semana" de Inicio no cambia: 7 días
+ * desde hoy.
  *
  * Suite Node pura, SIN navegador ni jsdom: extrae literalmente de
  * organizator.html el código real y lo ejecuta con el js/scheduler.js
  * real. callAI y el DOM son mocks.
  *
- * Uso:  node js/test-ia-future-week.js
+ * Uso:  node js/test-semana-ia-week-range.js
  * Sale con código 0 si todo pasa, 1 si algo falla.
  */
 'use strict';
@@ -93,60 +95,71 @@ function check(name, cond) {
 }
 function section(title) { console.log(`\n${title}`); }
 
+const rangeSrc = extractBetween(html, '/** Días que planifica "Planificar con IA" en la vista Semana', '\n\n/* ==================================================================\n   ALMACENAMIENTO', 'semanaIAWeekRange');
+
+// Semana futura fija: lunes 11 – domingo 17 de marzo de 2030.
+const MON = '2030-03-11', THU = '2030-03-14', SUN = '2030-03-17', NEXT_MON = '2030-03-18';
+
 (async () => {
-  section('A — Scheduler: opts.fromDate');
+  section('A — semanaIAWeekRange: de lunes a domingo, sin días pasados');
   {
     const sb = makeSandbox();
-    const today = sb.todayStr();
-    const empty = { events: [], tasks: [], customSchedules: [] };
-    const future = sb.addDays(today, 10);
-    const r1 = sb.Scheduler.scheduleTask({ id: 't1', title: 'X', dueDate: sb.addDays(today, 20), estimatedMinutes: 30 }, empty, { fromDate: future });
-    check('A. con fromDate futuro, el hueco es ese día (agenda vacía)', r1.scheduledDate === future);
-    const r2 = sb.Scheduler.scheduleTask({ id: 't2', title: 'X', dueDate: sb.addDays(today, 20), estimatedMinutes: 30 }, empty, { fromDate: sb.addDays(today, -3) });
-    const r3 = sb.Scheduler.scheduleTask({ id: 't3', title: 'X', dueDate: sb.addDays(today, 20), estimatedMinutes: 30 }, empty);
-    check('A. fromDate en el pasado no adelanta nada: igual que sin fromDate', r2.scheduledDate === r3.scheduledDate && r2.scheduledDate >= today);
-    const r4 = sb.Scheduler.autoSchedule([{ id: 't4', title: 'X', dueDate: sb.addDays(today, 20), estimatedMinutes: 30 }], empty, { fromDate: future });
-    check('A. autoSchedule pasa fromDate a scheduleTask', r4[0].scheduledDate === future);
+    vm.runInContext(rangeSrc, sb, { filename: 'organizator.html (semanaIAWeekRange)' });
+    // Se fija "hoy" para que el resultado no dependa del día del test.
+    vm.runInContext(`todayStr = function(){ return '2030-03-01'; };`, sb);
+    let r = sb.semanaIAWeekRange(THU);
+    check('A. semana futura vista desde un jueves: lunes a domingo', r && r.from === MON && r.to === SUN);
+    check('A. vista desde el domingo: la misma semana', JSON.stringify(sb.semanaIAWeekRange(SUN)) === JSON.stringify(r));
+    vm.runInContext(`todayStr = function(){ return '${THU}'; };`, sb);
+    r = sb.semanaIAWeekRange(THU);
+    check('A. semana actual: desde hoy (jueves) hasta el domingo', r && r.from === THU && r.to === SUN);
+    r = sb.semanaIAWeekRange(MON);
+    check('A. semana actual vista desde su lunes: también desde hoy', r && r.from === THU && r.to === SUN);
+    vm.runInContext(`todayStr = function(){ return '${SUN}'; };`, sb);
+    r = sb.semanaIAWeekRange(MON);
+    check('A. hoy es domingo: solo el domingo', r && r.from === SUN && r.to === SUN);
+    vm.runInContext(`todayStr = function(){ return '${NEXT_MON}'; };`, sb);
+    check('A. semana ya pasada: null', sb.semanaIAWeekRange(THU) === null);
   }
 
-  section('B — Planificar con IA la semana siguiente');
+  section('B — runIAWeek(desde, hasta): la IA y las propuestas no salen del rango');
   {
     const sb = makeSandbox();
-    const today = sb.todayStr();
-    const anchor = sb.addDays(today, 7);
-    const weekEnd = sb.addDays(anchor, 6);
-    // El tercer día de esa semana está ocupado entero: la propuesta de ese
-    // día se adelanta a otro día de la MISMA semana, nunca a hoy (el día
-    // que elige la IA funciona como fecha límite).
-    const fullDay = sb.addDays(anchor, 2);
-    sb.state.events.push({ id: 'full', title: 'Excursión', date: fullDay, endDate: '', allDay: true, startTime: '', endTime: '' });
+    sb.state.tasks.push({ id: 't1', title: 'Informe', dueDate: '2030-03-20', priority: 'alta', done: false, recurrence: null });
     sb.__aiResponse = { summary: '', days: [
-      { date: anchor, label: 'd1', items: [{ sourceType: 'proposal', kind: 'task', title: 'Repasar', estimatedMinutes: 45, time: null }] },
-      { date: sb.addDays(anchor, 2), label: 'd3', items: [{ sourceType: 'proposal', kind: 'task', title: 'Leer', estimatedMinutes: 30, time: null }] },
-      { date: sb.addDays(anchor, 5), label: 'd6', items: [{ sourceType: 'proposal', kind: 'task', title: 'Ejercicios', estimatedMinutes: 60, time: null }] },
+      { date: THU, label: 'jueves', items: [{ sourceType: 'proposal', kind: 'task', title: 'Repasar', estimatedMinutes: 45, time: null, taskId: null }] },
+      { date: '2030-03-19', label: 'martes', items: [{ sourceType: 'proposal', kind: 'task', title: 'Fuera', estimatedMinutes: 30, time: null, taskId: null }] },
     ] };
-    await sb.runIAWeek(anchor);
-    const ps = sb.__getIAProposals();
-    check('B. hay 3 propuestas', ps.length === 3);
-    check('B. todas tienen hora (ninguna "sin hora fija")', ps.length === 3 && ps.every(p => !!p.time && !p.noSlot));
-    check('B. todas caen dentro de la semana elegida', ps.every(p => p.applyDate >= anchor && p.applyDate <= weekEnd));
-    check('B. ninguna con el aviso "fuera del horizonte"', ps.every(p => !String(p.reason || '').includes('horizonte')));
-    check('B. nada cae el día ocupado entero', ps.every(p => p.applyDate !== fullDay));
-    const leer = ps.find(p => p.title === 'Leer');
-    check('B. la del día ocupado se adelanta dentro de la semana', !!leer && leer.applyDate >= anchor && leer.applyDate < fullDay);
-    const p6 = ps.find(p => p.title === 'Ejercicios');
-    check('B. la de 60 min dura 60 min', !!p6 && p6._durationMinutes === 60);
+    await sb.runIAWeek(THU, SUN);
+    const ctx = sb.__lastContext;
+    check('B. rango del contexto: jueves a domingo', ctx.includes(`RANGO CONSIDERADO: ${THU} a ${SUN}.`));
+    check('B. huecos libres solo de jueves a domingo (4 días)', ctx.includes(`- ${SUN} (`) && !ctx.includes(`- ${NEXT_MON} (`) && !ctx.includes('- 2030-03-20 ('));
+    check('B. la tarea que vence después del domingo no entra en el rango', !ctx.includes('[id:t1] Informe — vence'));
+    check('B. el prompt no habla de 7 días', !sb.__lastSystem.includes('los 7 días'));
+    const props = sb.__getIAProposals();
+    check('B. ninguna propuesta queda después del domingo', props.length > 0 && props.every(p => (p.applyDate || p._finalDate || '') <= SUN));
   }
 
-  section('C — la semana actual sigue igual: empieza hoy');
+  section('C — Inicio ("Organizar mi semana") no cambia: 7 días');
   {
     const sb = makeSandbox();
+    sb.__aiResponse = { summary: '', days: [] };
+    await sb.runIAWeek(THU);
+    check('C. runIAWeek(día) sin final: 7 días desde ese día', sb.__lastContext.includes(`RANGO CONSIDERADO: ${THU} a 2030-03-20.`));
+    check('C. huecos de los 7 días', sb.__lastContext.includes('- 2030-03-20 ('));
     const today = sb.todayStr();
-    sb.state.events.push({ id: 'hoy', title: 'Ocupado', date: today, endDate: '', allDay: true, startTime: '', endTime: '' });
-    sb.__aiResponse = { summary: '', days: [{ date: sb.addDays(today, 1), label: 'mañana', items: [{ sourceType: 'proposal', kind: 'task', title: 'Repasar', estimatedMinutes: 45, time: null }] }] };
     await sb.runIAWeek();
-    const p = sb.__getIAProposals()[0];
-    check('C. colocada mañana, con hora', !!p && !!p.time && p.applyDate === sb.addDays(today, 1));
+    check('C. sin argumentos: desde hoy, 7 días', sb.__lastContext.includes(`RANGO CONSIDERADO: ${today} a ${sb.addDays(today, 6)}.`));
+    await sb.runIAWeek(THU, '2030-03-01');
+    check('C. un final anterior al inicio se ignora (7 días)', sb.__lastContext.includes(`RANGO CONSIDERADO: ${THU} a 2030-03-20.`));
+  }
+
+  section('D — el botón de Semana usa semanaIAWeekRange');
+  {
+    const handler = extractBetween(html, "if(semanaWeekBtn) semanaWeekBtn.addEventListener('click', () => {", '\n  });', 'botón de Semana');
+    check('D. calcula el rango con la semana visible', handler.includes('semanaIAWeekRange(week.anchorDate)'));
+    check('D. semana pasada: aviso y no llama a la IA', /if\(!range\)\{ showToast\([^)]*\); return; \}/.test(handler));
+    check('D. llama a runIAWeek(desde, hasta)', handler.includes('runIAWeek(range.from, range.to)'));
   }
 
   console.log(`\n${pass} OK, ${fail} fallos`);

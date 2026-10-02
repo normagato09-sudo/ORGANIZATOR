@@ -70,7 +70,7 @@ const escSrc = extractBetween(
 // 3) buildContext (la función modificada de esta fase).
 const buildContextSrc = extractBetween(
   html,
-  'function buildContext(scope, anchorDate){',
+  'function buildContext(scope, anchorDate, endDate){',
   '\nconst PLAN_ITEM_SCHEMA',
   'buildContext (5F-3B)'
 );
@@ -141,7 +141,7 @@ const expireSrc = extractBetween(
 // 9) runIAWeek(anchorDate) — la función nueva de esta fase.
 const runIAWeekSrc = extractBetween(
   html,
-  'async function runIAWeek(anchorDate){',
+  'async function runIAWeek(anchorDate, endDate){',
   '\n/* ---------- Chat con la IA',
   'runIAWeek (5F-3B)'
 );
