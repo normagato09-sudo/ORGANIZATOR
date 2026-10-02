@@ -99,6 +99,21 @@ const planWeekSrc = extractBetween(
   'planWeekProposals (5E-2)'
 );
 
+// 6b) A4: tareas recurrentes para Scheduler (tasksForScheduler +
+// taskOccurrenceSlot) e ids de repetición (iaOccurrenceRef).
+const tasksForSchedulerSrc = extractBetween(
+  html,
+  'function tasksForScheduler(fromDate, toDate){',
+  '\n\n/** Wrapper de UI para el checkbox',
+  'tasksForScheduler + taskOccurrenceSlot (A4)'
+);
+const occurrenceRefSrc = extractBetween(
+  html,
+  'function iaOccurrenceRef(id){',
+  '\n/** Repetición de una tarea recurrente',
+  'iaOccurrenceRef (A4)'
+);
+
 // 7) validateWeeklyProposal (5E-3, sin tocar en esta fase).
 const validateSrc = extractBetween(
   html,
@@ -164,6 +179,8 @@ vm.runInContext(buildContextSrc, sandbox, { filename: 'organizator.html (buildCo
 vm.runInContext(constsSrc, sandbox, { filename: 'organizator.html (PLAN_ITEM_SCHEMA/IA_RULES)' });
 vm.runInContext(lifecycleSrc, sandbox, { filename: 'organizator.html (ciclo de vida IA)' });
 vm.runInContext(planWeekSrc, sandbox, { filename: 'organizator.html (planWeekProposals)' });
+vm.runInContext(tasksForSchedulerSrc, sandbox, { filename: 'organizator.html (tasksForScheduler)' });
+vm.runInContext(occurrenceRefSrc, sandbox, { filename: 'organizator.html (iaOccurrenceRef)' });
 vm.runInContext(validateSrc, sandbox, { filename: 'organizator.html (validateWeeklyProposal)' });
 vm.runInContext(renderIAItemSrc, sandbox, { filename: 'organizator.html (renderIAItemHTML)' });
 vm.runInContext(expireSrc, sandbox, { filename: 'organizator.html (iaExpirePendingProposalsBeforeReset)' });

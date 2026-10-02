@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.4';
+const APP_VERSION = '2.3.5';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1409,6 +1409,40 @@ function eventsForSchedulerInRange(fromDate, toDate){
   const recurringOccurrences = expandEventOccurrencesInRange(state.events, fromDate, toDate);
   return plain.concat(recurringOccurrences)
     .map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
+}
+
+/** Tareas tal como las necesita Scheduler para [fromDate, toDate]. Las
+ * no recurrentes van tal cual (como siempre). Cada repetición de una
+ * tarea recurrente que tenga franja ese día ocupa su bloque, con id
+ * "taskId::fecha": la que se planificó al aceptar una propuesta
+ * (scheduledOccurrences) o, si no, la de su hora fija (dueTime +
+ * estimatedMinutes, 60 min si no hay). La tarea base recurrente no se
+ * pasa: su scheduledDate no es de ninguna repetición concreta. */
+function tasksForScheduler(fromDate, toDate){
+  const plain = state.tasks.filter(t => !t.recurrence);
+  const occurrenceBlocks = [];
+  state.tasks.filter(t => !!t.recurrence).forEach(t => {
+    getTaskOccurrences(t, fromDate, toDate).forEach(occ => {
+      const slot = taskOccurrenceSlot(t, occ.occurrenceDate);
+      if(!slot) return;
+      occurrenceBlocks.push({ id: occ.id, taskId: t.id, title: t.title, scheduledDate: occ.occurrenceDate, scheduledStart: slot.start, scheduledEnd: slot.end });
+    });
+  });
+  return plain.concat(occurrenceBlocks);
+}
+/** Franja { start, end } de la repetición `dateStr` de una tarea
+ * recurrente, o null si no tiene ninguna (ver tasksForScheduler). */
+function taskOccurrenceSlot(task, dateStr){
+  const planned = task.scheduledOccurrences && task.scheduledOccurrences[dateStr];
+  if(planned && planned.start && planned.end) return { start: planned.start, end: planned.end };
+  if(task.scheduledDate === dateStr && task.scheduledStart && task.scheduledEnd) return { start: task.scheduledStart, end: task.scheduledEnd };
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  if(!task.dueTime || !HHMM.test(task.dueTime)) return null;
+  const [h, m] = task.dueTime.split(':').map(Number);
+  const startMin = h * 60 + m;
+  const endMin = Math.min(startMin + (task.estimatedMinutes > 0 ? task.estimatedMinutes : 60), 24 * 60 - 1);
+  if(endMin <= startMin) return null;
+  return { start: task.dueTime, end: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}` };
 }
 
 /** Wrapper de UI para el checkbox de "completada" en las vistas: decide
@@ -2776,7 +2810,7 @@ function semanaDayUnplacedItems(dateStr, dayBlocks, weekTaskOccurrences, weekEve
     .filter(e => !e.allDay && isDateInRange(dateStr, e.date, e.endDate) && !shownIds.has(e.id))
     .map(e => ({ type: 'event', id: e.eventId || e.id, title: e.title, time: e.startTime || '', done: false }));
   const tasks = weekTaskOccurrences
-    .filter(t => t.occurrenceDate === dateStr && !shownIds.has(t.taskId || t.id))
+    .filter(t => t.occurrenceDate === dateStr && !shownIds.has(t.taskId || t.id) && !shownIds.has(t.id))
     .map(t => ({ type: 'task', id: t.taskId || t.id, title: t.title, time: t.dueTime || '', done: !!t.done }));
   return events.concat(tasks).sort((a, b) => (a.time || '99:99').localeCompare(b.time || '99:99'));
 }
@@ -2811,7 +2845,7 @@ function renderSemana(){
   // filtrado por fecha sobre la lista que se le pasa, igual que siempre.
   // Los flujos de IA (fuera de alcance de R-6) siguen usando
   // eventsForScheduler() sin tocar.
-  const schedCtx = { events: (typeof eventsForSchedulerInRange === 'function' ? eventsForSchedulerInRange(days[0], days[days.length-1]) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForSchedulerInRange === 'function' ? eventsForSchedulerInRange(days[0], days[days.length-1]) : state.events), tasks: tasksForScheduler(days[0], days[days.length-1]), customSchedules: state.customSchedules };
   // Tareas del rango visible (mismas ocurrencias que Calendario), para
   // pintar las que no tienen bloque en la agenda (ver semanaDayUnplacedItems).
   const weekTaskOccurrences = taskOccurrencesInRange(state.tasks, days[0], days[days.length-1]);
@@ -4439,7 +4473,12 @@ function isTaskOccurrenceCompleted(task, occurrenceDate){
 // la ocurrencia individual); en su lugar se expone `done`, ya resuelto
 // para esa fecha concreta vía isTaskOccurrenceCompleted.
 function buildTaskOccurrence(task, occurrenceDate){
-  const { completedOccurrences, ...rest } = task;
+  const { completedOccurrences, scheduledOccurrences, ...rest } = task;
+  // Repetición planificada al aceptar una propuesta IA: su franja propia.
+  const planned = scheduledOccurrences && scheduledOccurrences[occurrenceDate];
+  if(task.recurrence && planned && planned.start && planned.end){
+    Object.assign(rest, { scheduledDate: occurrenceDate, scheduledStart: planned.start, scheduledEnd: planned.end });
+  }
   return {
     ...rest,
     id: getTaskOccurrenceId(task.id, occurrenceDate),
@@ -4894,7 +4933,8 @@ function parseAIJSON(text){
 // (todayStr()). day/chat/otros modos no cambian.
 function buildContext(scope, anchorDate){
   const today = (scope === 'week' && anchorDate) ? anchorDate : todayStr();
-  const pend = state.tasks.filter(t => !t.done);
+  // Las recurrentes van aparte, repetición a repetición (más abajo).
+  const pend = state.tasks.filter(t => !t.done && !t.recurrence);
   const overdue = pend.filter(t => t.dueDate && t.dueDate < today);
   const noDate = pend.filter(t => !t.dueDate);
 
@@ -4926,6 +4966,19 @@ function buildContext(scope, anchorDate){
   lines.push('TAREAS SIN FECHA ASIGNADA (no se les puede suponer una fecha):');
   lines.push(noDate.length ? noDate.map(t => `- [id:${t.id}] ${t.title}${t.priority?' (prioridad '+t.priority+')':''}`).join('\n') : '(ninguna)');
   lines.push('');
+  // Cada repetición pendiente con su propio id ("tarea::fecha"): la IA
+  // la planifica en SU día; las que tienen hora fija o ya están
+  // planificadas ya ocupan su bloque (ver tasksForScheduler).
+  const recurringOccurrences = state.tasks.filter(t => !!t.recurrence)
+    .flatMap(t => getTaskOccurrences(t, today, rangeEnd).filter(o => !o.done).map(o => ({ task: t, occ: o })))
+    .sort((a,b) => a.occ.occurrenceDate.localeCompare(b.occ.occurrenceDate));
+  lines.push(`TAREAS QUE SE REPITEN (${today} a ${rangeEnd}; cada repetición es independiente y solo puede hacerse el día indicado):`);
+  lines.push(recurringOccurrences.length ? recurringOccurrences.map(({ task, occ }) => {
+    const slot = taskOccurrenceSlot(task, occ.occurrenceDate);
+    const when = slot ? `YA PROGRAMADA de ${slot.start} a ${slot.end}` : 'SIN HORA FIJA AÚN';
+    return `- [id:${occ.id}] ${task.title} — el ${occ.occurrenceDate}, ${when}, prioridad ${task.priority||'media'}`;
+  }).join('\n') : '(ninguna)');
+  lines.push('');
   lines.push(`EVENTOS (${today} a ${rangeEnd}, con hora fija cuando existe):`);
   lines.push(eventsInRange.length ? eventsInRange.map(e => `- ${e.title} — ${e.date}${e.endDate&&e.endDate!==e.date?' a '+e.endDate:''}${e.allDay?', TODO EL DÍA':(e.startTime?', HORA FIJA '+e.startTime+(e.endTime?'–'+e.endTime:''):', sin hora')}${e.location?', lugar: '+e.location:''}`).join('\n') : '(ninguno)');
 
@@ -4945,7 +4998,7 @@ function buildContext(scope, anchorDate){
 
   lines.push('');
   lines.push('HUECOS LIBRES REALES POR DÍA (calculados por el sistema restando horario bloqueado + eventos + tareas ya colocadas — usa ESTOS datos para decidir en qué día tiene sentido cada propuesta; NO calcules tú la disponibilidad ni inventes huecos):');
-  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, rangeEnd) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, rangeEnd) : state.events), tasks: tasksForScheduler(today, rangeEnd), customSchedules: state.customSchedules };
   const daysForSlots = (scope === 'day') ? [today] : (() => {
     const out = []; const base = parseYMD(today);
     for(let i=0;i<7;i++){ const d = new Date(base); d.setDate(d.getDate()+i); out.push(`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`); }
@@ -4982,6 +5035,7 @@ Reglas estrictas, sin excepción:
 - Si detectas una tarea, examen o entrega con fecha límite lejana que requiere preparación, NO concentres todo el estudio el día anterior ni en un solo bloque larguísimo: reparte varias propuestas de estudio (por ejemplo, 2 a 4 sesiones de 30-60 minutos) en distintos días disponibles ANTES de la fecha límite, cada una como una propuesta independiente en el día que corresponda.
 - Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, una tarea atrasada, un hueco libre real, etc.). Explica brevemente el motivo en "reason".
 - Si una propuesta sirve para hacer o avanzar una tarea pendiente del contexto, pon en "taskId" el id de esa tarea tal cual aparece entre corchetes (por ejemplo "[id:abc123]" → "abc123"). Si no corresponde a ninguna tarea del contexto, "taskId": null. Nunca inventes un id.
+- Las TAREAS QUE SE REPITEN tienen un id por repetición (por ejemplo "[id:abc123::2030-03-12]"): para planificar una repetición, propónla en el día de esa repetición y pon ese id completo en "taskId" ("abc123::2030-03-12"). No propongas las que ya están programadas.
 - Si no hay información suficiente para un plan útil, dilo en "summary" y devuelve "planItems" vacío o muy reducido.
 - Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown ni bloques de código.`;
 
@@ -5075,12 +5129,16 @@ function planWeekProposals(days, today, weekEnd, schedCtx){
     (day.items || []).forEach((it, itemIndex) => {
       if(it.sourceType !== 'proposal') return;
       const tmpId = `ia-tmp-week-${dayIndex}-${itemIndex}`;
+      // Repetición de una tarea recurrente: solo puede ir en su propio día.
+      const occ = iaOccurrenceRef(it.taskId);
+      const occDate = (occ && occ.date >= today && occ.date <= weekEnd) ? occ.date : null;
       pseudoTasks.push({
         id: tmpId,
         title: it.title,
         reason: it.reason || null,
         kind: it.kind || 'task',
-        dueDate: dateForDay, // fecha límite blanda: día propuesto por la IA, acotado a la semana
+        dueDate: occDate || dateForDay, // fecha límite blanda: día propuesto por la IA, acotado a la semana
+        ...(occDate ? { notBefore: occDate } : {}),
         priority: 'media',
         estimatedMinutes: (it.estimatedMinutes && it.estimatedMinutes > 0) ? it.estimatedMinutes : 45,
       });
@@ -5280,7 +5338,7 @@ function revalidateIAProposalBeforeApply(it){
     : startMin + (it._durationMinutes || it.estimatedMinutes || 60);
   const endTimeStr = (it._endTime && HHMM.test(it._endTime)) ? it._endTime : minToTime(endMin);
 
-  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(applyDate, applyDate) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+  const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(applyDate, applyDate) : state.events), tasks: tasksForScheduler(applyDate, applyDate), customSchedules: state.customSchedules };
 
   // Evento, tarea u horario fijo/custom schedule ya ocupando el hueco
   // exacto ahora mismo — getBusyIntervals fusiona las tres fuentes.
@@ -5579,12 +5637,30 @@ function iaProposalSlot(it){
 /** Tarea real de la que sale una propuesta IA: la IA indica su id en
  * "taskId" (ver IA_RULES). Solo cuenta si existe, no está hecha y no es
  * recurrente (una tarea recurrente comparte un único hueco programado
- * entre todas sus repeticiones, así que no se le asigna uno). */
+ * entre todas sus repeticiones, así que no se le asigna uno; sus
+ * repeticiones van por findIAProposalSourceOccurrence). */
 function findIAProposalSourceTask(it){
   if(!it || !it.taskId) return null;
   const t = state.tasks.find(x => x.id === it.taskId);
   if(!t || t.done || t.recurrence) return null;
   return t;
+}
+/** "taskId::YYYY-MM-DD" (id de repetición, ver getTaskOccurrenceId) →
+ * { taskId, date }; cualquier otra cosa → null. */
+function iaOccurrenceRef(id){
+  const m = typeof id === 'string' ? /^(.+)::(\d{4}-\d{2}-\d{2})$/.exec(id) : null;
+  return m ? { taskId: m[1], date: m[2] } : null;
+}
+/** Repetición de una tarea recurrente de la que sale una propuesta IA
+ * ("taskId" con fecha). Solo cuenta si la tarea existe, esa fecha es de
+ * verdad una repetición suya y no está completada. */
+function findIAProposalSourceOccurrence(it){
+  const ref = iaOccurrenceRef(it && it.taskId);
+  if(!ref) return null;
+  const t = state.tasks.find(x => x.id === ref.taskId);
+  if(!t || !t.recurrence || getTaskOccurrences(t, ref.date, ref.date).length !== 1) return null;
+  if(isTaskOccurrenceCompleted(t, ref.date)) return null;
+  return { task: t, date: ref.date };
 }
 /** Guarda una propuesta IA aceptada. Devuelve el texto del aviso.
  * - Con hora: TAREA PLANIFICADA (scheduledDate/Start/End) con la duración
@@ -5593,19 +5669,41 @@ function findIAProposalSourceTask(it){
  *   tarea ya tenía hueco (p.ej. otra sesión de estudio ya añadida), se
  *   crea una tarea nueva para esta sesión, con la misma fecha límite.
  * - Sin hora: tarea con fecha límite ese día; si sale de una tarea
- *   existente no se duplica (ya está en tus tareas). */
+ *   existente no se duplica (ya está en tus tareas).
+ * - Repetición de una tarea recurrente ("taskId::fecha"): igual, pero lo
+ *   que se planifica es esa repetición (scheduledOccurrences[fecha]). */
 async function applyIAProposal(it, date){
   // 5F-2: idempotencia por proposal.id. Si esta propuesta ya creó (o
   // planificó) su entidad real, no se repite: applyIAProposal es no-op
   // seguro ante cualquier invocación repetida, venga de donde venga.
   // Se mira también en events por las propuestas aplicadas antes de
   // este cambio, que se guardaban como evento.
-  const already = state.tasks.find(t => t.sourceProposalId === it.id) || state.events.find(e => e.sourceProposalId === it.id);
+  const already = state.tasks.find(t => t.sourceProposalId === it.id) || state.events.find(e => e.sourceProposalId === it.id)
+    || state.tasks.find(t => t.scheduledOccurrences && Object.values(t.scheduledOccurrences).some(s => s && s.proposalId === it.id));
   if(already) return 'Añadido al plan';
-  const source = findIAProposalSourceTask(it);
+  // Repetición de una tarea recurrente, solo si se aplica en su propio
+  // día: se planifica ESA repetición en la propia tarea
+  // (scheduledOccurrences[fecha]), sin crear otra tarea.
+  const found = findIAProposalSourceOccurrence(it);
+  const occurrence = (found && found.date === date) ? found : null;
+  const source = occurrence ? null : findIAProposalSourceTask(it);
   const slot = iaProposalSlot(it);
   let message = 'Añadido al plan';
-  if(slot && source && !source.scheduledDate){
+  if(slot && occurrence && !taskOccurrenceSlot(occurrence.task, date)){
+    const t = occurrence.task;
+    const scheduledOccurrences = Object.assign({}, t.scheduledOccurrences, { [date]: { start: slot.start, end: slot.end, proposalId: it.id } });
+    await updateTask(t.id, { scheduledOccurrences });
+    message = `«${t.title}» planificada el ${date} de ${slot.start} a ${slot.end}`;
+  } else if(slot && occurrence){
+    // Esa repetición ya tenía franja: esta sesión va como tarea aparte.
+    await addTask({
+      title: it.title, dueDate: date, dueTime: '', priority: occurrence.task.priority || 'media', notes: it.reason || '',
+      scheduledDate: date, scheduledStart: slot.start, scheduledEnd: slot.end, estimatedMinutes: slot.minutes,
+      sourceProposalId: it.id, sourceTaskId: occurrence.task.id,
+    });
+  } else if(occurrence){
+    return `«${occurrence.task.title}» ya está en tus tareas`;
+  } else if(slot && source && !source.scheduledDate){
     await updateTask(source.id, { scheduledDate: date, scheduledStart: slot.start, scheduledEnd: slot.end, estimatedMinutes: slot.minutes, schedulingWarning: null, sourceProposalId: it.id });
     message = `«${source.title}» planificada de ${slot.start} a ${slot.end}`;
   } else if(slot){
@@ -5673,7 +5771,7 @@ async function runIADay(){
     }));
 
     // 2) Colocación determinista de cada propuesta en un hueco real.
-    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, today) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(today, today) : state.events), tasks: tasksForScheduler(today, today), customSchedules: state.customSchedules };
     const scheduled = window.Scheduler.autoSchedule(pseudoTasks, schedCtx);
     const placed = scheduled.filter(t => t.scheduledStart && t.scheduledEnd);
     const unplaced = scheduled.filter(t => !t.scheduledStart);
@@ -5758,7 +5856,8 @@ async function runIAWeek(anchorDate){
     // por UNA sola pasada de Scheduler.autoSchedule (planWeekProposals),
     // en vez de resolverse una a una día a día. El día que devuelve cada
     // item ("_finalDate") es el que decide Scheduler, no el de la IA.
-    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(todayStr() < today ? todayStr() : today, weekEnd) : state.events), tasks: state.tasks, customSchedules: state.customSchedules };
+    const schedFrom = todayStr() < today ? todayStr() : today;
+    const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(schedFrom, weekEnd) : state.events), tasks: tasksForScheduler(schedFrom, weekEnd), customSchedules: state.customSchedules };
     const plannedDays = planWeekProposals(data.days || [], today, weekEnd, schedCtx);
 
     // Validación (5E-3): segunda barrera de seguridad justo antes de

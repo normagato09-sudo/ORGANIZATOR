@@ -52,6 +52,10 @@ const html = fs.readFileSync(htmlPath, 'utf8');
 const planFnMatch = html.match(/function planWeekProposals\(days, today, weekEnd, schedCtx\)\{[\s\S]*?\n\}\n/);
 assertTrue(!!planFnMatch, 'planWeekProposals() se encuentra en organizator.html (extracción literal para test)');
 vm.runInContext(planFnMatch[0], sandbox, { filename: 'organizator.html#planWeekProposals' });
+// A4: planWeekProposals usa iaOccurrenceRef (ids de repetición "tarea::fecha").
+const occurrenceRefMatch = html.match(/function iaOccurrenceRef\(id\)\{[\s\S]*?\n\}\n/);
+assertTrue(!!occurrenceRefMatch, 'iaOccurrenceRef() se encuentra en organizator.html');
+vm.runInContext(occurrenceRefMatch[0], sandbox, { filename: 'organizator.html#iaOccurrenceRef' });
 assertTrue(typeof sandbox.planWeekProposals === 'function', 'planWeekProposals() se evalúa correctamente');
 
 // Bloque de identidad 5D: iaProposals + helpers de ciclo de vida.

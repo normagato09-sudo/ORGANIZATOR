@@ -167,12 +167,14 @@
    * scheduledEnd rellenos, o con schedulingWarning si no encajó.
    * opts.fromDate (YYYY-MM-DD, opcional): primer día en el que buscar
    * hueco, p.ej. el inicio de una semana futura. Nunca antes de hoy.
+   * task.notBefore (YYYY-MM-DD, opcional): lo mismo, pero solo para esa
+   * tarea (p.ej. una repetición que debe ir en su propio día).
    */
   function scheduleTask(task, context, opts) {
     const cfg = Object.assign({}, DEFAULTS, opts);
     const duration = estimateDuration(task, cfg);
     const today = todayStr();
-    const start = (cfg.fromDate && cfg.fromDate > today) ? cfg.fromDate : today;
+    const start = [cfg.fromDate, task.notBefore].reduce((acc, d) => (d && d > acc) ? d : acc, today);
     const end = task.dueDate || addDays(start, cfg.horizonDays);
     const result = Object.assign({}, task, { estimatedMinutes: duration });
     delete result.schedulingWarning;

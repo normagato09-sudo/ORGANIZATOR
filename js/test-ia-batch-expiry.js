@@ -63,6 +63,11 @@ const src = [
   extractFn(/function setIAProposalStatus\(id, status\) \{/, 'setIAProposalStatus'),
   extractFn(/function iaProposalSlot\(it\)\{/, 'iaProposalSlot'),
   extractFn(/function findIAProposalSourceTask\(it\)\{/, 'findIAProposalSourceTask'),
+  // A4: repeticiones de tareas recurrentes ("tarea::fecha").
+  extractFn(/function iaOccurrenceRef\(id\)\{/, 'iaOccurrenceRef'),
+  extractFn(/function findIAProposalSourceOccurrence\(it\)\{/, 'findIAProposalSourceOccurrence'),
+  extractFn(/function tasksForScheduler\(fromDate, toDate\)\{/, 'tasksForScheduler'),
+  extractFn(/function taskOccurrenceSlot\(task, dateStr\)\{/, 'taskOccurrenceSlot'),
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
   // 5F-3C: wireIAProposalButtons ahora llama a revalidateIAProposalBeforeApply
   // justo antes de applyIAProposal — se extrae también, literal. Sin
