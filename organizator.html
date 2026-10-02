@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.5';
+const APP_VERSION = '2.3.6';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1429,6 +1429,31 @@ function tasksForScheduler(fromDate, toDate){
     });
   });
   return plain.concat(occurrenceBlocks);
+}
+/** Propuestas para las repeticiones pendientes y sin franja de las
+ * tareas recurrentes en [fromDate, toDate] (nunca antes de hoy), sin
+ * pasar por la IA: cada una con su id "taskId::fecha" y su fecha, para
+ * que Scheduler la coloque en ese día y al aceptarla se planifique esa
+ * repetición (ver applyIAProposal). Devuelve [{ date, item }]. */
+function recurringOccurrenceProposals(fromDate, toDate){
+  const from = fromDate < todayStr() ? todayStr() : fromDate;
+  if(from > toDate) return [];
+  return state.tasks.filter(t => !!t.recurrence).flatMap(t =>
+    getTaskOccurrences(t, from, toDate)
+      .filter(occ => !occ.done && !taskOccurrenceSlot(t, occ.occurrenceDate))
+      .map(occ => ({ date: occ.occurrenceDate, item: {
+        sourceType: 'proposal', kind: 'task', time: null, title: t.title,
+        estimatedMinutes: t.estimatedMinutes > 0 ? t.estimatedMinutes : null,
+        reason: 'Tarea que se repite', taskId: occ.id,
+      } })));
+}
+/** true si la propuesta de la IA es para una tarea recurrente (la base o
+ * una repetición): esas las propone ya recurringOccurrenceProposals. */
+function isIAProposalForRecurringTask(it){
+  if(!it || !it.taskId) return false;
+  const ref = iaOccurrenceRef(it.taskId);
+  const t = state.tasks.find(x => x.id === (ref ? ref.taskId : it.taskId));
+  return !!(t && t.recurrence);
 }
 /** Franja { start, end } de la repetición `dateStr` de una tarea
  * recurrente, o null si no tiene ninguna (ver tasksForScheduler). */
@@ -4900,7 +4925,7 @@ async function callAI(systemPrompt, userPrompt){
   if(!state.ia.enabled){
     // Segunda barrera de seguridad: aunque algo llegue a invocar callAI,
     // nunca debe salir una petición de red si el usuario desactivó la IA en Ajustes.
-    throw new Error('La IA está desactivada en Ajustes');
+    throw iaError('disabled', 'La IA está desactivada en Ajustes');
   }
   let response;
   try{
@@ -4910,20 +4935,48 @@ async function callAI(systemPrompt, userPrompt){
       body: JSON.stringify({ system: systemPrompt, prompt: userPrompt })
     });
   }catch(networkErr){
-    throw new Error('No se pudo contactar con el servidor de ORGANIZATOR');
+    throw iaError('network', 'No se pudo contactar con el servidor de ORGANIZATOR');
   }
   let data = null;
   try{ data = await response.json(); }catch(parseErr){ /* respuesta no-JSON, se maneja abajo */ }
   if(!response.ok){
-    throw new Error((data && data.error) ? data.error : ('HTTP ' + response.status));
+    // api/ai.js indica en `code` qué falló (ver iaErrorMessage).
+    const err = iaError((data && data.code) || 'upstream', (data && data.error) ? data.error : ('HTTP ' + response.status), response.status);
+    if(data && data.upstreamStatus) err.upstreamStatus = data.upstreamStatus;
+    throw err;
   }
-  if(!data || !data.text) throw new Error('Respuesta vacía de la IA');
+  if(!data || !data.text) throw iaError('truncated', 'Respuesta vacía de la IA');
   return data.text;
+}
+function iaError(code, message, status){
+  const err = new Error(message);
+  err.code = code;
+  if(status) err.status = status;
+  return err;
 }
 function parseAIJSON(text){
   let clean = text.trim();
   clean = clean.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/```\s*$/, '');
-  return JSON.parse(clean);
+  try{ return JSON.parse(clean); }
+  catch(e){ throw iaError('invalid_json', 'La respuesta de la IA no es un JSON válido'); }
+}
+/** Texto para el usuario según el código del error de la IA (callAI,
+ * api/ai.js o parseAIJSON). Cualquier otro error se trata como fallo
+ * inesperado, no como "conexión". */
+function iaErrorMessage(err){
+  switch(err && err.code){
+    case 'network': return 'No hay conexión con el servidor de ORGANIZATOR. Comprueba tu conexión a internet.';
+    case 'rate_limit_day': return 'Se ha agotado el uso diario gratuito de la IA. Vuelve a intentarlo mañana.';
+    case 'rate_limit': return 'Has llegado al límite de uso de la IA. Espera un minuto y vuelve a intentarlo.';
+    case 'too_large': return 'La petición es demasiado grande para la IA.';
+    case 'truncated':
+    case 'invalid_json': return 'La respuesta de la IA llegó incompleta. Inténtalo de nuevo.';
+    case 'upstream_network': return 'El servidor de ORGANIZATOR no pudo contactar con la IA. Inténtalo de nuevo en un momento.';
+    case 'config': return 'La IA no está configurada en el servidor.';
+    case 'disabled': return 'La IA está desactivada en Ajustes.';
+    case 'upstream': return `La IA no está disponible ahora mismo${err.upstreamStatus ? ` (error ${err.upstreamStatus})` : ''}.`;
+    default: return 'Error inesperado al usar la IA.';
+  }
 }
 
 /* ---------- Contexto real de ORGANIZATOR (nunca se inventa nada) ---------- */
@@ -4966,18 +5019,12 @@ function buildContext(scope, anchorDate){
   lines.push('TAREAS SIN FECHA ASIGNADA (no se les puede suponer una fecha):');
   lines.push(noDate.length ? noDate.map(t => `- [id:${t.id}] ${t.title}${t.priority?' (prioridad '+t.priority+')':''}`).join('\n') : '(ninguna)');
   lines.push('');
-  // Cada repetición pendiente con su propio id ("tarea::fecha"): la IA
-  // la planifica en SU día; las que tienen hora fija o ya están
-  // planificadas ya ocupan su bloque (ver tasksForScheduler).
-  const recurringOccurrences = state.tasks.filter(t => !!t.recurrence)
-    .flatMap(t => getTaskOccurrences(t, today, rangeEnd).filter(o => !o.done).map(o => ({ task: t, occ: o })))
-    .sort((a,b) => a.occ.occurrenceDate.localeCompare(b.occ.occurrenceDate));
-  lines.push(`TAREAS QUE SE REPITEN (${today} a ${rangeEnd}; cada repetición es independiente y solo puede hacerse el día indicado):`);
-  lines.push(recurringOccurrences.length ? recurringOccurrences.map(({ task, occ }) => {
-    const slot = taskOccurrenceSlot(task, occ.occurrenceDate);
-    const when = slot ? `YA PROGRAMADA de ${slot.start} a ${slot.end}` : 'SIN HORA FIJA AÚN';
-    return `- [id:${occ.id}] ${task.title} — el ${occ.occurrenceDate}, ${when}, prioridad ${task.priority||'media'}`;
-  }).join('\n') : '(ninguna)');
+  // Las repeticiones las coloca el sistema en su día, sin la IA (ver
+  // recurringOccurrenceProposals); las que tienen hora ya restan de los
+  // huecos libres. Aquí solo van los títulos, para que no las proponga.
+  const recurringTitles = state.tasks.filter(t => !!t.recurrence && getTaskOccurrences(t, today, rangeEnd).some(o => !o.done)).map(t => t.title);
+  lines.push('TAREAS QUE SE REPITEN (las planifica el sistema por su cuenta — NO las propongas):');
+  lines.push(recurringTitles.length ? recurringTitles.map(t => `- ${t}`).join('\n') : '(ninguna)');
   lines.push('');
   lines.push(`EVENTOS (${today} a ${rangeEnd}, con hora fija cuando existe):`);
   lines.push(eventsInRange.length ? eventsInRange.map(e => `- ${e.title} — ${e.date}${e.endDate&&e.endDate!==e.date?' a '+e.endDate:''}${e.allDay?', TODO EL DÍA':(e.startTime?', HORA FIJA '+e.startTime+(e.endTime?'–'+e.endTime:''):', sin hora')}${e.location?', lugar: '+e.location:''}`).join('\n') : '(ninguno)');
@@ -5035,7 +5082,7 @@ Reglas estrictas, sin excepción:
 - Si detectas una tarea, examen o entrega con fecha límite lejana que requiere preparación, NO concentres todo el estudio el día anterior ni en un solo bloque larguísimo: reparte varias propuestas de estudio (por ejemplo, 2 a 4 sesiones de 30-60 minutos) en distintos días disponibles ANTES de la fecha límite, cada una como una propuesta independiente en el día que corresponda.
 - Solo puedes proponer bloques nuevos si se apoyan en datos reales del contexto (una tarea pendiente, un examen próximo, una tarea atrasada, un hueco libre real, etc.). Explica brevemente el motivo en "reason".
 - Si una propuesta sirve para hacer o avanzar una tarea pendiente del contexto, pon en "taskId" el id de esa tarea tal cual aparece entre corchetes (por ejemplo "[id:abc123]" → "abc123"). Si no corresponde a ninguna tarea del contexto, "taskId": null. Nunca inventes un id.
-- Las TAREAS QUE SE REPITEN tienen un id por repetición (por ejemplo "[id:abc123::2030-03-12]"): para planificar una repetición, propónla en el día de esa repetición y pon ese id completo en "taskId" ("abc123::2030-03-12"). No propongas las que ya están programadas.
+- Las TAREAS QUE SE REPITEN las planifica el sistema: no propongas nada para ellas.
 - Si no hay información suficiente para un plan útil, dilo en "summary" y devuelve "planItems" vacío o muy reducido.
 - Responde ÚNICAMENTE con JSON válido, sin texto adicional, sin markdown ni bloques de código.`;
 
@@ -5740,7 +5787,7 @@ async function runIADay(){
   const msgEl = iaThreadAddPending('✨ Organizar mi día');
   try{
     const context = buildContext('day');
-    const system = IA_RULES + `\n\nGenera un plan SOLO para hoy. Esquema exacto:\n{\n  "summary": string,\n  "planItems": [${PLAN_ITEM_SCHEMA}]\n}\nOrdena planItems cronológicamente cuando tengan hora; los que no tengan hora van al final.`;
+    const system = IA_RULES + `\n\nGenera un plan SOLO para hoy. Esquema exacto:\n{\n  "summary": string,\n  "planItems": [${PLAN_ITEM_SCHEMA}]\n}\nOrdena planItems cronológicamente cuando tengan hora; los que no tengan hora van al final. Como mucho 5 propuestas nuevas.`;
     iaSetStatus('Generando planificación…');
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
@@ -5758,7 +5805,10 @@ async function runIADay(){
     // "existing" que pueda haber devuelto (la agenda real ya la da
     // buildDayBlocks más abajo con aritmética exacta, sin depender de
     // que la IA los haya copiado bien).
-    const proposalItems = (data.planItems || []).filter(it => it.sourceType === 'proposal');
+    // + las repeticiones de hoy de las tareas recurrentes, que propone el
+    // sistema y no la IA (si la IA propone alguna igualmente, se ignora).
+    const proposalItems = (data.planItems || []).filter(it => it.sourceType === 'proposal' && !isIAProposalForRecurringTask(it))
+      .concat(recurringOccurrenceProposals(today, today).map(r => r.item));
     const pseudoTasks = proposalItems.map((it, i) => ({
       id: `ia-tmp-day-${i}`,
       title: it.title,
@@ -5818,7 +5868,7 @@ async function runIADay(){
     iaSetStatus('');
   }catch(err){
     console.error(err);
-    iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo generar la planificación (error de conexión con la IA). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
+    iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo generar la planificación. ${esc(iaErrorMessage(err))} El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
     iaSetStatus('');
   }finally{
     iaSetButtonsDisabled(false);
@@ -5844,7 +5894,7 @@ async function runIAWeek(anchorDate){
     const today = (typeof anchorDate === 'string' && anchorDate) ? anchorDate : todayStr();
     const weekEnd = addDays(today, 6);
     const context = buildContext('week', today);
-    const system = IA_RULES + `\n\nGenera un plan para los 7 días del rango indicado en el contexto, agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": [].`;
+    const system = IA_RULES + `\n\nGenera un plan para los 7 días del rango indicado en el contexto, agrupado por día. Esquema exacto:\n{\n  "summary": string,\n  "days": [\n    { "date": "YYYY-MM-DD", "label": string, "items": [${PLAN_ITEM_SCHEMA}] }\n  ]\n}\nEvita proponer cosas que entren en conflicto con eventos ya existentes ese día. Si un día no tiene nada relevante, incluye "items": []. Como mucho 10 propuestas nuevas en toda la semana.`;
     iaSetStatus('Generando planificación semanal…');
     const raw = await callAI(system, context);
     const data = parseAIJSON(raw);
@@ -5858,7 +5908,16 @@ async function runIAWeek(anchorDate){
     // item ("_finalDate") es el que decide Scheduler, no el de la IA.
     const schedFrom = todayStr() < today ? todayStr() : today;
     const schedCtx = { events: (typeof eventsForScheduler === 'function' ? eventsForScheduler(schedFrom, weekEnd) : state.events), tasks: tasksForScheduler(schedFrom, weekEnd), customSchedules: state.customSchedules };
-    const plannedDays = planWeekProposals(data.days || [], today, weekEnd, schedCtx);
+    // Las repeticiones de las tareas recurrentes las propone el sistema,
+    // cada una en su día (si la IA propone alguna igualmente, se ignora).
+    const weekDays = (data.days || []).map(day => ({ ...day, items: (day.items || []).filter(it => !(it.sourceType === 'proposal' && isIAProposalForRecurringTask(it))) }));
+    recurringOccurrenceProposals(today, weekEnd).forEach(({ date, item }) => {
+      let day = weekDays.find(d => d.date === date);
+      if(!day){ day = { date, label: DOW_FULL_MONFIRST[dowOfDate(date)], items: [] }; weekDays.push(day); }
+      day.items.push(item);
+    });
+    weekDays.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const plannedDays = planWeekProposals(weekDays, today, weekEnd, schedCtx);
 
     // Validación (5E-3): segunda barrera de seguridad justo antes de
     // registrar/renderizar cada propuesta — comprueba contra el estado
@@ -5899,7 +5958,7 @@ async function runIAWeek(anchorDate){
     iaSetStatus('');
   }catch(err){
     console.error(err);
-    iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo generar la planificación semanal (error de conexión con la IA). El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
+    iaThreadResolve(msgEl, `<p class="empty-hint">No se pudo generar la planificación semanal. ${esc(iaErrorMessage(err))} El resto de ORGANIZATOR sigue funcionando con normalidad.</p>`);
     iaSetStatus('');
   }finally{
     iaSetButtonsDisabled(false);
@@ -5992,7 +6051,7 @@ async function runIAActionChat(question){
     else if(currentView === 'inicio') renderInicio();
   }catch(err){
     console.error(err);
-    iaThreadResolve(msgEl, 'No se pudo contactar con la IA ahora mismo. Inténtalo de nuevo en un momento.');
+    iaThreadResolve(msgEl, esc(iaErrorMessage(err)));
   }
 }
 

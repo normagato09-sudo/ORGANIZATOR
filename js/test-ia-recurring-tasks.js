@@ -1,9 +1,9 @@
 /**
  * ORGANIZATOR — Tests: tareas que se repiten en la planificación con IA (A4)
  *
- *  - Cada repetición pendiente llega a la IA con su propio id
- *    ("tarea::fecha") y la IA la planifica en SU día (task.notBefore en
- *    Scheduler), nunca en otro.
+ *  - Las repeticiones pendientes sin hora NO van a la IA (solo el título
+ *    de la tarea): las propone el sistema, una por repetición con id
+ *    "tarea::fecha", y Scheduler la coloca en SU día (task.notBefore).
  *  - Una repetición con hora fija (dueTime) o ya planificada ocupa su
  *    bloque: no se propone nada encima (tasksForScheduler).
  *  - Al aceptar la propuesta se planifica ESA repetición en la propia
@@ -147,15 +147,15 @@ const proposal = (o) => Object.assign({ id: 'p-' + Math.random().toString(36).sl
     check('C. sin notBefore, igual que antes (desde fromDate)', r2.scheduledDate === MON);
   }
 
-  section('D — buildContext: cada repetición pendiente con su id');
+  section('D — buildContext: las repeticiones no van una a una a la IA');
   {
     const sb = makeSandbox();
     sb.state.tasks.push(recurringTask({ dueDate: '2030-01-01', recurrence: { type: 'daily', interval: 1, daysOfWeek: [], startDate: '2030-01-01', endDate: null }, completedOccurrences: [MON] }));
     sb.state.tasks.push(recurringTask({ id: 'fija', title: 'Gimnasio', dueTime: '19:00' }));
     const ctx = sb.buildContext('week', MON);
-    check('D. la repetición del miércoles aparece con id "rec::fecha"', ctx.includes(`[id:rec::${WED}] Repasar inglés — el ${WED}, SIN HORA FIJA AÚN`));
-    check('D. la repetición completada no aparece', !ctx.includes(`[id:rec::${MON}]`));
-    check('D. la de hora fija aparece como ya programada', ctx.includes(`[id:fija::${WED}] Gimnasio — el ${WED}, YA PROGRAMADA de 19:00 a 20:00`));
+    check('D. ninguna repetición con su propio id', !ctx.includes('::'));
+    check('D. cada tarea recurrente aparece una sola vez, solo con su título', ctx.split('\n- Repasar inglés\n').length === 2 && ctx.split('Gimnasio').length === 2);
+    check('D. se le dice que no las proponga', ctx.includes('TAREAS QUE SE REPITEN (las planifica el sistema por su cuenta — NO las propongas):'));
     check('D. la recurrente no sale como atrasada', !/TAREAS ATRASADAS[^\n]*\n- \[id:rec\]/.test(ctx));
     check('D. huecos libres: el miércoles termina a las 18:50 por el gimnasio', ctx.includes(`- ${WED} (Miércoles): 07:00–18:50, 20:10–23:00`));
   }
@@ -225,21 +225,41 @@ const proposal = (o) => Object.assign({ id: 'p-' + Math.random().toString(36).sl
     check('G. sin hora: no se crea nada', sb4.state.tasks.length === 1 && msg.includes('ya está en tus tareas'));
   }
 
-  section('H — de extremo a extremo: Organizar semana futura → Añadir al plan');
+  section('H — de extremo a extremo: las repeticiones las propone el sistema, no la IA');
   {
     const sb = makeSandbox();
-    sb.state.tasks.push(recurringTask({ recurrence: { type: 'weekly', interval: 1, daysOfWeek: [2], startDate: WED, endDate: null }, dueDate: WED }));
+    sb.state.tasks.push(recurringTask({ recurrence: { type: 'weekly', interval: 1, daysOfWeek: [2, 4], startDate: MON, endDate: null }, estimatedMinutes: 40 }));
+    sb.state.tasks.push(recurringTask({ id: 'fija', title: 'Gimnasio', dueTime: '19:00' }));
+    // La IA no devuelve nada de las repeticiones salvo una que se ignora.
     sb.__aiResponse = { summary: '', days: [{ date: MON, label: 'lunes', items: [
-      { sourceType: 'proposal', kind: 'task', title: 'Repasar inglés', estimatedMinutes: 40, time: null, taskId: `rec::${WED}` },
+      { sourceType: 'proposal', kind: 'task', title: 'Repasar inglés', estimatedMinutes: 90, time: null, taskId: 'rec' },
+      { sourceType: 'proposal', kind: 'task', title: 'Estudiar mates', estimatedMinutes: 30, time: null, taskId: null },
     ] }] };
     await sb.runIAWeek(MON);
-    check('H. el contexto lleva el id de la repetición', sb.__lastContext.includes(`[id:rec::${WED}]`));
-    check('H. las reglas explican los ids de repetición', sb.__lastSystem.includes('TAREAS QUE SE REPITEN'));
-    const p = sb.__getIAProposals()[0];
-    check('H. la propuesta cae el miércoles, con hora', !!p && p.applyDate === WED && !!p.time && p.taskId === `rec::${WED}`);
+    check('H. el sistema le pide un máximo de propuestas', sb.__lastSystem.includes('Como mucho 10 propuestas'));
+    const props = sb.__getIAProposals();
+    const reps = props.filter(p => /::/.test(p.taskId || ''));
+    check('H. una propuesta por repetición sin hora (miércoles y viernes)', reps.length === 2 && reps.some(p => p.taskId === `rec::${WED}` && p.applyDate === WED) && reps.some(p => p.taskId === 'rec::2030-03-15' && p.applyDate === '2030-03-15'));
+    check('H. con hora y con la duración de la tarea (40 min)', reps.every(p => !!p.time && p._durationMinutes === 40));
+    check('H. ninguna para la tarea con hora fija', !props.some(p => (p.taskId || '').startsWith('fija')));
+    check('H. la de la IA para la recurrente se ignora; la otra se mantiene', !props.some(p => p.taskId === 'rec') && props.some(p => p.title === 'Estudiar mates'));
+    const p = reps.find(x => x.applyDate === WED);
     await sb.applyIAProposal(p, p.applyDate);
     const t = sb.state.tasks[0];
-    check('H. queda planificada esa repetición, 40 min', sb.state.tasks.length === 1 && t.scheduledOccurrences[WED].start === p.time && t.scheduledOccurrences[WED].end === p._endTime);
+    check('H. al aceptarla queda planificada esa repetición', sb.state.tasks.length === 2 && t.scheduledOccurrences[WED].start === p.time && t.scheduledOccurrences[WED].end === p._endTime);
+  }
+
+  section('I — Organizar mi día: la repetición de hoy la propone el sistema');
+  {
+    const sb = makeSandbox();
+    const today = sb.todayStr();
+    sb.state.tasks.push(recurringTask({ dueDate: today, recurrence: { type: 'daily', interval: 1, daysOfWeek: [], startDate: today, endDate: null } }));
+    sb.__aiResponse = { summary: '', planItems: [] };
+    await sb.runIADay();
+    // Con hueco o sin él (según la hora del test), la propuesta existe.
+    const props = sb.__getIAProposals().filter(p => p.source === 'day');
+    check('I. hay una propuesta para la repetición de hoy', props.length === 1 && props[0].taskId === `rec::${today}`);
+    check('I. el sistema le pide un máximo de propuestas', sb.__lastSystem.includes('Como mucho 5 propuestas'));
   }
 
   console.log(`\n${pass} OK, ${fail} fallos`);
