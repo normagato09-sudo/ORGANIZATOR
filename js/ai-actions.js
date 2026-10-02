@@ -2595,7 +2595,13 @@ Reglas estrictas, sin excepción:
     // (el texto que lee la IA) ni el Chat: solo el contexto interno que
     // se pasa a Scheduler.scheduleTask/findConflicts/rescheduleTask.
     const events = (typeof global.eventsForScheduler === 'function') ? global.eventsForScheduler() : global.state.events;
-    return { tasks: global.state.tasks, events, customSchedules: global.state.customSchedules };
+    // B2: con tasksForScheduler() (organizator.html), las tareas con hora
+    // fija y las repeticiones ocupan su bloque durante el próximo año,
+    // igual que en la planificación con IA y en la vista Semana.
+    const tasks = (typeof global.tasksForScheduler === 'function')
+      ? global.tasksForScheduler(global.todayStr(), global.addDays(global.todayStr(), 365))
+      : global.state.tasks;
+    return { tasks, events, customSchedules: global.state.customSchedules };
   }
 
   async function applyCreateTask(a) {
@@ -2647,6 +2653,10 @@ Reglas estrictas, sin excepción:
   async function reconcileConflicts(dateStr) {
     const conflictIds = global.Scheduler.findConflicts(dateStr, schedulerContext());
     for (const id of conflictIds) {
+      // Solo se recolocan tareas con franja guardada: nunca una con hora
+      // fija ni una repetición (sus bloques los añade tasksForScheduler).
+      const real = global.state.tasks.find(t => t.id === id);
+      if (!real || !real.scheduledDate) continue;
       const rescheduled = global.Scheduler.rescheduleTask(id, schedulerContext());
       if (rescheduled) {
         await global.updateTask(id, {

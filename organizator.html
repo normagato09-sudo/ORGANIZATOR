@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.6';
+const APP_VERSION = '2.3.7';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1412,14 +1412,23 @@ function eventsForSchedulerInRange(fromDate, toDate){
 }
 
 /** Tareas tal como las necesita Scheduler para [fromDate, toDate]. Las
- * no recurrentes van tal cual (como siempre). Cada repetición de una
+ * no recurrentes van tal cual, salvo las que tienen hora fija (dueTime)
+ * en el rango y ninguna franja planificada: ocupan esa hora en su fecha
+ * (misma duración que abajo). Cada repetición de una
  * tarea recurrente que tenga franja ese día ocupa su bloque, con id
  * "taskId::fecha": la que se planificó al aceptar una propuesta
  * (scheduledOccurrences) o, si no, la de su hora fija (dueTime +
  * estimatedMinutes, 60 min si no hay). La tarea base recurrente no se
  * pasa: su scheduledDate no es de ninguna repetición concreta. */
 function tasksForScheduler(fromDate, toDate){
-  const plain = state.tasks.filter(t => !t.recurrence);
+  // Tarea normal con hora fija y sin franja planificada: ocupa su bloque
+  // el día de su fecha (copia; state.tasks no se toca).
+  const plain = state.tasks.filter(t => !t.recurrence).map(t => {
+    if(t.scheduledDate && t.scheduledStart && t.scheduledEnd) return t;
+    if(!t.dueDate || t.dueDate < fromDate || t.dueDate > toDate) return t;
+    const slot = fixedTimeSlot(t);
+    return slot ? Object.assign({}, t, { scheduledDate: t.dueDate, scheduledStart: slot.start, scheduledEnd: slot.end }) : t;
+  });
   const occurrenceBlocks = [];
   state.tasks.filter(t => !!t.recurrence).forEach(t => {
     getTaskOccurrences(t, fromDate, toDate).forEach(occ => {
@@ -1461,6 +1470,12 @@ function taskOccurrenceSlot(task, dateStr){
   const planned = task.scheduledOccurrences && task.scheduledOccurrences[dateStr];
   if(planned && planned.start && planned.end) return { start: planned.start, end: planned.end };
   if(task.scheduledDate === dateStr && task.scheduledStart && task.scheduledEnd) return { start: task.scheduledStart, end: task.scheduledEnd };
+  return fixedTimeSlot(task);
+}
+/** Franja { start, end } de la hora fija (dueTime) de una tarea: de
+ * dueTime a dueTime + estimatedMinutes (60 min si no tiene), o null si
+ * no tiene una hora válida. */
+function fixedTimeSlot(task){
   const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
   if(!task.dueTime || !HHMM.test(task.dueTime)) return null;
   const [h, m] = task.dueTime.split(':').map(Number);
