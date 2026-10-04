@@ -354,26 +354,45 @@
   .form-error{font-size:12px;color:var(--alta);margin-top:4px;}
   .form-error:empty,.form-warning:empty{display:none;}
   .form-warning{font-size:12px;color:var(--media);margin-top:6px;}
-  /* Vista Horario: lunes a viernes de 8:00 a 14:30 en filas de 30 min. En
-     móvil caben las 5 columnas desde ~320px; si no, la tabla se desplaza
-     dentro de su caja, nunca la página. */
+  /* Vista Horario: lunes a viernes de 8:00 a 14:30 en filas de media hora.
+     En el ordenador ocupa todo el ancho; en el móvil en vertical se ve un
+     día cada vez (pestañas L M X J V) y en horizontal la semana entera. */
+  main:has(#view-horario.active){max-width:none;}
   .horario-wrap{overflow-x:auto;}
-  .horario-grid{display:grid;grid-template-columns:40px repeat(5,minmax(50px,1fr));min-width:290px;}
-  .horario-day-name{font-size:12px;font-weight:600;text-align:center;padding:0 0 8px;color:var(--ink-soft);}
-  .horario-day-name.today{color:var(--ink);}
+  .horario-grid{display:grid;grid-template-columns:52px repeat(5,minmax(90px,1fr));min-width:500px;}
+  .horario-day-name{font-size:13px;font-weight:600;text-align:center;padding:6px 0;margin:0 3px 8px;border-radius:8px;color:var(--ink-soft);}
+  .horario-day-name.today{background:var(--ink);color:var(--paper);}
+  .horario-day-short{display:none;}
   .horario-hours{position:relative;}
-  .horario-hour{position:absolute;right:6px;font-size:10px;line-height:1;color:var(--ink-soft);transform:translateY(-5px);}
-  .horario-col{position:relative;border-left:1px solid var(--line);border-bottom:1px solid var(--line);}
-  .horario-slot{position:absolute;left:0;width:100%;box-sizing:border-box;border:none;border-top:1px solid var(--line);background:transparent;padding:0;cursor:pointer;}
-  .horario-slot:hover{background:var(--paper);}
+  .horario-hour{position:absolute;right:8px;font-size:11px;line-height:1;color:var(--ink-soft);transform:translateY(-5px);opacity:.75;}
+  .horario-hour.is-hour{font-size:12px;font-weight:600;color:var(--ink);opacity:1;}
+  .horario-col{position:relative;background:var(--surface);border-left:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .horario-col:last-child{border-right:1px solid var(--line);}
+  .horario-col.today{background:color-mix(in srgb, var(--ink) 6%, var(--surface));}
+  .horario-slot{position:absolute;left:0;width:100%;box-sizing:border-box;border:none;border-top:1px dashed var(--line);background:transparent;padding:0;cursor:pointer;}
+  .horario-slot.is-hour{border-top-style:solid;}
+  .horario-slot:hover{background:rgba(0,0,0,.04);}
   .horario-slot:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;}
-  .horario-class{position:absolute;box-sizing:border-box;border:none;border-left:3px solid;border-radius:6px;padding:3px 4px;text-align:left;cursor:pointer;overflow:hidden;color:var(--ink);font-size:11px;line-height:1.25;display:flex;flex-direction:column;}
+  .horario-class{position:absolute;z-index:1;box-sizing:border-box;border:none;border-left:4px solid;border-radius:8px;padding:5px 7px;text-align:left;cursor:pointer;overflow:hidden;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:2px;}
   .horario-class:focus-visible{outline:2px solid var(--ink);outline-offset:1px;}
-  .horario-class-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .horario-class-time{font-size:10px;color:var(--ink-soft);white-space:nowrap;}
-  .horario-break .horario-class-name{font-weight:500;font-style:italic;color:var(--ink-soft);}
-  .horario-class{z-index:1;}
+  .horario-class-name{font-size:14.5px;font-weight:700;line-height:1.2;overflow-wrap:anywhere;}
+  .horario-class-time{font-size:12px;line-height:1.2;opacity:.8;white-space:nowrap;}
+  .horario-break .horario-class-name{font-weight:600;font-style:italic;}
   .horario-hint{font-size:12px;color:var(--ink-soft);margin:10px 0 0;}
+  .horario-tabs{display:none;gap:6px;margin-bottom:12px;}
+  .horario-tab{flex:1;font:inherit;font-size:14px;font-weight:600;padding:9px 0;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer;}
+  .horario-tab.today{border-color:var(--ink);}
+  .horario-tab.is-selected{background:var(--ink);color:var(--paper);border-color:var(--ink);}
+  @media (max-width:640px) and (orientation:portrait){
+    .horario-tabs{display:flex;}
+    .horario-grid{grid-template-columns:52px 1fr;min-width:0;}
+    .horario-day-name:not(.is-selected), .horario-col:not(.is-selected){display:none;}
+  }
+  @media (max-height:500px) and (orientation:landscape){
+    .horario-grid{grid-template-columns:44px repeat(5,minmax(70px,1fr));min-width:0;}
+    .horario-day-full{display:none;}
+    .horario-day-short{display:inline;}
+  }
   .btn-danger{border-color:var(--alta);color:var(--alta);}
   .btn-danger:hover{background:var(--alta);color:var(--surface);}
   .settings-actions{display:flex;flex-wrap:wrap;gap:10px;}
@@ -996,7 +1015,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.14';
+const APP_VERSION = '2.3.15';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -3844,7 +3863,7 @@ const HORARIO_DAYS = 5;                  // lunes a viernes (índices 0..4 de DO
 const HORARIO_START_MIN = 8 * 60;        // 08:00
 const HORARIO_END_MIN = 14 * 60 + 30;    // 14:30
 const HORARIO_SLOT_MIN = 30;             // cada fila de la tabla
-const HORARIO_SLOT_PX = 30;              // alto de cada fila
+const HORARIO_SLOT_PX = 46;              // alto de cada fila (media hora)
 
 function hhmmToMin(t){
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || ''));
@@ -3913,6 +3932,13 @@ function horarioLayout(schedules, subjects){
   return { days: laidOut };
 }
 
+/** Día que se ve en el móvil en vertical (un día cada vez): empieza en hoy
+ * (lunes si hoy es fin de semana) y se cambia con las pestañas L M X J V. */
+let horarioSelectedDay = null;
+function horarioDefaultDay(today){
+  return today >= 0 && today < HORARIO_DAYS ? today : 0;
+}
+
 function renderHorario(){
   const el = document.getElementById('view-horario');
   if(!el) return;
@@ -3921,12 +3947,17 @@ function renderHorario(){
   const heightPx = slots.length * HORARIO_SLOT_PX;
   const px = (min) => (min / HORARIO_SLOT_MIN * HORARIO_SLOT_PX).toFixed(1);
   const today = dowOfDate(todayStr());
+  if(horarioSelectedDay === null) horarioSelectedDay = horarioDefaultDay(today);
+  const dayClass = (i) => `${i === today ? ' today' : ''}${i === horarioSelectedDay ? ' is-selected' : ''}`;
+  const tabs = DOW_FULL_MONFIRST.slice(0, HORARIO_DAYS)
+    .map((name,i) => `<button type="button" class="horario-tab${dayClass(i)}" data-horario-tab="${i}" aria-label="${name}" aria-pressed="${i === horarioSelectedDay}">${DOW_SHORT[i]}</button>`).join('');
   const headCells = DOW_FULL_MONFIRST.slice(0, HORARIO_DAYS)
-    .map((name,i) => `<div class="horario-day-name${i === today ? ' today' : ''}" title="${name}">${DOW_SHORT[i]}</div>`).join('');
-  const timeLabels = slots.map(m => `<div class="horario-hour" style="top:${px(m - HORARIO_START_MIN)}px;">${minToHHMM(m)}</div>`).join('');
+    .map((name,i) => `<div class="horario-day-name${dayClass(i)}" data-horario-day="${i}"><span class="horario-day-short">${DOW_SHORT[i]}</span><span class="horario-day-full">${name}</span></div>`).join('');
+  const isHour = (m) => m % 60 === 0;
+  const timeLabels = slots.map(m => `<div class="horario-hour${isHour(m) ? ' is-hour' : ''}" style="top:${px(m - HORARIO_START_MIN)}px;">${minToHHMM(m)}</div>`).join('');
   const cols = layout.days.map((items, d) => `
-    <div class="horario-col" style="height:${heightPx}px;">
-      ${slots.map(m => `<button type="button" class="horario-slot" data-horario-slot="${d}|${m}" style="top:${px(m - HORARIO_START_MIN)}px;height:${HORARIO_SLOT_PX}px;" aria-label="Añadir clase el ${DOW_FULL_MONFIRST[d]} a las ${minToHHMM(m)}"></button>`).join('')}
+    <div class="horario-col${dayClass(d)}" data-horario-day="${d}" style="height:${heightPx}px;">
+      ${slots.map(m => `<button type="button" class="horario-slot${isHour(m) ? ' is-hour' : ''}" data-horario-slot="${d}|${m}" style="top:${px(m - HORARIO_START_MIN)}px;height:${HORARIO_SLOT_PX}px;" aria-label="Añadir clase el ${DOW_FULL_MONFIRST[d]} a las ${minToHHMM(m)}"></button>`).join('')}
       ${items.map(it => {
         const width = 100 / it.lanes;
         const colors = it.isClass
@@ -3952,6 +3983,7 @@ function renderHorario(){
     </div>
     ${noSubjects}
     <section class="block">
+      <div class="horario-tabs" role="group" aria-label="Día">${tabs}</div>
       <div class="horario-wrap">
         <div class="horario-grid">
           <div></div>${headCells}
@@ -3960,6 +3992,19 @@ function renderHorario(){
       </div>
       <p class="horario-hint">Toca un hueco para añadir una clase o un recreo; toca una clase para cambiarla o borrarla.</p>
     </section>`;
+  el.querySelectorAll('[data-horario-tab]').forEach(tab => {
+    tab.addEventListener('click', () => {
+      horarioSelectedDay = Number(tab.dataset.horarioTab);
+      el.querySelectorAll('[data-horario-tab]').forEach(t => {
+        const on = Number(t.dataset.horarioTab) === horarioSelectedDay;
+        t.classList.toggle('is-selected', on);
+        t.setAttribute('aria-pressed', String(on));
+      });
+      el.querySelectorAll('.horario-col[data-horario-day], .horario-day-name[data-horario-day]').forEach(c => {
+        c.classList.toggle('is-selected', Number(c.dataset.horarioDay) === horarioSelectedDay);
+      });
+    });
+  });
   el.querySelectorAll('[data-horario-slot]').forEach(btn => {
     btn.addEventListener('click', () => {
       const [d, m] = btn.dataset.horarioSlot.split('|').map(Number);

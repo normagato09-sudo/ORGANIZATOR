@@ -146,7 +146,14 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
     ] });
     full.sb.renderHorario();
     const out = full.view.innerHTML;
-    check('C2. cabecera L–V (sin S ni D) y marca hoy', ['L', 'M', 'X', 'J', 'V'].every(d => out.includes(`>${d}</div>`)) && !out.includes('>S</div>') && out.includes('horario-day-name today" title="Miércoles">X'));
+    check('C2. cabecera Lunes–Viernes (sin sábado ni domingo) y el día de hoy resaltado (cabecera y columna)', ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'].every(d => out.includes(`horario-day-full">${d}</span>`)) && !out.includes('Sábado')
+      && out.includes('class="horario-day-name today is-selected" data-horario-day="2"') && out.includes('class="horario-col today is-selected" data-horario-day="2"'));
+    check('C2b. pestañas L M X J V para el móvil, empezando por hoy', ['L', 'M', 'X', 'J', 'V'].every((d, i) => out.includes(`data-horario-tab="${i}" aria-label="`) && out.includes(`>${d}</button>`))
+      && out.includes('class="horario-tab today is-selected" data-horario-tab="2"'));
+    const weekend = makeSandbox({ subjects: [MATES], todayDow: 6 });
+    weekend.sb.renderHorario();
+    check('C2c. en fin de semana el móvil empieza por el lunes', weekend.view.innerHTML.includes('class="horario-tab is-selected" data-horario-tab="0"'));
+    check('C2d. filas de 46 px por media hora; las horas en punto marcadas', full.sb.HORARIO_SLOT_PX === 46 && out.includes('class="horario-hour is-hour"') && out.includes('class="horario-slot is-hour"'));
     check('C3. etiquetas de 08:00 a 14:00 cada media hora', ['08:00', '08:30', '11:30', '14:00'].every(h => out.includes(`>${h}</div>`)) && !out.includes('>14:30</div>') && !out.includes('>07:30</div>'));
     check('C4. 5 × 13 franjas tocables con su día y hora', (out.match(/data-horario-slot=/g) || []).length === 65 && out.includes('data-horario-slot="4|840"') && out.includes('aria-label="Añadir clase el Lunes a las 08:00"'));
     check('C5. 3 clases y 1 recreo pintados; las clases con el color de su asignatura', (out.match(/data-horario-class=/g) || []).length === 4
@@ -190,6 +197,19 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
     check('E1. se guarda inHorario (true en el recreo, false en un bloque de Ajustes)', sb.state.customSchedules[0].inHorario === true && sb.state.customSchedules[1].inHorario === false);
     await sb.updateCustomSchedule(sb.state.customSchedules[0].id, { name: 'Recreo', days: [0, 1], startTime: '11:00', endTime: '11:30' });
     check('E2. editar sin indicar inHorario lo conserva', sb.state.customSchedules[0].inHorario === true && same(sb.state.customSchedules[0].days, [0, 1]));
+  }
+
+  // =====================================================================
+  section('F) Tamaño y legibilidad (CSS)');
+  // =====================================================================
+  {
+    const css = html.slice(html.indexOf('/* Vista Horario:'), html.indexOf('.btn-danger{'));
+    check('F1. en el ordenador la tabla usa todo el ancho', css.includes('main:has(#view-horario.active){max-width:none;}'));
+    check('F2. nombre de la asignatura grande, en negrita y sin cortarse con "…"', css.includes('.horario-class-name{font-size:14.5px;font-weight:700;') && css.includes('overflow-wrap:anywhere')
+      && !/\.horario-class-name\{[^}]*(ellipsis|nowrap)/.test(css));
+    check('F3. medias horas con línea discontinua y horas con línea continua', css.includes('border-top:1px dashed var(--line)') && css.includes('.horario-slot.is-hour{border-top-style:solid;}'));
+    check('F4. móvil en vertical: pestañas y un solo día', /@media \(max-width:640px\) and \(orientation:portrait\)\{[^@]*\.horario-tabs\{display:flex;\}[^@]*\.horario-col:not\(\.is-selected\)\{display:none;\}/.test(css));
+    check('F5. móvil en horizontal: la semana entera (sin pestañas)', css.includes('@media (max-height:500px) and (orientation:landscape)') && css.includes('.horario-tabs{display:none;'));
   }
 
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);
