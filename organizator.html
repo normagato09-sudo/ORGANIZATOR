@@ -160,6 +160,8 @@
   .settings-accordion-panel section.block{margin-bottom:20px;}
   .settings-accordion-panel section.block:last-child{margin-bottom:0;}
   .settings-accordion-panel[hidden]{display:none;}
+  /* App de exámenes: lo que se quita de la interfaz se oculta con [hidden] (su código se conserva). */
+  .btn[hidden], section.block[hidden], .settings-section[hidden]{display:none !important;}
 
   .empty-state{
     background:var(--surface);
@@ -887,8 +889,9 @@
           <h2 id="day-panel-title">Selecciona un día</h2>
           <div class="day-panel-actions">
             <button class="btn btn-sm btn-dark" id="day-add-exam">+ Examen</button>
-            <button class="btn btn-sm" id="day-add-task">+ Tarea</button>
-            <button class="btn btn-sm" id="day-add-event">+ Evento</button>
+            <!-- "+ Tarea" y "+ Evento" ocultos (app de exámenes); su código se conserva. -->
+            <button class="btn btn-sm" id="day-add-task" hidden>+ Tarea</button>
+            <button class="btn btn-sm" id="day-add-event" hidden>+ Evento</button>
           </div>
         </div>
         <div id="day-panel-content"></div>
@@ -1018,7 +1021,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.16';
+const APP_VERSION = '2.3.17';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2918,7 +2921,7 @@ function renderDayPanel(){
   const content = document.getElementById('day-panel-content');
   if(!sel){
     title.textContent = 'Selecciona un día';
-    content.innerHTML = `<div class="empty-state small">Haz clic en un día del calendario para ver o añadir tareas y eventos.</div>`;
+    content.innerHTML = `<div class="empty-state small">Toca un día del calendario para ver sus exámenes y entregas, o pulsa «+ Examen».</div>`;
     return;
   }
   title.textContent = humanDateShort(sel) + ' de ' + parseYMD(sel).getFullYear();
@@ -4443,6 +4446,10 @@ function openSubjectModal({subjectId=null}={}){
    por defecto.
    ================================================================== */
 const EXAM_TITLE_MAX = 120;
+// Tipos que ofrece el formulario. Los demás de EXAM_TYPE_INFO (final,
+// trabajo, exposición, deberes) siguen siendo válidos: un examen que ya
+// tenga uno de ellos se ve y se edita igual (su tipo sale en la lista).
+const EXAM_FORM_TYPES = ['examen', 'parcial', 'trimestral', 'recuperacion', 'ejercicios'];
 const EXAM_NOTES_MAX = 1000;
 
 /** Trimestre de una fecha YYYY-MM-DD: sep–dic = 1, ene–mar = 2, abr–jun = 3;
@@ -4584,7 +4591,8 @@ function openExamModal({examId=null, date=null}={}){
   const startTerm = existing ? existing.term : termForDate(startDate);
   const subjectOptions = [...state.subjects].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'))
     .map(s => `<option value="${esc(s.id)}" ${existing && existing.subjectId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
-  const typeOptions = (group) => EXAM_TYPES.filter(t => EXAM_TYPE_INFO[t].group === group)
+  const formTypes = EXAM_TYPES.filter(t => EXAM_FORM_TYPES.includes(t) || (existing && existing.type === t));
+  const typeOptions = (group) => formTypes.filter(t => EXAM_TYPE_INFO[t].group === group)
     .map(t => `<option value="${t}" ${(existing ? existing.type : 'examen') === t ? 'selected' : ''}>${esc(EXAM_TYPE_INFO[t].label)}</option>`).join('');
   const termOptions = [1, 2, 3].map(t => `<option value="${t}" ${startTerm === t ? 'selected' : ''}>${t}.º trimestre</option>`).join('')
     + `<option value="" ${startTerm ? '' : 'selected'}>Sin trimestre</option>`;

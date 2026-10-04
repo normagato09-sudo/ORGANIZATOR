@@ -162,6 +162,14 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
     const src = openExamModalSrc;
     check('E1. campos: asignatura, tipo, título, fecha, hora, trimestre y notas', ['name="subjectId"', 'name="type"', 'name="title"', 'name="date"', 'name="time"', 'name="term"', 'name="notes"'].every(f => src.includes(f)));
     check('E2. tipos agrupados en Pruebas y Entregas', src.includes('<optgroup label="Pruebas">') && src.includes('<optgroup label="Entregas">'));
+    const { sb } = makeSandbox();
+    check('E2b. el formulario ofrece solo Examen, Parcial, Trimestral, Recuperación y Ejercicios para entregar',
+      vm.runInContext('EXAM_FORM_TYPES.join()', sb) === 'examen,parcial,trimestral,recuperacion,ejercicios'
+      && src.includes('const formTypes = EXAM_TYPES.filter(t => EXAM_FORM_TYPES.includes(t) || (existing && existing.type === t));') && src.includes('formTypes.filter('));
+    check('E2c. un examen con un tipo quitado (p. ej. Trabajo) se sigue viendo y editando', sb.validateExamData({ ...FORM, type: 'trabajo' }).ok
+      && sb.examRowHTML({ id: 't', subjectId: 's1', type: 'trabajo', title: 'Viejo', date: '2026-10-20', time: null, term: 1 }).includes('Trabajo · Mates'));
+    check('E2d. Calendario: solo "+ Examen" (Tarea y Evento ocultos, su código sigue)', html.includes('<button class="btn btn-sm" id="day-add-task" hidden>') && html.includes('<button class="btn btn-sm" id="day-add-event" hidden>')
+      && html.includes(".btn[hidden]") && html.includes("document.getElementById('day-add-task').addEventListener"));
     check('E3. el trimestre se rellena con la fecha y sigue a la fecha hasta que lo cambias a mano',
       src.includes('termForDate(startDate)') && src.includes("termSelect.addEventListener('change', () => { termTouched = true; })") && src.includes('if(termTouched) return;'));
     check('E4. sin asignaturas, pide crearlas en Ajustes', src.includes('Primero añade tus asignaturas en Ajustes › Asignaturas.'));
