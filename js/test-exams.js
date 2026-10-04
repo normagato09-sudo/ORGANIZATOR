@@ -59,10 +59,15 @@ function makeSandbox({ subjects = [MATES, LENGUA], exams = [], confirmAnswer = t
     confirm: (m) => { calls.confirms.push(m); return confirmAnswer; },
     renderCurrentView: () => { calls.renders++; },
     todayStr: () => '2026-10-05',
+    DOW_NAMES: ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'],
+    DOW_SHORT: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+    MONTH_NAMES: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    parseYMD: (x) => { const [y, m, d] = x.split('-').map(Number); return new Date(y, m - 1, d); },
+    humanDateShort: (x) => 'corta:' + x,
   };
   vm.createContext(sb);
   vm.runInContext([escSrc, studyConstSrc, ymdSrc, examsSrc,
-    'Object.assign(this, { termForDate, examTypeLabel, examSubject, validateExamData, addExam, updateExam, deleteExam, examsOnDate, examRowHTML, confirmDeleteExam });'].join('\n'), sb);
+    'Object.assign(this, { termForDate, examTypeLabel, examSubject, validateExamData, addExam, updateExam, deleteExam, examsOnDate, examRowHTML, confirmDeleteExam, daysBetween, daysLeftLabel, upcomingExams, renderUpcomingHTML, UPCOMING_LIST_MAX });'].join('\n'), sb);
   return { sb, saved, calls };
 }
 
@@ -156,6 +161,42 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
       src.includes('termForDate(startDate)') && src.includes("termSelect.addEventListener('change', () => { termTouched = true; })") && src.includes('if(termTouched) return;'));
     check('E4. sin asignaturas, pide crearlas en Ajustes', src.includes('Primero añade tus asignaturas en Ajustes › Asignaturas.'));
     check('E5. al editar se puede eliminar', src.includes('id="exam-delete-btn"') && src.includes('await deleteExam(examId)'));
+  }
+
+  // =====================================================================
+  section('F) Inicio: próximo examen o entrega y los siguientes');
+  // =====================================================================
+  {
+    const { sb } = makeSandbox();
+    check('F1. daysBetween cuenta días enteros (también con cambio de hora y de año)', sb.daysBetween('2026-10-05', '2026-10-05') === 0
+      && sb.daysBetween('2026-10-24', '2026-10-26') === 2 && sb.daysBetween('2026-12-31', '2027-01-01') === 1);
+    check('F2. Hoy / Mañana / En n días', sb.daysLeftLabel(0) === 'Hoy' && sb.daysLeftLabel(1) === 'Mañana' && sb.daysLeftLabel(15) === 'En 15 días');
+    check('F3. sin exámenes: mensaje que manda al Calendario', sb.renderUpcomingHTML('2026-10-05').includes('Apúntalos en el <strong>Calendario</strong>'));
+
+    const exams = [
+      { id: 'pasado', subjectId: 's1', type: 'examen', title: 'Ya pasó', date: '2026-10-01', time: null },
+      { id: 'tarde', subjectId: 's2', type: 'trabajo', title: 'Trabajo', date: '2026-10-20', time: null },
+      { id: 'pronto', subjectId: 's1', type: 'examen', title: 'Tema <1>', date: '2026-10-20', time: '09:00' },
+      { id: 'hoy', subjectId: 's2', type: 'examen', title: 'Control', date: '2026-10-05', time: '12:00' },
+    ];
+    const withExams = makeSandbox({ exams });
+    check('F4. upcomingExams: de hoy en adelante, por fecha y hora (sin hora al final)', same(withExams.sb.upcomingExams('2026-10-05').map(e => e.id), ['hoy', 'pronto', 'tarde']));
+    const out = withExams.sb.renderUpcomingHTML('2026-10-05');
+    const heroEnd = out.indexOf('</button>');
+    const hero = out.slice(0, heroEnd);
+    check('F5. arriba el próximo (hoy) con "Hoy", su asignatura y su color', hero.includes('data-upcoming-exam="hoy"') && hero.includes('>Hoy<') && hero.includes('Lengua &lt;b&gt;') && hero.includes('border-left-color:#3A7BD5'));
+    check('F6. la fecha larga del próximo, con su hora', hero.includes('lunes 5 de octubre · 12:00'));
+    check('F7. debajo, los siguientes con los días que faltan; no sale el pasado', out.includes('Después') && out.includes('data-upcoming-exam="pronto"') && out.includes('En 15 días')
+      && out.includes('data-upcoming-exam="tarde"') && !out.includes('Ya pasó'));
+    check('F8. los títulos se escapan', out.includes('Tema &lt;1&gt;') && !out.includes('Tema <1>'));
+    const future = makeSandbox({ exams: [{ id: 'x', subjectId: 's1', type: 'examen', title: 'Lejos', date: '2026-10-20', time: null }] });
+    const one = future.sb.renderUpcomingHTML('2026-10-05');
+    check('F9. si es dentro de varios días: número grande + "días"; sin lista "Después" si es el único', one.includes('next-exam-num">15<') && one.includes('>días<') && !one.includes('Después'));
+    const many = makeSandbox({ exams: Array.from({ length: 14 }, (_, i) => ({ id: 'm' + i, subjectId: 's1', type: 'examen', title: 'E' + i, date: `2026-11-${String(i + 1).padStart(2, '0')}`, time: null })) });
+    const manyOut = many.sb.renderUpcomingHTML('2026-10-05');
+    check('F10. la lista se corta en 10 y dice cuántos más hay', (manyOut.match(/class="upcoming-row"/g) || []).length === many.sb.UPCOMING_LIST_MAX && manyOut.includes('Y 3 más en el Calendario.'));
+    check('F11. Inicio pinta el bloque arriba del todo', html.indexOf('id="upcoming-exams"') > 0 && html.indexOf('id="upcoming-exams"') < html.indexOf('id="today-timeline"')
+      && extractBetween(html, 'function renderInicio(){', '\n}\n', 'renderInicio()').includes('renderUpcoming();'));
   }
 
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);

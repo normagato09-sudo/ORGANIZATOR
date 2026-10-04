@@ -501,6 +501,26 @@
   .cal-more{font-size:9.5px;color:var(--ink-soft);}
   /* App de exámenes: exámenes y entregas en su día, con el color de su asignatura. */
   .cal-cell{min-width:0;}
+  /* Inicio: próximo examen o entrega (grande) y los siguientes. */
+  .next-exam{display:flex;align-items:center;gap:18px;width:100%;box-sizing:border-box;text-align:left;cursor:pointer;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-left:6px solid;border-radius:14px;padding:16px 18px;}
+  .next-exam:hover{border-color:var(--ink-soft);}
+  .next-exam-count{flex:none;min-width:64px;display:flex;flex-direction:column;align-items:center;}
+  .next-exam-num{font-size:36px;font-weight:700;line-height:1;}
+  .next-exam-unit{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .next-exam-word{font-size:22px;font-weight:700;line-height:1.1;}
+  .next-exam-body{min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .next-exam-kicker{font-size:12px;color:var(--ink-soft);}
+  .next-exam-title{font-size:17px;font-weight:600;overflow-wrap:anywhere;}
+  .next-exam-date{font-size:13px;color:var(--ink-soft);}
+  .upcoming-head{font-size:12px;font-weight:600;color:var(--ink-soft);margin:18px 0 8px;}
+  .upcoming-list{display:flex;flex-direction:column;gap:6px;}
+  .upcoming-row{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;text-align:left;cursor:pointer;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+  .upcoming-row:hover{border-color:var(--ink-soft);}
+  .upcoming-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .upcoming-title{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .upcoming-meta{font-size:12px;color:var(--ink-soft);overflow-wrap:anywhere;}
+  .upcoming-days{flex:none;font-size:12px;font-weight:600;white-space:nowrap;}
+  .upcoming-more{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
   .cal-exams{display:flex;flex-direction:column;gap:2px;min-width:0;}
   .cal-exam{font-size:10px;line-height:1.35;font-weight:600;color:var(--ink);border-left:3px solid;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
@@ -769,6 +789,13 @@
 
       <section class="block">
         <div class="block-head">
+          <h2>Próximo examen o entrega</h2>
+        </div>
+        <div id="upcoming-exams"></div>
+      </section>
+
+      <section class="block">
+        <div class="block-head">
           <h2>Hoy</h2>
           <span class="hint">Lo que ya tienes programado para hoy</span>
         </div>
@@ -950,7 +977,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.12';
+const APP_VERSION = '2.3.13';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2625,6 +2652,7 @@ function renderInicio(){
   const d = new Date();
   document.getElementById('dow').textContent = DOW_NAMES[d.getDay()];
   document.getElementById('fulldate').textContent = `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
+  renderUpcoming();
 
   const today = todayStr();
   // Una tarea puede tener dueDate (su fecha límite) distinta de
@@ -4524,6 +4552,78 @@ function openExamModal({examId=null, date=null}={}){
   });
 
   overlay.classList.add('open');
+}
+
+/* ---------- Inicio: próximo examen o entrega y los siguientes ---------- */
+const UPCOMING_LIST_MAX = 10;   // cuántos "siguientes" se listan debajo del próximo
+
+/** Días enteros de `from` a `to` (YYYY-MM-DD), sin líos de horario de verano. */
+function daysBetween(from, to){
+  const [y1, m1, d1] = from.split('-').map(Number);
+  const [y2, m2, d2] = to.split('-').map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+}
+function daysLeftLabel(n){
+  if(n === 0) return 'Hoy';
+  if(n === 1) return 'Mañana';
+  return `En ${n} días`;
+}
+/** Exámenes y entregas de hoy en adelante, por fecha y hora (sin hora, al final del día). */
+function upcomingExams(today){
+  return state.exams.filter(e => e && typeof e.date === 'string' && e.date >= today)
+    .sort((a,b) => a.date.localeCompare(b.date) || (a.time || '99:99').localeCompare(b.time || '99:99') || String(a.title).localeCompare(String(b.title), 'es'));
+}
+function examLongDate(exam){
+  const d = parseYMD(exam.date);
+  return `${DOW_NAMES[d.getDay()].toLowerCase()} ${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}${exam.time ? ' · ' + exam.time : ''}`;
+}
+function renderUpcomingHTML(today){
+  const list = upcomingExams(today);
+  if(!list.length){
+    return `<div class="empty-state">No tienes exámenes ni entregas a la vista.<br>Apúntalos en el <strong>Calendario</strong> con «+ Examen».</div>`;
+  }
+  const [next, ...rest] = list;
+  const subjectOf = (e) => examSubject(e);
+  const colorOf = (e) => { const s = subjectOf(e); return s ? s.color : '#63676C'; };
+  const n = daysBetween(today, next.date);
+  const nextSubject = subjectOf(next);
+  const hero = `
+    <button type="button" class="next-exam" data-upcoming-exam="${esc(next.id)}" style="border-left-color:${esc(colorOf(next))};">
+      <div class="next-exam-count">
+        ${n <= 1 ? `<span class="next-exam-word">${daysLeftLabel(n)}</span>` : `<span class="next-exam-num">${n}</span><span class="next-exam-unit">días</span>`}
+      </div>
+      <div class="next-exam-body">
+        <div class="next-exam-kicker">${esc(examTypeLabel(next.type))} · ${esc(nextSubject ? nextSubject.name : 'Sin asignatura')}</div>
+        <div class="next-exam-title">${esc(next.title)}</div>
+        <div class="next-exam-date">${esc(examLongDate(next))}</div>
+      </div>
+    </button>`;
+  const shown = rest.slice(0, UPCOMING_LIST_MAX);
+  const more = rest.length - shown.length;
+  const rows = shown.map(e => {
+    const s = subjectOf(e);
+    return `
+      <button type="button" class="upcoming-row" data-upcoming-exam="${esc(e.id)}">
+        <span class="priority-dot" style="background:${esc(colorOf(e))};"></span>
+        <span class="upcoming-main">
+          <span class="upcoming-title">${esc(e.title)}</span>
+          <span class="upcoming-meta">${esc(examTypeLabel(e.type))} · ${esc(s ? s.name : 'Sin asignatura')} · ${esc(humanDateShort(e.date))}${e.time ? ' · ' + esc(e.time) : ''}</span>
+        </span>
+        <span class="upcoming-days">${daysLeftLabel(daysBetween(today, e.date))}</span>
+      </button>`;
+  }).join('');
+  return hero + (shown.length ? `
+    <div class="upcoming-head">Después</div>
+    <div class="upcoming-list">${rows}</div>
+    ${more > 0 ? `<p class="upcoming-more">Y ${more} más en el Calendario.</p>` : ''}` : '');
+}
+function renderUpcoming(){
+  const el = document.getElementById('upcoming-exams');
+  if(!el) return;
+  el.innerHTML = renderUpcomingHTML(todayStr());
+  el.querySelectorAll('[data-upcoming-exam]').forEach(btn => {
+    btn.addEventListener('click', () => openExamModal({ examId: btn.dataset.upcomingExam }));
+  });
 }
 
 /* ==================================================================
