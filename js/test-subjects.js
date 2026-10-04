@@ -62,7 +62,7 @@ function makeSandbox({ subjects = [], exams = [], customSchedules = [], confirmA
   };
   vm.createContext(sb);
   vm.runInContext([escSrc, studyConstSrc, subjectsSrc, importSanitizerSrc,
-    'Object.assign(this, { SUBJECT_COLORS, DEFAULT_PASS_GRADE, parsePassGrade, formatGrade, validateSubjectData,',
+    'Object.assign(this, { SUBJECT_COLORS, textColorOn, DEFAULT_PASS_GRADE, parsePassGrade, formatGrade, validateSubjectData,',
     '  addSubject, updateSubject, deleteSubject, confirmDeleteSubject, sanitizeImportedSubjects, renderSubjectRows,',
     '  nextFreeSubjectColor, findSubjectByColor, countExamsForSubject });'].join('\n'), sb);
   return { sb, saved, savedSchedules, calls };
@@ -86,11 +86,15 @@ function contrast(a, b) {
   {
     const { sb } = makeSandbox();
     const colors = sb.SUBJECT_COLORS.map(c => c.color);
-    check('A1. 10 colores, todos #RRGGBB, sin repetir', colors.length === 10 && colors.every(c => /^#[0-9A-F]{6}$/.test(c)) && new Set(colors).size === 10);
+    check('A1. 20 colores, todos #RRGGBB, sin repetir; los 10 primeros son los de siempre', colors.length === 20 && colors.every(c => /^#[0-9A-F]{6}$/.test(c)) && new Set(colors).size === 20
+      && colors.slice(0, 10).join() === '#D64545,#C4621A,#A07800,#3A9149,#118A84,#3A7BD5,#5B63D6,#8E57D1,#D14E8E,#9C6B3E');
     check('A2. todos tienen nombre', sb.SUBJECT_COLORS.every(c => typeof c.name === 'string' && c.name.length > 0));
     const PAPER = '#F3F2EE', WHITE = '#FFFFFF', DARK = '#1B1F23';
     check('A3. contraste >= 3:1 sobre el fondo claro de la app y sobre blanco', colors.every(c => contrast(c, PAPER) >= 3 && contrast(c, WHITE) >= 3));
-    check('A4. contraste >= 3:1 sobre un fondo oscuro (#1B1F23)', colors.every(c => contrast(c, DARK) >= 3));
+    check('A4. textColorOn elige blanco o negro, el que más contraste tiene (>= 4.5:1 en toda la paleta)', colors.every(c => {
+      const t = sb.textColorOn(c); const other = t === '#FFFFFF' ? '#000000' : '#FFFFFF';
+      return (t === '#FFFFFF' || t === '#000000') && contrast(c, t) >= contrast(c, other) && contrast(c, t) >= 4.5;
+    }) && sb.textColorOn('#FFEE58') === '#000000' && sb.textColorOn('#1B1F23') === '#FFFFFF' && sb.textColorOn('rojo') === '#000000' && DARK);
   }
 
   // =====================================================================
@@ -122,8 +126,10 @@ function contrast(a, b) {
     check('C5. sin nombre -> error', !empty.ok && !!empty.errors.name);
     const badGrade = await sb.addSubject({ name: 'Física', color: red, passGrade: '12' });
     check('C6. aprobado fuera de 0-10 -> error', !badGrade.ok && !!badGrade.errors.passGrade);
-    const badColor = await sb.addSubject({ name: 'Física', color: '#123456' });
-    check('C7. color fuera de la paleta -> error', !badColor.ok && !!badColor.errors.color);
+    const badColor = await sb.addSubject({ name: 'Física', color: 'rojo' });
+    check('C7. un color que no es #RRGGBB -> error', !badColor.ok && !!badColor.errors.color);
+    const custom = await sb.addSubject({ name: 'Música', color: '#12abef' });
+    check('C7b. "Otro color": se acepta cualquier #RRGGBB (en mayúsculas)', custom.ok && custom.subject.color === '#12ABEF');
     const lower = await sb.addSubject({ name: 'Química', color: sb.SUBJECT_COLORS[2].color.toLowerCase() });
     check('C8. el color de la paleta se acepta aunque venga en minúsculas', lower.ok && lower.subject.color === sb.SUBJECT_COLORS[2].color);
   }
@@ -142,7 +148,8 @@ function contrast(a, b) {
     const modalSrc = extractBetween(html, 'function openSubjectModal(', '\n/* ===', 'openSubjectModal()');
     check('D5. la ventana usa la paleta (radios) y avisa del color repetido', modalSrc.includes('SUBJECT_COLORS.map') && modalSrc.includes('type="radio" name="color"')
       && modalSrc.includes('Este color ya lo usa') && modalSrc.includes('Puedes guardarlo igualmente'));
-    check('D6. la ventana no tiene selector de color libre', !modalSrc.includes('type="color"'));
+    check('D6. la ventana tiene "Otro color" con selector libre y lo usa al guardar', modalSrc.includes('type="color" id="subject-custom-color"') && modalSrc.includes('value="custom"')
+      && modalSrc.includes("picked.value === 'custom' ? customInput.value.toUpperCase() : picked.value") && modalSrc.includes('color: pickedColor()'));
   }
 
   // =====================================================================

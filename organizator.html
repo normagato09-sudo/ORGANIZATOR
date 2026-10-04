@@ -351,6 +351,8 @@
   .color-swatch span{display:block;width:28px;height:28px;border-radius:50%;border:2px solid var(--surface);}
   .color-swatch input:checked + span{outline:2px solid var(--ink);outline-offset:2px;}
   .color-swatch input:focus-visible + span{outline:2px dashed var(--ink);outline-offset:2px;}
+  .color-custom-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--ink-soft);}
+  .color-custom-row input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer;}
   .form-error{font-size:12px;color:var(--alta);margin-top:4px;}
   .form-error:empty,.form-warning:empty{display:none;}
   .form-warning{font-size:12px;color:var(--media);margin-top:6px;}
@@ -376,7 +378,7 @@
   .horario-class{position:absolute;z-index:1;box-sizing:border-box;border:none;border-left:4px solid;border-radius:8px;padding:5px 7px;text-align:left;cursor:pointer;overflow:hidden;color:var(--ink);font:inherit;display:flex;flex-direction:column;gap:2px;}
   .horario-class:focus-visible{outline:2px solid var(--ink);outline-offset:1px;}
   .horario-class-name{font-size:14.5px;font-weight:700;line-height:1.2;overflow-wrap:anywhere;}
-  .horario-class-time{font-size:12px;line-height:1.2;opacity:.8;white-space:nowrap;}
+  .horario-class-time{font-size:12px;line-height:1.2;opacity:.9;white-space:nowrap;}
   .horario-break .horario-class-name{font-weight:600;font-style:italic;}
   .horario-hint{font-size:12px;color:var(--ink-soft);margin:10px 0 0;}
   .horario-tabs{display:none;gap:6px;margin-bottom:12px;}
@@ -523,9 +525,9 @@
   /* Inicio: próximo examen o entrega (grande) y los siguientes. */
   .next-exam{display:flex;align-items:center;gap:18px;width:100%;box-sizing:border-box;text-align:left;cursor:pointer;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-left:6px solid;border-radius:14px;padding:16px 18px;}
   .next-exam:hover{border-color:var(--ink-soft);}
-  .next-exam-count{flex:none;min-width:64px;display:flex;flex-direction:column;align-items:center;}
+  .next-exam-count{flex:none;min-width:76px;box-sizing:border-box;padding:12px 10px;border-radius:12px;display:flex;flex-direction:column;align-items:center;text-align:center;}
   .next-exam-num{font-size:36px;font-weight:700;line-height:1;}
-  .next-exam-unit{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .next-exam-unit{font-size:12px;margin-top:2px;}
   .next-exam-word{font-size:22px;font-weight:700;line-height:1.1;}
   .next-exam-body{min-width:0;display:flex;flex-direction:column;gap:3px;}
   .next-exam-kicker{font-size:12px;color:var(--ink-soft);}
@@ -538,7 +540,7 @@
   .upcoming-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
   .upcoming-title{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .upcoming-meta{font-size:12px;color:var(--ink-soft);overflow-wrap:anywhere;}
-  .upcoming-days{flex:none;font-size:12px;font-weight:600;white-space:nowrap;}
+  .upcoming-days{flex:none;font-size:12px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:999px;}
   .upcoming-more{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
   /* Notas: una tarjeta por asignatura, con sus tres trimestres. */
   section.block.notas-subject{background:var(--surface);border:1px solid var(--line);border-left:6px solid;border-radius:14px;padding:16px 18px;margin-bottom:20px;}
@@ -557,6 +559,7 @@
   .notas-final{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);}
   .cal-exams{display:flex;flex-direction:column;gap:2px;min-width:0;}
   .cal-exam{font-size:10px;line-height:1.35;font-weight:600;color:var(--ink);border-left:3px solid;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  @media (max-width:520px){ .cal-exam{font-size:9px;padding:1px 3px;border-left-width:0;text-overflow:clip;} }
   .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .day-panel-head h2{font-size:14.5px;font-weight:600;margin:0;}
   .day-panel-actions{display:flex;gap:8px;flex-wrap:wrap;}
@@ -1015,7 +1018,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.15';
+const APP_VERSION = '2.3.16';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1288,21 +1291,44 @@ const EXAM_DELIVERY_STATUSES = ['pendiente', 'entregado'];
 const DEFAULT_PASS_GRADE = 5;
 const STUDY_SESSION_KINDS = ['estudio', 'repaso', 'trabajo', 'ensayo']; // ensayo: el día antes de una exposición
 const STUDY_SESSION_STATUSES = ['pendiente', 'hecha', 'saltada'];
-// Paleta de colores de las asignaturas (paso 2): contraste >= 3.5:1 sobre el
-// fondo claro de la app y sobre un fondo oscuro.
+// Paleta de colores de las asignaturas: 20 colores bien distintos, todos con
+// contraste >= 3:1 sobre el fondo claro de la app (se ven como punto o
+// borde). Los 10 primeros son los de siempre, así una asignatura nueva
+// recibe primero los más distintos. Además se puede elegir "Otro color"
+// libre; el texto encima de un color va en blanco o negro (textColorOn).
 const SUBJECT_COLORS = [
-  { name: 'Rojo',     color: '#D64545' },
-  { name: 'Naranja',  color: '#C4621A' },
-  { name: 'Mostaza',  color: '#A07800' },
-  { name: 'Verde',    color: '#3A9149' },
-  { name: 'Turquesa', color: '#118A84' },
-  { name: 'Azul',     color: '#3A7BD5' },
-  { name: 'Índigo',   color: '#5B63D6' },
-  { name: 'Violeta',  color: '#8E57D1' },
-  { name: 'Rosa',     color: '#D14E8E' },
-  { name: 'Marrón',   color: '#9C6B3E' },
+  { name: 'Rojo',      color: '#D64545' },
+  { name: 'Naranja',   color: '#C4621A' },
+  { name: 'Mostaza',   color: '#A07800' },
+  { name: 'Verde',     color: '#3A9149' },
+  { name: 'Turquesa',  color: '#118A84' },
+  { name: 'Azul',      color: '#3A7BD5' },
+  { name: 'Índigo',    color: '#5B63D6' },
+  { name: 'Violeta',   color: '#8E57D1' },
+  { name: 'Rosa',      color: '#D14E8E' },
+  { name: 'Marrón',    color: '#9C6B3E' },
+  { name: 'Granate',   color: '#A3263B' },
+  { name: 'Coral',     color: '#DB5A2B' },
+  { name: 'Ámbar',     color: '#A86A00' },
+  { name: 'Oliva',     color: '#6F8A1F' },
+  { name: 'Esmeralda', color: '#16875F' },
+  { name: 'Cian',      color: '#1680A6' },
+  { name: 'Marino',    color: '#24509A' },
+  { name: 'Púrpura',   color: '#7340A8' },
+  { name: 'Fucsia',    color: '#AE2BA6' },
+  { name: 'Pizarra',   color: '#5E7183' },
 ];
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+/** Blanco o negro, el que mejor se lea encima de `hex` (contraste WCAG).
+ * Con un color no válido, negro. */
+function textColorOn(hex){
+  if(!HEX_COLOR_RE.test(String(hex || ''))) return '#000000';
+  const lin = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  const L = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return (1.05 / (L + 0.05)) >= ((L + 0.05) / 0.05) ? '#FFFFFF' : '#000000';
+}
 
 /** Nota de aprobado a partir de lo que escribe el usuario ("4,5", "4.5",
  * 5...). Devuelve un número de 0 a 10 redondeado a 2 decimales, o null si
@@ -2866,7 +2892,7 @@ function renderCalendar(){
     const examPills = dayExams.slice(0, 2).map(ex => {
       const subject = examSubject(ex);
       const color = subject ? subject.color : '#63676C';
-      return `<div class="cal-exam" style="background:${esc(color)}26;border-left-color:${esc(color)};" title="${esc(examTypeLabel(ex.type))}: ${esc(ex.title)}">${esc(subject ? subject.name : ex.title)}</div>`;
+      return `<div class="cal-exam" style="background:${esc(color)};border-left-color:${esc(color)};color:${textColorOn(color)};" title="${esc(examTypeLabel(ex.type))}: ${esc(ex.title)}">${esc(subject ? subject.name : ex.title)}</div>`;
     }).join('') + (dayExams.length > 2 ? `<div class="cal-more">+${dayExams.length - 2}</div>` : '');
     cells += `
       <div class="cal-cell ${dateStr===today?'today':''} ${dateStr===cal.selected?'selected':''}" data-date="${dateStr}">
@@ -3961,7 +3987,7 @@ function renderHorario(){
       ${items.map(it => {
         const width = 100 / it.lanes;
         const colors = it.isClass
-          ? `background:${esc(it.color)}26;border-left-color:${esc(it.color)};`
+          ? `background:${esc(it.color)};border-left-color:${esc(it.color)};color:${textColorOn(it.color)};`
           : 'background:var(--paper);border-left-color:var(--ink-soft);';
         return `<button type="button" class="horario-class${it.isClass ? '' : ' horario-break'}" data-horario-class="${esc(it.id)}"
           style="top:${px(it.top)}px;height:${px(it.height)}px;left:calc(${(it.lane * width).toFixed(2)}% + 2px);width:calc(${width.toFixed(2)}% - 4px);${colors}"
@@ -4194,9 +4220,9 @@ function openEventCategoryModal({categoryId=null}={}){
    ASIGNATURAS (app de exámenes, paso 2)
    Crear, editar y borrar asignaturas desde Ajustes. Modelo: ver STUDY_KEYS.
    - El nombre es obligatorio y no se repite (sin distinguir mayúsculas).
-   - El color se elige de SUBJECT_COLORS (contraste >= 3.5:1 sobre el
-     fondo claro y sobre un fondo oscuro). Un color ya usado por otra
-     asignatura solo se avisa: se puede guardar igual.
+   - El color se elige de SUBJECT_COLORS o con "Otro color" (cualquier
+     #RRGGBB). Un color ya usado por otra asignatura solo se avisa: se
+     puede guardar igual. No hay límite de asignaturas.
    - passGrade (nota mínima de aprobado) admite decimales con coma o
      punto, de 0 a 10; por defecto DEFAULT_PASS_GRADE.
    - Una asignatura con exámenes no se puede borrar.
@@ -4235,7 +4261,7 @@ function validateSubjectData(data, excludeId){
   if(!name) errors.name = 'Escribe un nombre.';
   else if(findSubjectByName(name, excludeId)) errors.name = 'Ya tienes una asignatura con ese nombre.';
   const color = String((data && data.color) || '').toUpperCase();
-  if(!SUBJECT_COLORS.some(c => c.color === color)) errors.color = 'Elige un color de la paleta.';
+  if(!HEX_COLOR_RE.test(color)) errors.color = 'Elige un color.';
   const rawGrade = data && data.passGrade;
   const passGrade = (rawGrade === undefined || rawGrade === null || rawGrade === '') ? DEFAULT_PASS_GRADE : parsePassGrade(rawGrade);
   if(passGrade === null) errors.passGrade = 'La nota de aprobado debe estar entre 0 y 10 (por ejemplo 5 o 4,5).';
@@ -4325,8 +4351,10 @@ function openSubjectModal({subjectId=null}={}){
   const editing = !!subjectId;
   const existing = editing ? state.subjects.find(s=>s.id===subjectId) : null;
   if(editing && !existing) return;
-  const currentColor = existing && SUBJECT_COLORS.some(c => c.color === String(existing.color).toUpperCase())
-    ? String(existing.color).toUpperCase() : nextFreeSubjectColor();
+  const existingColor = existing ? String(existing.color || '').toUpperCase() : '';
+  const currentColor = HEX_COLOR_RE.test(existingColor) ? existingColor : nextFreeSubjectColor();
+  // "Otro color": cualquier color con el selector del sistema.
+  const isCustom = !SUBJECT_COLORS.some(c => c.color === currentColor);
   const swatches = SUBJECT_COLORS.map(c=>`
     <label class="color-swatch" title="${esc(c.name)}">
       <input type="radio" name="color" value="${c.color}" ${c.color===currentColor?'checked':''} aria-label="${esc(c.name)}">
@@ -4341,7 +4369,16 @@ function openSubjectModal({subjectId=null}={}){
         <div class="form-error" data-error-for="name"></div>
       </div>
       <div class="form-group"><label>Color</label>
-        <div class="color-swatches">${swatches}</div>
+        <div class="color-swatches">${swatches}
+          <label class="color-swatch color-swatch-custom" title="Otro color">
+            <input type="radio" name="color" value="custom" ${isCustom?'checked':''} aria-label="Otro color">
+            <span id="subject-custom-swatch" style="background:${isCustom ? currentColor : 'conic-gradient(#D64545,#A07800,#3A9149,#118A84,#3A7BD5,#8E57D1,#D14E8E,#D64545)'};"></span>
+          </label>
+        </div>
+        <div class="color-custom-row">
+          <label for="subject-custom-color">Otro color</label>
+          <input type="color" id="subject-custom-color" value="${esc(currentColor.toLowerCase())}">
+        </div>
         <div class="form-warning" id="subject-color-warning"></div>
         <div class="form-error" data-error-for="color"></div>
       </div>
@@ -4359,19 +4396,33 @@ function openSubjectModal({subjectId=null}={}){
     </form>`;
 
   const form = modalBox.querySelector('#subject-form');
-  const showColorWarning = ()=>{
+  const customInput = form.querySelector('#subject-custom-color');
+  const customRadio = form.querySelector('input[name="color"][value="custom"]');
+  const customSwatch = modalBox.querySelector('#subject-custom-swatch');
+  const pickedColor = ()=>{
     const picked = form.querySelector('input[name="color"]:checked');
-    const other = picked ? findSubjectByColor(picked.value, subjectId) : null;
+    if(!picked) return '';
+    return picked.value === 'custom' ? customInput.value.toUpperCase() : picked.value;
+  };
+  const showColorWarning = ()=>{
+    const color = pickedColor();
+    const other = color ? findSubjectByColor(color, subjectId) : null;
     modalBox.querySelector('#subject-color-warning').textContent = other ? `Este color ya lo usa "${other.name}". Puedes guardarlo igualmente.` : '';
   };
   form.querySelectorAll('input[name="color"]').forEach(r => r.addEventListener('change', showColorWarning));
+  customInput.addEventListener('input', ()=>{
+    customRadio.checked = true;
+    customSwatch.style.background = customInput.value;
+    showColorWarning();
+  });
+  customRadio.addEventListener('change', ()=>{ customSwatch.style.background = customInput.value; });
   showColorWarning();
 
   modalBox.querySelector('#subject-cancel-btn').addEventListener('click', closeModal);
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const fd = new FormData(form);
-    const data = { name: fd.get('name') || '', color: fd.get('color') || '', passGrade: (fd.get('passGrade') || '').trim() };
+    const data = { name: fd.get('name') || '', color: pickedColor(), passGrade: (fd.get('passGrade') || '').trim() };
     const result = editing ? await updateSubject(subjectId, data) : await addSubject(data);
     form.querySelectorAll('[data-error-for]').forEach(el => { el.textContent = (result.errors && result.errors[el.dataset.errorFor]) || ''; });
     if(!result.ok) return;
@@ -4668,7 +4719,7 @@ function renderUpcomingHTML(today){
   const nextSubject = subjectOf(next);
   const hero = `
     <button type="button" class="next-exam" data-upcoming-exam="${esc(next.id)}" style="border-left-color:${esc(colorOf(next))};">
-      <div class="next-exam-count">
+      <div class="next-exam-count" style="background:${esc(colorOf(next))};color:${textColorOn(colorOf(next))};">
         ${n <= 1 ? `<span class="next-exam-word">${daysLeftLabel(n)}</span>` : `<span class="next-exam-num">${n}</span><span class="next-exam-unit">días</span>`}
       </div>
       <div class="next-exam-body">
@@ -4688,7 +4739,7 @@ function renderUpcomingHTML(today){
           <span class="upcoming-title">${esc(e.title)}</span>
           <span class="upcoming-meta">${esc(examTypeLabel(e.type))} · ${esc(s ? s.name : 'Sin asignatura')} · ${esc(humanDateShort(e.date))}${e.time ? ' · ' + esc(e.time) : ''}</span>
         </span>
-        <span class="upcoming-days">${daysLeftLabel(daysBetween(today, e.date))}</span>
+        <span class="upcoming-days" style="background:${esc(colorOf(e))};color:${textColorOn(colorOf(e))};">${daysLeftLabel(daysBetween(today, e.date))}</span>
       </button>`;
   }).join('');
   return hero + (shown.length ? `

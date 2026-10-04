@@ -33,6 +33,7 @@ const horarioSrc = extractBetween(html, `${HDR}VISTA HORARIO (app de exámenes)
 `, `\n${HDR}MODAL: HORARIO BLOQUEADO`, 'bloque VISTA HORARIO');
 const scheduleModalSrc = extractBetween(html, 'function openScheduleModal(', `\n${HDR}`, 'openScheduleModal()');
 const scheduleRowsSrc = extractBetween(html, 'function renderScheduleRows(){', '\n}\n', 'renderScheduleRows()') + '\n}\n';
+const textColorOnSrc = 'const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;\n' + extractBetween(html, 'function textColorOn(hex){', '\n}\n', 'textColorOn()') + '\n}\n';
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';
 const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'initSettingsDataIO()');
 const renderCurrentViewSrc = extractBetween(html, 'function renderCurrentView(){', '\n}\n', 'renderCurrentView()');
@@ -66,7 +67,7 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
     document: { getElementById: (id) => (id === 'view-horario' ? view : null) },
   };
   vm.createContext(sb);
-  vm.runInContext([escSrc, schedulesSrc, horarioSrc, scheduleRowsSrc,
+  vm.runInContext([escSrc, textColorOnSrc, schedulesSrc, horarioSrc, scheduleRowsSrc,
     'Object.assign(this, { scheduleSubject, addCustomSchedule, updateCustomSchedule, horarioLayout, hhmmToMin, minToHHMM, horarioSlots, horarioSlotPrefill, renderHorario, renderScheduleRows, HORARIO_SLOT_PX });'].join('\n'), sb);
   return { sb, saved, view };
 }
@@ -156,8 +157,8 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
     check('C2d. filas de 46 px por media hora; las horas en punto marcadas', full.sb.HORARIO_SLOT_PX === 46 && out.includes('class="horario-hour is-hour"') && out.includes('class="horario-slot is-hour"'));
     check('C3. etiquetas de 08:00 a 14:00 cada media hora', ['08:00', '08:30', '11:30', '14:00'].every(h => out.includes(`>${h}</div>`)) && !out.includes('>14:30</div>') && !out.includes('>07:30</div>'));
     check('C4. 5 × 13 franjas tocables con su día y hora', (out.match(/data-horario-slot=/g) || []).length === 65 && out.includes('data-horario-slot="4|840"') && out.includes('aria-label="Añadir clase el Lunes a las 08:00"'));
-    check('C5. 3 clases y 1 recreo pintados; las clases con el color de su asignatura', (out.match(/data-horario-class=/g) || []).length === 4
-      && out.includes('border-left-color:#D64545') && out.includes('background:#D6454526') && (out.match(/horario-break/g) || []).length === 1);
+    check('C5. 3 clases y 1 recreo pintados; las clases rellenas con el color de su asignatura y texto blanco o negro', (out.match(/data-horario-class=/g) || []).length === 4
+      && out.includes('background:#D64545;border-left-color:#D64545;color:#000000;') && (out.match(/horario-break/g) || []).length === 1);
     const px = 30 / 30 * full.sb.HORARIO_SLOT_PX;
     check('C6. posición en píxeles según la hora', out.includes(`top:${px.toFixed(1)}px;height:${(55 / 30 * full.sb.HORARIO_SLOT_PX).toFixed(1)}px`));
     check('C7. el nombre se escapa', out.includes('Lengua &lt;b&gt;') && !out.includes('Lengua <b>'));

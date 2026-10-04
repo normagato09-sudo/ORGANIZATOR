@@ -148,7 +148,7 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
     check('D3. el título se escapa y hay botones de editar y borrar', row.includes('Expo &lt;i&gt;') && row.includes('data-action="edit-exam" data-id="b"') && row.includes('data-action="delete-exam" data-id="b"'));
     check('D4. sin hora -> "Sin hora"', sb.examRowHTML(sb.state.exams[0]).includes('Sin hora'));
     check('D5. el calendario pinta los exámenes del día con el color de su asignatura (máx. 2 y "+n")',
-      renderCalendarSrc.includes('const dayExams = examsOnDate(dateStr);') && renderCalendarSrc.includes('class="cal-exam" style="background:${esc(color)}26;border-left-color:${esc(color)};"')
+      renderCalendarSrc.includes('const dayExams = examsOnDate(dateStr);') && renderCalendarSrc.includes('class="cal-exam" style="background:${esc(color)};border-left-color:${esc(color)};color:${textColorOn(color)};"')
       && renderCalendarSrc.includes('dayExams.slice(0, 2)') && renderCalendarSrc.includes('+${dayExams.length - 2}'));
     check('D6. el panel del día lista los exámenes primero, con editar y borrar',
       renderDayPanelSrc.includes('${dayExams.map(ex=>examRowHTML(ex)).join(\'\')}') && renderDayPanelSrc.includes('openExamModal({examId:b.dataset.id})') && renderDayPanelSrc.includes('confirmDeleteExam(b.dataset.id)'));
@@ -190,6 +190,8 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
     const heroEnd = out.indexOf('</button>');
     const hero = out.slice(0, heroEnd);
     check('F5. arriba el próximo (hoy) con "Hoy", su asignatura y su color', hero.includes('data-upcoming-exam="hoy"') && hero.includes('>Hoy<') && hero.includes('Lengua &lt;b&gt;') && hero.includes('border-left-color:#3A7BD5'));
+    check('F5b. la cuenta atrás y los días de la lista van rellenos con el color de su asignatura y texto blanco o negro',
+      hero.includes('class="next-exam-count" style="background:#3A7BD5;color:#000000;"') && out.includes('class="upcoming-days" style="background:#D64545;color:#000000;"'));
     check('F6. la fecha larga del próximo, con su hora', hero.includes('lunes 5 de octubre · 12:00'));
     check('F7. debajo, los siguientes con los días que faltan; no sale el pasado', out.includes('Después') && out.includes('data-upcoming-exam="pronto"') && out.includes('En 15 días')
       && out.includes('data-upcoming-exam="tarde"') && !out.includes('Ya pasó'));
