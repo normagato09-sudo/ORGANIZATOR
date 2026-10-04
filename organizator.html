@@ -1022,7 +1022,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.18';
+const APP_VERSION = '2.3.19';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -5233,23 +5233,26 @@ function renderAjustes(){
 
   const datosHtml = `
       <section class="block">
-        <div class="block-head"><h2>Datos</h2></div>
+        <div class="block-head"><h2>Copia de seguridad</h2></div>
         <div class="settings-actions">
-          <button class="btn" id="btn-export-data">⬇️ Exportar datos</button>
-          <button class="btn" id="btn-import-data">⬆️ Importar datos</button>
-          <button class="btn btn-danger" id="btn-delete-data">🗑️ Borrar todos los datos</button>
+          <button class="btn" id="btn-export-data">⬇️ Exportar copia</button>
+          <button class="btn" id="btn-import-data">⬆️ Importar copia</button>
+          <button class="btn btn-danger" id="btn-delete-data" hidden>🗑️ Borrar todos los datos</button>
         </div>
-        <p class="hint" style="display:block;margin-top:8px;">Exportar descarga un archivo JSON con los datos de tu cuenta. Importar y borrar cambian los datos de tu cuenta en todos tus dispositivos, y piden confirmación explícita antes de aplicarse.</p>
+        <p class="hint" style="display:block;margin-top:8px;font-size:12px;color:var(--ink-soft);">Exportar descarga una copia de seguridad (archivo JSON) con los datos de tu cuenta. Importar sustituye los datos de tu cuenta en todos tus dispositivos y pide confirmación antes de aplicarse.</p>
       </section>`;
 
+  // App de exámenes: las estadísticas de duración se ocultan (su código sigue).
   const informacionHtml = `
+      <div hidden>
       ${renderDurationStatsSection()}
       ${renderGeneralPatternsSection()}
+      </div>
       <section class="block">
         <div class="block-head"><h2>Información de la aplicación</h2></div>
         <div class="app-info-box">
           <div><strong>${APP_NAME}</strong> · versión ${APP_VERSION}</div>
-          <div style="margin-top:6px;">Cuéntale a la IA lo que tienes que hacer y ella lo organiza en tu calendario, guardado de forma privada en tu cuenta.</div>
+          <div style="margin-top:6px;">Tus exámenes, notas y horario, guardados de forma privada en tu cuenta.</div>
         </div>
       </section>`;
 
@@ -5257,18 +5260,24 @@ function renderAjustes(){
     <div class="area-head">
       <div class="area-head-l">
         <div class="ic" style="background:var(--paper);color:var(--ink);">⚙️</div>
-        <div><h1>Ajustes</h1><p>Preferencias generales de ORGANIZATOR</p></div>
+        <div><h1>Ajustes</h1><p>Asignaturas, cuenta y copia de seguridad</p></div>
       </div>
     </div>
 
     <div class="settings-accordion">
       ${ajustesAccordionSection('asignaturas', 'Asignaturas', asignaturasHtml)}
-      ${ajustesAccordionSection('organizacion', 'Organización', organizacionHtml)}
-      ${ajustesAccordionSection('ia', 'Inteligencia artificial', iaHtml)}
-      ${ajustesAccordionSection('recordatorios', 'Recordatorios', recordatoriosHtml)}
-      ${ajustesAccordionSection('datos', 'Datos y privacidad', datosHtml)}
-      ${ajustesAccordionSection('informacion', 'Información', informacionHtml)}
       ${ajustesAccordionSection('cuenta', 'Cuenta', cuentaHtml)}
+      ${ajustesAccordionSection('datos', 'Copia de seguridad', datosHtml)}
+      ${ajustesAccordionSection('informacion', 'Información', informacionHtml)}
+      <!-- App de exámenes: secciones ocultas (Horarios bloqueados y el resto de
+           Organización, IA, Recordatorios y notificaciones). Se siguen
+           pintando para que su código funcione igual; se quitarán en la
+           limpieza final. -->
+      <div class="settings-hidden-sections" hidden>
+        ${ajustesAccordionSection('organizacion', 'Organización', organizacionHtml)}
+        ${ajustesAccordionSection('ia', 'Inteligencia artificial', iaHtml)}
+        ${ajustesAccordionSection('recordatorios', 'Recordatorios', recordatoriosHtml)}
+      </div>
     </div>
   `;
 
