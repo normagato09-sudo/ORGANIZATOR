@@ -499,9 +499,13 @@
      distinción por FORMA, no solo por color, misma var(--event). */
   .cal-dot-context{width:6px;height:6px;border-radius:50%;background:transparent;border:1.5px solid var(--event);box-sizing:border-box;}
   .cal-more{font-size:9.5px;color:var(--ink-soft);}
+  /* App de exámenes: exámenes y entregas en su día, con el color de su asignatura. */
+  .cal-cell{min-width:0;}
+  .cal-exams{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .cal-exam{font-size:10px;line-height:1.35;font-weight:600;color:var(--ink);border-left:3px solid;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
   .day-panel-head h2{font-size:14.5px;font-weight:600;margin:0;}
-  .day-panel-actions{display:flex;gap:8px;}
+  .day-panel-actions{display:flex;gap:8px;flex-wrap:wrap;}
 
   /* ---------- Pantalla de acceso (login / registro) ---------- */
   .auth-screen{
@@ -798,7 +802,7 @@
       <div class="area-head">
         <div class="area-head-l">
           <div class="ic" style="background:var(--paper);color:var(--ink);">📅</div>
-          <div><h1>Calendario</h1><p>Todo lo que has organizado con el asistente, día a día</p></div>
+          <div><h1>Calendario</h1><p>Exámenes, entregas y todo lo demás, día a día</p></div>
         </div>
       </div>
 
@@ -817,6 +821,7 @@
         <div class="day-panel-head">
           <h2 id="day-panel-title">Selecciona un día</h2>
           <div class="day-panel-actions">
+            <button class="btn btn-sm btn-dark" id="day-add-exam">+ Examen</button>
             <button class="btn btn-sm" id="day-add-task">+ Tarea</button>
             <button class="btn btn-sm" id="day-add-event">+ Evento</button>
           </div>
@@ -945,7 +950,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.11';
+const APP_VERSION = '2.3.12';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2789,9 +2794,17 @@ function renderCalendar(){
       const onlyContext = dayEventsHere.every(e => e.allDay && resolveEventBlocksSchedule(e.categoryId) === false);
       dayTypes.push(onlyContext ? 'event-context' : 'event');
     }
+    // App de exámenes: cada examen o entrega con el color de su asignatura.
+    const dayExams = examsOnDate(dateStr);
+    const examPills = dayExams.slice(0, 2).map(ex => {
+      const subject = examSubject(ex);
+      const color = subject ? subject.color : '#63676C';
+      return `<div class="cal-exam" style="background:${esc(color)}26;border-left-color:${esc(color)};" title="${esc(examTypeLabel(ex.type))}: ${esc(ex.title)}">${esc(subject ? subject.name : ex.title)}</div>`;
+    }).join('') + (dayExams.length > 2 ? `<div class="cal-more">+${dayExams.length - 2}</div>` : '');
     cells += `
       <div class="cal-cell ${dateStr===today?'today':''} ${dateStr===cal.selected?'selected':''}" data-date="${dateStr}">
         <div class="cal-daynum">${day}</div>
+        ${dayExams.length ? `<div class="cal-exams">${examPills}</div>` : ''}
         <div class="cal-dots">${dayTypes.map(ty=>ty==='event-context'
           ? `<div class="cal-dot cal-dot-context" title="Solo eventos de contexto"></div>`
           : `<div class="cal-dot" style="background:var(--${ty});"></div>`
@@ -2822,17 +2835,21 @@ function renderDayPanel(){
   const dayTasks = taskOccurrencesInRange(state.tasks, sel, sel);
   const dayRecurringEvents = expandEventOccurrencesInRange(state.events, sel, sel);
   const dayEvents = eventsOnDate(state.events, dayRecurringEvents, sel);
+  const dayExams = examsOnDate(sel);
 
-  if(dayTasks.length===0 && dayEvents.length===0){
+  if(dayTasks.length===0 && dayEvents.length===0 && dayExams.length===0){
     content.innerHTML = `<div class="empty-state small">No hay nada guardado para este día todavía.</div>`;
   } else {
     content.innerHTML = `<div class="item-list">
+      ${dayExams.map(ex=>examRowHTML(ex)).join('')}
       ${dayEvents.map(e=>eventRowHTML(e)).join('')}
       ${dayTasks.map(t=>taskRowHTML(t)).join('')}
     </div>`;
     content.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTaskOccurrenceFromView(b.dataset.taskId, b.dataset.occurrenceDate)));
     content.querySelectorAll('[data-action="edit-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({taskId:b.dataset.id})));
     content.querySelectorAll('[data-action="delete-task"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar esta tarea?')){ deleteTask(b.dataset.id).then(renderCurrentView); } }));
+    content.querySelectorAll('[data-action="edit-exam"]').forEach(b=>b.addEventListener('click', ()=>openExamModal({examId:b.dataset.id})));
+    content.querySelectorAll('[data-action="delete-exam"]').forEach(b=>b.addEventListener('click', ()=>confirmDeleteExam(b.dataset.id)));
     content.querySelectorAll('[data-action="edit-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({eventId:b.dataset.id})));
     content.querySelectorAll('[data-action="delete-event"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar este evento?')){ deleteEvent(b.dataset.id).then(renderCurrentView); } }));
   }
@@ -2841,6 +2858,7 @@ function renderDayPanel(){
 document.getElementById('cal-prev').addEventListener('click', ()=>{ cal.month--; if(cal.month<0){cal.month=11;cal.year--;} renderCalendar(); });
 document.getElementById('cal-next').addEventListener('click', ()=>{ cal.month++; if(cal.month>11){cal.month=0;cal.year++;} renderCalendar(); });
 document.getElementById('cal-today').addEventListener('click', ()=>{ const d=new Date(); cal.year=d.getFullYear(); cal.month=d.getMonth(); cal.selected=todayStr(); renderCalendar(); });
+document.getElementById('day-add-exam').addEventListener('click', ()=>{ openExamModal({date: cal.selected || todayStr()}); });
 document.getElementById('day-add-task').addEventListener('click', ()=>{ if(cal.selected) openTaskModal({date:cal.selected}); });
 document.getElementById('day-add-event').addEventListener('click', ()=>{ if(cal.selected) openEventModal({date:cal.selected}); });
 
@@ -4271,6 +4289,241 @@ function openSubjectModal({subjectId=null}={}){
 
   overlay.classList.add('open');
   modalBox.querySelector('#subject-name').focus();
+}
+
+/* ==================================================================
+   EXÁMENES Y ENTREGAS (app de exámenes)
+   Se apuntan desde el Calendario: asignatura, tipo, título, fecha, hora
+   opcional, trimestre (se rellena solo con la fecha, editable) y notas.
+   El resto de campos del modelo (ver STUDY_KEYS) se quedan con su valor
+   por defecto.
+   ================================================================== */
+const EXAM_TITLE_MAX = 120;
+const EXAM_NOTES_MAX = 1000;
+
+/** Trimestre de una fecha YYYY-MM-DD: sep–dic = 1, ene–mar = 2, abr–jun = 3;
+ * julio y agosto -> null (sin trimestre). */
+function termForDate(dateStr){
+  const m = /^\d{4}-(\d{2})-\d{2}$/.exec(String(dateStr || ''));
+  if(!m) return null;
+  const month = Number(m[1]);
+  if(month >= 9 && month <= 12) return 1;
+  if(month >= 1 && month <= 3) return 2;
+  if(month >= 4 && month <= 6) return 3;
+  return null;
+}
+function examTypeLabel(type){
+  return Object.prototype.hasOwnProperty.call(EXAM_TYPE_INFO, type) ? EXAM_TYPE_INFO[type].label : 'Examen';
+}
+function examSubject(exam){
+  return (exam && state.subjects.find(s => s.id === exam.subjectId)) || null;
+}
+/** Valida lo que llega del formulario. { ok, value, errors }. */
+function validateExamData(data){
+  const errors = {};
+  const d = data || {};
+  const subjectId = String(d.subjectId || '');
+  if(!state.subjects.some(s => s.id === subjectId)) errors.subjectId = 'Elige una asignatura.';
+  const type = String(d.type || '');
+  if(!EXAM_TYPES.includes(type)) errors.type = 'Elige un tipo.';
+  const title = String(d.title || '').trim();
+  if(!title) errors.title = 'Escribe un título.';
+  else if(title.length > EXAM_TITLE_MAX) errors.title = `Máximo ${EXAM_TITLE_MAX} caracteres.`;
+  const date = String(d.date || '');
+  if(!isValidYMDDate(date)) errors.date = 'Elige una fecha.';
+  const rawTime = String(d.time || '').trim();
+  const time = rawTime ? rawTime : null;
+  if(time && !/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) errors.time = 'Hora no válida.';
+  const rawTerm = (d.term === '' || d.term === undefined || d.term === null) ? null : Number(d.term);
+  const term = rawTerm === null ? null : (EXAM_TERMS.includes(rawTerm) ? rawTerm : undefined);
+  if(term === undefined) errors.term = 'Elige el 1.º, 2.º o 3.er trimestre.';
+  const notes = String(d.notes || '').trim();
+  if(notes.length > EXAM_NOTES_MAX) errors.notes = `Máximo ${EXAM_NOTES_MAX} caracteres.`;
+  return { ok: Object.keys(errors).length === 0, value: { subjectId, type, title, date, time, term: term === undefined ? null : term, notes }, errors };
+}
+/** Crea un examen o entrega. { ok: true, exam } o { ok: false, errors }. */
+async function addExam(data){
+  const check = validateExamData(data);
+  if(!check.ok) return { ok: false, errors: check.errors };
+  const v = check.value;
+  const now = Date.now();
+  const exam = {
+    id: uid(), subjectId: v.subjectId, type: v.type, title: v.title, date: v.date, time: v.time,
+    durationMinutes: null, term: v.term, weight: defaultExamWeight(v.type), topics: [], difficulty: 3,
+    studyDaysBefore: null, deliveryStatus: isDeliveryType(v.type) ? 'pendiente' : null, recovers: null,
+    grade: null, notes: v.notes, createdAt: now, updatedAt: now,
+  };
+  state.exams.push(exam);
+  await saveExams();
+  return { ok: true, exam };
+}
+/** Edita un examen o entrega. { ok: true, exam } o { ok: false, errors }. */
+async function updateExam(id, data){
+  const exam = state.exams.find(e => e && e.id === id);
+  if(!exam) return { ok: false, errors: { title: 'Este examen ya no existe.' } };
+  const check = validateExamData(data);
+  if(!check.ok) return { ok: false, errors: check.errors };
+  const v = check.value;
+  if(v.type !== exam.type){
+    exam.weight = defaultExamWeight(v.type);
+    exam.deliveryStatus = isDeliveryType(v.type) ? (exam.deliveryStatus || 'pendiente') : null;
+  }
+  Object.assign(exam, v, { updatedAt: Date.now() });
+  await saveExams();
+  return { ok: true, exam };
+}
+async function deleteExam(id){
+  const before = state.exams.length;
+  state.exams = state.exams.filter(e => !(e && e.id === id));
+  if(state.exams.length !== before) await saveExams();
+}
+/** Exámenes y entregas de un día, por hora (los que no tienen hora, al final). */
+function examsOnDate(dateStr){
+  return state.exams.filter(e => e && e.date === dateStr)
+    .sort((a,b) => (a.time || '99:99').localeCompare(b.time || '99:99') || String(a.title).localeCompare(String(b.title), 'es'));
+}
+function examRowHTML(exam){
+  const subject = examSubject(exam);
+  const color = subject ? subject.color : 'var(--ink-soft)';
+  return `
+    <div class="event-row exam-row" style="border-left:4px solid ${esc(color)};">
+      <div class="row-body">
+        <div class="row-top">
+          <span class="priority-dot" style="background:${esc(color)};"></span>
+          <span class="event-title">${esc(exam.title)}</span>
+        </div>
+        <div class="row-meta">
+          <span>${esc(examTypeLabel(exam.type))} · ${esc(subject ? subject.name : 'Sin asignatura')}</span>
+          <span>${exam.time ? esc(exam.time) : 'Sin hora'}</span>
+          ${exam.term ? `<span>${exam.term}.º trimestre</span>` : ''}
+        </div>
+        ${exam.notes ? `<div class="row-notes">${esc(exam.notes)}</div>` : ''}
+      </div>
+      <div class="row-actions">
+        <button class="btn-ghost" data-action="edit-exam" data-id="${esc(exam.id)}" title="Editar">✏️</button>
+        <button class="btn-ghost" data-action="delete-exam" data-id="${esc(exam.id)}" title="Eliminar">🗑️</button>
+      </div>
+    </div>`;
+}
+async function confirmDeleteExam(id){
+  const exam = state.exams.find(e => e && e.id === id);
+  if(!exam) return;
+  if(!confirm(`¿Borrar "${exam.title}"?`)) return;
+  await deleteExam(id);
+  showToast('Borrado');
+  renderCurrentView();
+}
+
+function openExamModal({examId=null, date=null}={}){
+  const editing = !!examId;
+  const existing = editing ? state.exams.find(e => e && e.id === examId) : null;
+  if(editing && !existing) return;
+  if(!state.subjects.length){
+    modalBox.innerHTML = `
+      <h3>Añadir examen o entrega</h3>
+      <p>Primero añade tus asignaturas en Ajustes › Asignaturas.</p>
+      <div class="modal-actions"><div></div><div class="right">
+        <button type="button" class="btn btn-dark" id="exam-close-btn">Entendido</button>
+      </div></div>`;
+    modalBox.querySelector('#exam-close-btn').addEventListener('click', closeModal);
+    overlay.classList.add('open');
+    return;
+  }
+  const startDate = existing ? existing.date : (date || todayStr());
+  const startTerm = existing ? existing.term : termForDate(startDate);
+  const subjectOptions = [...state.subjects].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'))
+    .map(s => `<option value="${esc(s.id)}" ${existing && existing.subjectId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  const typeOptions = (group) => EXAM_TYPES.filter(t => EXAM_TYPE_INFO[t].group === group)
+    .map(t => `<option value="${t}" ${(existing ? existing.type : 'examen') === t ? 'selected' : ''}>${esc(EXAM_TYPE_INFO[t].label)}</option>`).join('');
+  const termOptions = [1, 2, 3].map(t => `<option value="${t}" ${startTerm === t ? 'selected' : ''}>${t}.º trimestre</option>`).join('')
+    + `<option value="" ${startTerm ? '' : 'selected'}>Sin trimestre</option>`;
+
+  modalBox.innerHTML = `
+    <h3>${editing ? 'Editar' : 'Añadir'} examen o entrega</h3>
+    <form id="exam-form" novalidate>
+      <div class="form-group"><label for="exam-subject">Asignatura</label>
+        <select id="exam-subject" name="subjectId">
+          ${existing ? '' : '<option value="" selected disabled>Elige una asignatura…</option>'}${subjectOptions}
+        </select>
+        <div class="form-error" data-error-for="subjectId"></div>
+      </div>
+      <div class="form-group"><label for="exam-type">Tipo</label>
+        <select id="exam-type" name="type">
+          <optgroup label="Pruebas">${typeOptions('prueba')}</optgroup>
+          <optgroup label="Entregas">${typeOptions('entrega')}</optgroup>
+        </select>
+        <div class="form-error" data-error-for="type"></div>
+      </div>
+      <div class="form-group"><label for="exam-title">Título</label>
+        <input type="text" id="exam-title" name="title" maxlength="${EXAM_TITLE_MAX}" value="${existing ? esc(existing.title) : ''}" placeholder="Ej. Tema 3, Trabajo de la célula…">
+        <div class="form-error" data-error-for="title"></div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-group"><label for="exam-date">Fecha</label>
+          <input type="date" id="exam-date" name="date" value="${esc(startDate)}">
+          <div class="form-error" data-error-for="date"></div>
+        </div>
+        <div class="form-group"><label for="exam-time">Hora (opcional)</label>
+          <input type="time" id="exam-time" name="time" value="${existing && existing.time ? esc(existing.time) : ''}">
+          <div class="form-error" data-error-for="time"></div>
+        </div>
+      </div>
+      <div class="form-group"><label for="exam-term">Trimestre</label>
+        <select id="exam-term" name="term">${termOptions}</select>
+        <div class="form-error" data-error-for="term"></div>
+      </div>
+      <div class="form-group"><label for="exam-notes">Notas (opcional)</label>
+        <textarea id="exam-notes" name="notes" rows="3" maxlength="${EXAM_NOTES_MAX}" placeholder="Temas que entran, material…">${existing ? esc(existing.notes || '') : ''}</textarea>
+        <div class="form-error" data-error-for="notes"></div>
+      </div>
+      <div class="modal-actions">
+        <div>${editing ? `<button type="button" class="btn btn-danger" id="exam-delete-btn">Eliminar</button>` : ''}</div>
+        <div class="right">
+          <button type="button" class="btn" id="exam-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  const form = modalBox.querySelector('#exam-form');
+  const dateInput = form.querySelector('#exam-date');
+  const termSelect = form.querySelector('#exam-term');
+  // El trimestre sigue a la fecha hasta que el usuario lo cambia a mano.
+  let termTouched = !!existing && existing.term !== termForDate(existing.date);
+  termSelect.addEventListener('change', () => { termTouched = true; });
+  dateInput.addEventListener('change', () => {
+    if(termTouched) return;
+    const t = termForDate(dateInput.value);
+    termSelect.value = t ? String(t) : '';
+  });
+
+  modalBox.querySelector('#exam-cancel-btn').addEventListener('click', closeModal);
+  if(editing){
+    modalBox.querySelector('#exam-delete-btn').addEventListener('click', async () => {
+      if(!confirm(`¿Borrar "${existing.title}"?`)) return;
+      await deleteExam(examId);
+      closeModal();
+      showToast('Borrado');
+      renderCurrentView();
+    });
+  }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = {
+      subjectId: fd.get('subjectId') || '', type: fd.get('type') || '', title: fd.get('title') || '',
+      date: fd.get('date') || '', time: fd.get('time') || '', term: fd.get('term') || '', notes: fd.get('notes') || '',
+    };
+    const result = editing ? await updateExam(examId, data) : await addExam(data);
+    form.querySelectorAll('[data-error-for]').forEach(el => { el.textContent = (result.errors && result.errors[el.dataset.errorFor]) || ''; });
+    if(!result.ok) return;
+    closeModal();
+    showToast(editing ? 'Guardado' : 'Añadido');
+    if(currentView === 'calendario'){ cal.selected = result.exam.date; const d = parseYMD(result.exam.date); cal.year = d.getFullYear(); cal.month = d.getMonth(); }
+    renderCurrentView();
+  });
+
+  overlay.classList.add('open');
 }
 
 /* ==================================================================
