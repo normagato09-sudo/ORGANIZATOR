@@ -44,15 +44,17 @@ function check(label, ok) {
 function section(title) { console.log('\n' + title); }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-function makeSandbox({ subjects = [], exams = [], confirmAnswer = true } = {}) {
+function makeSandbox({ subjects = [], exams = [], customSchedules = [], confirmAnswer = true } = {}) {
   const saved = [];
+  const savedSchedules = [];
   const calls = { alerts: [], confirms: [], toasts: [], renders: 0 };
   let seq = 0;
   const sb = {
     console,
-    state: { subjects: JSON.parse(JSON.stringify(subjects)), exams: JSON.parse(JSON.stringify(exams)) },
+    state: { subjects: JSON.parse(JSON.stringify(subjects)), exams: JSON.parse(JSON.stringify(exams)), customSchedules: JSON.parse(JSON.stringify(customSchedules)) },
     uid: () => 'id' + (++seq),
     saveSubjects: async () => { saved.push(JSON.stringify(sb.state.subjects)); },
+    saveCustomSchedules: async () => { savedSchedules.push(JSON.stringify(sb.state.customSchedules)); },
     showToast: (m) => calls.toasts.push(m),
     alert: (m) => calls.alerts.push(m),
     confirm: (m) => { calls.confirms.push(m); return confirmAnswer; },
@@ -63,7 +65,7 @@ function makeSandbox({ subjects = [], exams = [], confirmAnswer = true } = {}) {
     'Object.assign(this, { SUBJECT_COLORS, DEFAULT_PASS_GRADE, parsePassGrade, formatGrade, validateSubjectData,',
     '  addSubject, updateSubject, deleteSubject, confirmDeleteSubject, sanitizeImportedSubjects, renderSubjectRows,',
     '  nextFreeSubjectColor, findSubjectByColor, countExamsForSubject });'].join('\n'), sb);
-  return { sb, saved, calls };
+  return { sb, saved, savedSchedules, calls };
 }
 
 // Contraste WCAG entre dos colores #RRGGBB.
@@ -184,6 +186,35 @@ function contrast(a, b) {
     const cancel = makeSandbox({ subjects, confirmAnswer: false });
     await cancel.sb.confirmDeleteSubject('s1');
     check('F5. si cancelas la confirmación no se borra nada', cancel.sb.state.subjects.length === 2 && cancel.saved.length === 0);
+    const withClasses = makeSandbox({ subjects, customSchedules: [
+      { id: 'c1', name: 'Mates', days: [0], startTime: '09:00', endTime: '10:00', subjectId: 's1' },
+      { id: 'c2', name: 'Mates', days: [2], startTime: '09:00', endTime: '10:00', subjectId: 's1' },
+      { id: 'g', name: 'Gimnasio', days: [1], startTime: '18:00', endTime: '19:00' },
+    ] });
+    const blockedByClasses = await withClasses.sb.deleteSubject('s1');
+    check('F6. (2b) con clases en el horario -> no se borra y devuelve cuántas', !blockedByClasses.ok && blockedByClasses.classCount === 2 && blockedByClasses.examCount === 0 && withClasses.saved.length === 0);
+    await withClasses.sb.confirmDeleteSubject('s1');
+    check('F7. (2b) el botón Borrar avisa de "2 clases en el horario" sin pedir confirmación', withClasses.calls.alerts.length === 1 && withClasses.calls.alerts[0].includes('2 clases en el horario') && withClasses.calls.confirms.length === 0);
+    await withClasses.sb.confirmDeleteSubject('s2');
+    check('F8. (2b) una asignatura sin clases se sigue pudiendo borrar', !withClasses.sb.state.subjects.some(s => s.id === 's2'));
+  }
+
+  // =====================================================================
+  section('F2) (2b) Renombrar una asignatura renombra sus clases');
+  // =====================================================================
+  {
+    const { sb, savedSchedules } = makeSandbox({
+      subjects: [{ id: 's1', name: 'Mates', color: '#D64545', passGrade: 5 }],
+      customSchedules: [
+        { id: 'c1', name: 'Mates', days: [0], startTime: '09:00', endTime: '10:00', subjectId: 's1' },
+        { id: 'g', name: 'Gimnasio', days: [1], startTime: '18:00', endTime: '19:00' },
+      ],
+    });
+    await sb.updateSubject('s1', { name: 'Matemáticas', color: '#D64545', passGrade: 5 });
+    check('R1. la clase pasa a llamarse como la asignatura y se guarda', sb.state.customSchedules[0].name === 'Matemáticas' && savedSchedules.length === 1);
+    check('R2. los bloques sin asignatura no cambian', sb.state.customSchedules[1].name === 'Gimnasio');
+    await sb.updateSubject('s1', { name: 'Matemáticas', color: '#3A7BD5', passGrade: 5 });
+    check('R3. si el nombre no cambia, no se vuelve a guardar el horario', savedSchedules.length === 1);
   }
 
   // =====================================================================

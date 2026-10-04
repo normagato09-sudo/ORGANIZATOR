@@ -354,6 +354,26 @@
   .form-error{font-size:12px;color:var(--alta);margin-top:4px;}
   .form-error:empty,.form-warning:empty{display:none;}
   .form-warning{font-size:12px;color:var(--media);margin-top:6px;}
+  /* Vista Horario: lunes a viernes de 8:00 a 14:30 en filas de 30 min. En
+     móvil caben las 5 columnas desde ~320px; si no, la tabla se desplaza
+     dentro de su caja, nunca la página. */
+  .horario-wrap{overflow-x:auto;}
+  .horario-grid{display:grid;grid-template-columns:40px repeat(5,minmax(50px,1fr));min-width:290px;}
+  .horario-day-name{font-size:12px;font-weight:600;text-align:center;padding:0 0 8px;color:var(--ink-soft);}
+  .horario-day-name.today{color:var(--ink);}
+  .horario-hours{position:relative;}
+  .horario-hour{position:absolute;right:6px;font-size:10px;line-height:1;color:var(--ink-soft);transform:translateY(-5px);}
+  .horario-col{position:relative;border-left:1px solid var(--line);border-bottom:1px solid var(--line);}
+  .horario-slot{position:absolute;left:0;width:100%;box-sizing:border-box;border:none;border-top:1px solid var(--line);background:transparent;padding:0;cursor:pointer;}
+  .horario-slot:hover{background:var(--paper);}
+  .horario-slot:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;}
+  .horario-class{position:absolute;box-sizing:border-box;border:none;border-left:3px solid;border-radius:6px;padding:3px 4px;text-align:left;cursor:pointer;overflow:hidden;color:var(--ink);font-size:11px;line-height:1.25;display:flex;flex-direction:column;}
+  .horario-class:focus-visible{outline:2px solid var(--ink);outline-offset:1px;}
+  .horario-class-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .horario-class-time{font-size:10px;color:var(--ink-soft);white-space:nowrap;}
+  .horario-break .horario-class-name{font-weight:500;font-style:italic;color:var(--ink-soft);}
+  .horario-class{z-index:1;}
+  .horario-hint{font-size:12px;color:var(--ink-soft);margin:10px 0 0;}
   .btn-danger{border-color:var(--alta);color:var(--alta);}
   .btn-danger:hover{background:var(--alta);color:var(--surface);}
   .settings-actions{display:flex;flex-wrap:wrap;gap:10px;}
@@ -731,7 +751,8 @@
     <div class="rail-logo">O</div>
     <button class="rail-item active" data-view="inicio"><div class="ic">🏠︎</div><div class="lb">Inicio</div></button>
     <button class="rail-item" data-view="calendario"><div class="ic">📅</div><div class="lb">Calendario</div></button>
-    <button class="rail-item" data-view="semana"><div class="ic">🗓️</div><div class="lb">Semana</div></button>
+    <!-- "Semana" ya no sale en el menú (app de exámenes); su vista y su código se conservan. -->
+    <button class="rail-item" data-view="horario"><div class="ic">🕘</div><div class="lb">Horario</div></button>
     <button class="rail-item settings" data-view="ajustes"><div class="ic">⚙️</div><div class="lb">Ajustes</div></button>
   </nav>
 
@@ -828,6 +849,9 @@
       </section>
     </div>
 
+    <!-- ===================== HORARIO de clases (contenido generado por JS, ver renderHorario()) ===================== -->
+    <div class="view" id="view-horario"></div>
+
     <!-- ===================== AJUSTES (contenido generado por JS, ver renderAjustes()) ===================== -->
     <div class="view" id="view-ajustes"></div>
 
@@ -921,7 +945,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.10';
+const APP_VERSION = '2.3.11';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -988,16 +1012,26 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 
 /* ==================================================================
    HORARIOS BLOQUEADOS (bloques de rutina definidos por el usuario)
-   Cada bloque: { id, name, days:[0..6] (0=Lunes...6=Domingo, igual que DOW_SHORT), startTime:"HH:MM", endTime:"HH:MM" }
+   Cada bloque: { id, name, days:[0..6] (0=Lunes...6=Domingo, igual que DOW_SHORT), startTime:"HH:MM", endTime:"HH:MM", subjectId, inHorario }
+   subjectId (opcional): el bloque es una clase de esa asignatura;
+   su nombre se copia del de la asignatura (así la IA y el planificador lo
+   siguen viendo por s.name) y en la vista Horario se pinta con su color.
+   inHorario (opcional): bloque sin asignatura creado desde la vista Horario
+   (p. ej. el recreo); sale en esa tabla, a diferencia del resto de bloques.
    ================================================================== */
+/** Asignatura de un bloque de horario, o null si no tiene (o ya no existe). */
+function scheduleSubject(s){
+  return (s && s.subjectId && state.subjects.find(x => x.id === s.subjectId)) || null;
+}
 async function addCustomSchedule(data){
-  state.customSchedules.push({ id: uid(), name: data.name, days: data.days, startTime: data.startTime, endTime: data.endTime, createdAt: Date.now() });
+  state.customSchedules.push({ id: uid(), name: data.name, days: data.days, startTime: data.startTime, endTime: data.endTime, subjectId: data.subjectId || null, inHorario: !!data.inHorario, createdAt: Date.now() });
   await saveCustomSchedules();
 }
 async function updateCustomSchedule(id, data){
   const s = state.customSchedules.find(x=>x.id===id);
   if(!s) return;
-  s.name = data.name; s.days = data.days; s.startTime = data.startTime; s.endTime = data.endTime;
+  s.name = data.name; s.days = data.days; s.startTime = data.startTime; s.endTime = data.endTime; s.subjectId = data.subjectId || null;
+  if(Object.prototype.hasOwnProperty.call(data, 'inHorario')) s.inHorario = !!data.inHorario;
   await saveCustomSchedules();
 }
 async function deleteCustomSchedule(id){
@@ -2506,6 +2540,7 @@ function renderCurrentView(){
   if(currentView === 'inicio') renderInicio();
   else if(currentView === 'calendario') renderCalendar();
   else if(currentView === 'semana') renderSemana();
+  else if(currentView === 'horario') renderHorario();
   else if(currentView === 'ajustes') renderAjustes();
 }
 
@@ -3730,18 +3765,182 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
 }
 
 /* ==================================================================
-   MODAL: HORARIO BLOQUEADO
+   VISTA HORARIO (app de exámenes)
+   Tabla fija de lunes a viernes de 8:00 a 14:30 en franjas de 30 minutos.
+   Tocar una franja vacía abre la ventana para añadir una clase ese día a
+   esa hora. Salen las clases (bloques de "Horarios bloqueados" con
+   subjectId, con el color de su asignatura) y los bloques sin asignatura
+   creados desde aquí (inHorario: true, p. ej. el recreo). Los demás
+   bloques de rutina (gimnasio, trabajo…) no salen aquí. Todo sigue en
+   customSchedules, así que cuenta como tiempo ocupado.
    ================================================================== */
-function openScheduleModal({scheduleId=null}={}){
+const HORARIO_DAYS = 5;                  // lunes a viernes (índices 0..4 de DOW_SHORT)
+const HORARIO_START_MIN = 8 * 60;        // 08:00
+const HORARIO_END_MIN = 14 * 60 + 30;    // 14:30
+const HORARIO_SLOT_MIN = 30;             // cada fila de la tabla
+const HORARIO_SLOT_PX = 30;              // alto de cada fila
+
+function hhmmToMin(t){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(t || ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
+}
+function minToHHMM(min){
+  return `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+}
+/** Inicio de cada fila de la tabla en minutos: 480, 510, … 840. */
+function horarioSlots(){
+  const out = [];
+  for(let m = HORARIO_START_MIN; m < HORARIO_END_MIN; m += HORARIO_SLOT_MIN) out.push(m);
+  return out;
+}
+/** Horas que propone la ventana al tocar una franja: empieza en la franja
+ * y dura una hora, sin pasar de las 14:30. */
+function horarioSlotPrefill(day, startMin){
+  return { days: [day], startTime: minToHHMM(startMin), endTime: minToHHMM(Math.min(startMin + 60, HORARIO_END_MIN)) };
+}
+/** Bloques de la tabla por día: { days: [[{ id, name, color|null, isClass,
+ * startTime, endTime, top, height, lane, lanes }]] } con top/height en
+ * minutos desde las 8:00 (recortados a 8:00–14:30). Lo que se solapa el
+ * mismo día va en carriles (lane de 0 a lanes-1) para que se vea todo. */
+function horarioLayout(schedules, subjects){
+  const byId = new Map((subjects || []).map(s => [s.id, s]));
+  const days = Array.from({ length: HORARIO_DAYS }, () => []);
+  (schedules || []).forEach(s => {
+    if(!s) return;
+    const subject = s.subjectId ? byId.get(s.subjectId) : null;
+    if(!subject && !s.inHorario) return;
+    const start = hhmmToMin(s.startTime), end = hhmmToMin(s.endTime);
+    if(start === null || end === null || end <= start) return;
+    const from = Math.max(start, HORARIO_START_MIN), to = Math.min(end, HORARIO_END_MIN);
+    if(to <= from) return;
+    (Array.isArray(s.days) ? s.days : []).forEach(d => {
+      if(!(d >= 0 && d < HORARIO_DAYS)) return;
+      days[d].push({ id: s.id, name: subject ? subject.name : (s.name || ''), color: subject ? subject.color : null,
+        isClass: !!subject, startTime: s.startTime, endTime: s.endTime, start: from, end: to });
+    });
+  });
+  const laidOut = days.map(items => {
+    items.sort((a,b) => a.start - b.start || a.end - b.end);
+    // Grupos de bloques que se solapan; dentro de cada grupo, carriles.
+    const out = [];
+    let group = [], groupEnd = -Infinity;
+    const flush = () => {
+      const laneEnds = [];
+      group.forEach(it => {
+        let lane = laneEnds.findIndex(e => e <= it.start);
+        if(lane === -1){ lane = laneEnds.length; laneEnds.push(0); }
+        laneEnds[lane] = it.end;
+        it.lane = lane;
+      });
+      group.forEach(it => { it.lanes = laneEnds.length; });
+      out.push(...group);
+      group = []; groupEnd = -Infinity;
+    };
+    items.forEach(it => {
+      if(group.length && it.start >= groupEnd) flush();
+      group.push(it);
+      groupEnd = Math.max(groupEnd, it.end);
+    });
+    if(group.length) flush();
+    return out.map(({ start, end, ...it }) => ({ ...it, top: start - HORARIO_START_MIN, height: end - start }));
+  });
+  return { days: laidOut };
+}
+
+function renderHorario(){
+  const el = document.getElementById('view-horario');
+  if(!el) return;
+  const layout = horarioLayout(state.customSchedules, state.subjects);
+  const slots = horarioSlots();
+  const heightPx = slots.length * HORARIO_SLOT_PX;
+  const px = (min) => (min / HORARIO_SLOT_MIN * HORARIO_SLOT_PX).toFixed(1);
+  const today = dowOfDate(todayStr());
+  const headCells = DOW_FULL_MONFIRST.slice(0, HORARIO_DAYS)
+    .map((name,i) => `<div class="horario-day-name${i === today ? ' today' : ''}" title="${name}">${DOW_SHORT[i]}</div>`).join('');
+  const timeLabels = slots.map(m => `<div class="horario-hour" style="top:${px(m - HORARIO_START_MIN)}px;">${minToHHMM(m)}</div>`).join('');
+  const cols = layout.days.map((items, d) => `
+    <div class="horario-col" style="height:${heightPx}px;">
+      ${slots.map(m => `<button type="button" class="horario-slot" data-horario-slot="${d}|${m}" style="top:${px(m - HORARIO_START_MIN)}px;height:${HORARIO_SLOT_PX}px;" aria-label="Añadir clase el ${DOW_FULL_MONFIRST[d]} a las ${minToHHMM(m)}"></button>`).join('')}
+      ${items.map(it => {
+        const width = 100 / it.lanes;
+        const colors = it.isClass
+          ? `background:${esc(it.color)}26;border-left-color:${esc(it.color)};`
+          : 'background:var(--paper);border-left-color:var(--ink-soft);';
+        return `<button type="button" class="horario-class${it.isClass ? '' : ' horario-break'}" data-horario-class="${esc(it.id)}"
+          style="top:${px(it.top)}px;height:${px(it.height)}px;left:calc(${(it.lane * width).toFixed(2)}% + 2px);width:calc(${width.toFixed(2)}% - 4px);${colors}"
+          title="${esc(it.name)} · ${esc(it.startTime)}–${esc(it.endTime)}">
+          <span class="horario-class-name">${esc(it.name)}</span>
+          <span class="horario-class-time">${esc(it.startTime)}–${esc(it.endTime)}</span>
+        </button>`;
+      }).join('')}
+    </div>`).join('');
+  const noSubjects = !state.subjects.length
+    ? `<div class="empty-state" style="margin-bottom:16px;">Para poner clases, primero añade tus asignaturas en Ajustes › Asignaturas. Mientras tanto puedes apuntar bloques sin asignatura, como el recreo.</div>`
+    : '';
+  el.innerHTML = `
+    <div class="area-head">
+      <div class="area-head-l">
+        <div class="ic" style="background:var(--paper);color:var(--ink);">🕘</div>
+        <div><h1>Horario</h1><p>Tus clases de lunes a viernes</p></div>
+      </div>
+    </div>
+    ${noSubjects}
+    <section class="block">
+      <div class="horario-wrap">
+        <div class="horario-grid">
+          <div></div>${headCells}
+          <div class="horario-hours" style="height:${heightPx}px;">${timeLabels}</div>${cols}
+        </div>
+      </div>
+      <p class="horario-hint">Toca un hueco para añadir una clase o un recreo; toca una clase para cambiarla o borrarla.</p>
+    </section>`;
+  el.querySelectorAll('[data-horario-slot]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const [d, m] = btn.dataset.horarioSlot.split('|').map(Number);
+      openScheduleModal({ fromHorario: true, prefill: horarioSlotPrefill(d, m) });
+    });
+  });
+  el.querySelectorAll('[data-horario-class]').forEach(btn => {
+    btn.addEventListener('click', () => openScheduleModal({ scheduleId: btn.dataset.horarioClass, fromHorario: true }));
+  });
+}
+
+/* ==================================================================
+   MODAL: HORARIO BLOQUEADO
+   Desde Ajustes (bloques de rutina) y desde la vista Horario
+   (fromHorario: clases y bloques sin asignatura como el recreo; prefill
+   trae el día y las horas de la franja tocada).
+   ================================================================== */
+function openScheduleModal({scheduleId=null, subjectId=null, prefill=null, fromHorario=false}={}){
   const editing = !!scheduleId;
   const existing = editing ? state.customSchedules.find(s=>s.id===scheduleId) : null;
-  const selectedDays = existing ? existing.days : [];
+  const base = existing || prefill || {};
+  const selectedDays = Array.isArray(base.days) ? base.days : [];
+  // Asignatura opcional (el bloque pasa a ser una clase).
+  const linked = existing ? scheduleSubject(existing) : state.subjects.find(s => s.id === subjectId) || null;
+  const subjectOptions = [...state.subjects].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'))
+    .map(s => `<option value="${esc(s.id)}" ${linked && linked.id === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
+  // En Horario, una franja nueva obliga a elegir: una asignatura o "sin asignatura".
+  const askSubject = fromHorario && !existing && !linked;
+  const noneOption = fromHorario
+    ? `<option value="none" ${existing && !linked ? 'selected' : ''}>Sin asignatura (recreo, tutoría…)</option>`
+    : `<option value="">Ninguna</option>`;
+  const subjectField = state.subjects.length ? `
+      <div class="form-group"><label for="schedule-subject">${fromHorario ? 'Asignatura' : 'Asignatura (si es una clase)'}</label>
+        <select id="schedule-subject" name="subjectId" ${askSubject ? 'required' : ''}>
+          ${askSubject ? '<option value="" disabled selected>Elige una asignatura…</option>' : ''}${fromHorario ? '' : noneOption}${subjectOptions}${fromHorario ? noneOption : ''}
+        </select>
+      </div>` : '';
+  const hideName = !!linked || askSubject;
+  const namePlaceholder = fromHorario ? 'Ej. Recreo, Tutoría…' : 'Ej. Escuela, Trabajo, Gimnasio…';
+  const title = linked || askSubject ? 'clase' : (fromHorario ? 'bloque' : 'bloque de horario');
 
   modalBox.innerHTML = `
-    <h3>${editing?'Editar':'Añadir'} bloque de horario</h3>
+    <h3>${editing?'Editar':'Añadir'} ${title}</h3>
     <form id="schedule-form">
-      <div class="form-group"><label>Nombre</label>
-        <input type="text" name="name" required value="${existing?esc(existing.name):''}" placeholder="Ej. Escuela, Trabajo, Gimnasio…">
+      ${subjectField}
+      <div class="form-group" id="schedule-name-group" ${hideName?'style="display:none;"':''}><label>Nombre</label>
+        <input type="text" name="name" ${hideName?'':'required'} value="${existing?esc(existing.name):''}" placeholder="${namePlaceholder}">
       </div>
       <div class="form-group"><label>Días</label>
         <div class="day-pills" id="schedule-day-pills">
@@ -3750,12 +3949,13 @@ function openScheduleModal({scheduleId=null}={}){
       </div>
       <div class="form-row-2">
         <div class="form-group"><label>Hora inicio</label>
-          <input type="time" name="startTime" required value="${existing?existing.startTime:''}">
+          <input type="time" name="startTime" required value="${esc(base.startTime||'')}">
         </div>
         <div class="form-group"><label>Hora fin</label>
-          <input type="time" name="endTime" required value="${existing?existing.endTime:''}">
+          <input type="time" name="endTime" required value="${esc(base.endTime||'')}">
         </div>
       </div>
+      <div class="form-error" id="schedule-error"></div>
       <div class="modal-actions">
         <div>${editing?`<button type="button" class="btn" id="schedule-delete-btn">Eliminar</button>`:''}</div>
         <div class="right">
@@ -3774,26 +3974,42 @@ function openScheduleModal({scheduleId=null}={}){
     });
   });
 
+  const subjectSelect = modalBox.querySelector('#schedule-subject');
+  if(subjectSelect){
+    subjectSelect.addEventListener('change', ()=>{
+      const isClass = state.subjects.some(s => s.id === subjectSelect.value);
+      modalBox.querySelector('#schedule-name-group').style.display = isClass ? 'none' : '';
+      modalBox.querySelector('input[name="name"]').required = !isClass;
+      modalBox.querySelector('h3').textContent = `${editing?'Editar':'Añadir'} ${isClass ? 'clase' : (fromHorario ? 'bloque' : 'bloque de horario')}`;
+    });
+  }
+
   modalBox.querySelector('#schedule-cancel-btn').addEventListener('click', closeModal);
   if(editing){
     modalBox.querySelector('#schedule-delete-btn').addEventListener('click', async ()=>{
-      if(confirm('¿Eliminar este bloque de horario?')){ await deleteCustomSchedule(scheduleId); closeModal(); renderAjustes(); }
+      if(confirm(linked ? '¿Eliminar esta clase?' : '¿Eliminar este bloque de horario?')){ await deleteCustomSchedule(scheduleId); closeModal(); renderCurrentView(); }
     });
   }
   modalBox.querySelector('#schedule-form').addEventListener('submit', async (e)=>{
     e.preventDefault();
     const fd = new FormData(e.target);
+    const subject = state.subjects.find(s => s.id === fd.get('subjectId')) || null;
     const data = {
-      name: fd.get('name').trim(),
+      name: subject ? subject.name : (fd.get('name') || '').trim(),
       days: [...days].sort((a,b)=>a-b),
       startTime: fd.get('startTime'),
       endTime: fd.get('endTime'),
+      subjectId: subject ? subject.id : null,
+      inHorario: fromHorario || !!(existing && existing.inHorario),
     };
-    if(!data.name || !data.days.length || !data.startTime || !data.endTime) return;
+    const errorEl = modalBox.querySelector('#schedule-error');
+    if(!data.days.length){ errorEl.textContent = 'Elige al menos un día.'; return; }
+    if(!data.name || !data.startTime || !data.endTime) return;
+    if(data.endTime <= data.startTime){ errorEl.textContent = 'La hora de fin tiene que ser después de la de inicio.'; return; }
     if(editing) await updateCustomSchedule(scheduleId, data); else await addCustomSchedule(data);
     closeModal();
     showToast(editing?'Guardado':'Añadido');
-    renderAjustes();
+    renderCurrentView();
   });
 
   overlay.classList.add('open');
@@ -3890,6 +4106,10 @@ function findSubjectByColor(color, excludeId){
 function countExamsForSubject(subjectId){
   return state.exams.filter(e => e && e.subjectId === subjectId).length;
 }
+/** Bloques de "Horarios bloqueados" que son clases de la asignatura (paso 2b). */
+function countClassesForSubject(subjectId){
+  return state.customSchedules.filter(s => s && s.subjectId === subjectId).length;
+}
 /** Primer color de la paleta que no usa ninguna asignatura (o el primero). */
 function nextFreeSubjectColor(){
   const free = SUBJECT_COLORS.find(c => !findSubjectByColor(c.color));
@@ -3928,14 +4148,21 @@ async function updateSubject(id, data){
   if(!check.ok) return { ok: false, errors: check.errors };
   Object.assign(subject, check.value, { updatedAt: Date.now() });
   await saveSubjects();
+  // Paso 2b: sus clases llevan el nombre de la asignatura.
+  const classes = state.customSchedules.filter(s => s && s.subjectId === id && s.name !== subject.name);
+  if(classes.length){
+    classes.forEach(s => { s.name = subject.name; });
+    await saveCustomSchedules();
+  }
   return { ok: true, subject };
 }
-/** Borra una asignatura si no tiene exámenes. { ok: true } o
- * { ok: false, examCount } (o { ok: false, notFound: true }). */
+/** Borra una asignatura si no tiene exámenes ni clases. { ok: true } o
+ * { ok: false, examCount, classCount } (o { ok: false, notFound: true }). */
 async function deleteSubject(id){
   if(!state.subjects.some(s => s.id === id)) return { ok: false, notFound: true };
   const examCount = countExamsForSubject(id);
-  if(examCount > 0) return { ok: false, examCount };
+  const classCount = countClassesForSubject(id);
+  if(examCount > 0 || classCount > 0) return { ok: false, examCount, classCount };
   state.subjects = state.subjects.filter(s => s.id !== id);
   await saveSubjects();
   return { ok: true };
@@ -3970,6 +4197,12 @@ async function confirmDeleteSubject(id){
   if(examCount > 0){
     const fix = examCount === 1 ? 'Borra ese examen o cámbialo de asignatura primero.' : 'Borra esos exámenes o cámbialos de asignatura primero.';
     alert(`No se puede borrar "${subject.name}": tiene ${examCountLabel(examCount)}. ${fix}`);
+    return;
+  }
+  const classCount = countClassesForSubject(id);
+  if(classCount > 0){
+    const what = classCount === 1 ? '1 clase en el horario' : `${classCount} clases en el horario`;
+    alert(`No se puede borrar "${subject.name}": tiene ${what}. Bórralas o quítales la asignatura en Horario primero.`);
     return;
   }
   if(!confirm(`¿Borrar la asignatura "${subject.name}"?`)) return;
@@ -4047,9 +4280,11 @@ function renderScheduleRows(){
   const sorted = [...state.customSchedules].sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
   const rows = sorted.map(s=>{
     const daysLabel = DOW_SHORT.map((lb,i)=> s.days.includes(i) ? `<strong>${lb}</strong>` : lb).join(' ');
+    const subject = scheduleSubject(s);
+    const dot = subject ? `<span class="priority-dot subject-dot" style="background:${esc(subject.color)};" title="Clase de ${esc(subject.name)}"></span>` : '';
     return `<div class="schedule-row" data-schedule-id="${s.id}">
       <div class="sched-main">
-        <div class="sched-name">${esc(s.name)}</div>
+        <div class="sched-name">${dot}${esc(s.name)}</div>
         <div class="sched-meta">${daysLabel}</div>
       </div>
       <div class="sched-time">${esc(s.startTime)} – ${esc(s.endTime)}</div>
@@ -5162,6 +5397,11 @@ function initSettingsDataIO(){
     if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
       try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push tras importar', e); }
     }
+
+    // Paso 2b: una clase cuya asignatura no viene en la copia se queda como bloque normal.
+    state.customSchedules = state.customSchedules.map(s =>
+      (s && s.subjectId && !state.subjects.some(x => x.id === s.subjectId)) ? { ...s, subjectId: null } : s
+    );
 
     try{
       await Promise.all([
