@@ -391,6 +391,8 @@
   .semana-day-body .ia-ag-title{font-size:11.5px;color:var(--ink);overflow-wrap:anywhere;}
   .semana-day-body .ia-ag-free .ia-ag-title{color:var(--ink-soft);font-weight:500;}
   .semana-day-body .ia-ag-past{opacity:.5;}
+  .semana-day-body .ia-ag-break{opacity:.7;}
+  .semana-day-body .ia-ag-break .ia-ag-title{color:var(--ink-soft);font-weight:500;font-style:italic;}
   /* Distinción adicional mínima: tarea ya planificada (📚) vs bloque
      fijo/evento (🔒), y conflicto (⚠️) cuando buildDayBlocks() ya fusionó
      más de un origen (kinds.length>1) en el mismo bloque ocupado. */
@@ -2716,6 +2718,9 @@ function renderSemanaAgenda(blocks){
     let rowClass, icon, label, bodyExtra = '';
     if(b.type === 'free'){
       rowClass = 'ia-ag-free'; icon = '🟢'; label = 'Tiempo libre';
+    } else if(b.type === 'break'){
+      // B4: margen entre bloques (ver semanaAgendaWithBreaks).
+      rowClass = 'ia-ag-break'; icon = '☕'; label = 'Descanso';
     } else if(b.type === 'past'){
       rowClass = 'ia-ag-past'; icon = '⏳'; label = 'Ya pasó';
     } else if(b.type === 'proposal'){
@@ -2750,6 +2755,13 @@ function renderSemanaAgenda(blocks){
       if(isTask && b.ids && b.ids.length === 1){
         const t = state.tasks.find(t => t.id === b.ids[0]);
         taskDone = !!(t && t.done === true);
+        // B4: repetición de una tarea recurrente (id "taskId::fecha", ver
+        // tasksForScheduler): hecha si esa fecha está en completedOccurrences.
+        const sep = (!t && typeof b.ids[0] === 'string') ? b.ids[0].lastIndexOf('::') : -1;
+        if(sep > 0){
+          const base = state.tasks.find(x => x.id === b.ids[0].slice(0, sep));
+          taskDone = !!base && isTaskOccurrenceCompleted(base, b.ids[0].slice(sep + 2));
+        }
       }
       rowClass = 'ia-ag-busy' + (isConflict ? ' semana-ag-conflict' : (isTask ? ' semana-ag-task' + (taskDone ? ' semana-ag-task-done' : '') : ''));
       icon = isConflict ? '⚠️' : (isTask ? (taskDone ? '✅' : '📚') : '🔒');
@@ -2825,6 +2837,35 @@ function buildSemanaDayAgendaBlocks(dateStr, schedCtx){
     return { type: 'proposal', startTime: null, endTime: null, title: p.title, reason: p.reason, kind: p.kind, id: p.id, batchId: p.batchId, schedulingWarning: warning };
   });
   return result.concat(noSlotBlocks, displacedBlocks);
+}
+
+/** B4: el Scheduler nunca coloca nada en los primeros ni en los últimos
+ * breakMinutes de un hueco que toca un bloque ocupado (o una propuesta
+ * con hora). Aquí esos minutos del tiempo libre se marcan como descanso
+ * ({ type: 'break' }, ☕) para que se vean. Solo cambia cómo se pinta:
+ * no toca lo que planifica Scheduler. */
+function semanaAgendaWithBreaks(blocks, breakMinutes){
+  if(!(breakMinutes > 0)) return blocks;
+  const { timeToMin, minToTime } = window.Scheduler._internal;
+  const solid = b => !!b && (b.type === 'busy' || (b.type === 'proposal' && !!b.startTime));
+  const piece = (type, s, e) => ({ type, start: s, end: e, startTime: minToTime(s), endTime: minToTime(e), label: type === 'break' ? 'Descanso' : 'Tiempo libre' });
+  const out = [];
+  blocks.forEach((b, i) => {
+    if(b.type !== 'free'){ out.push(b); return; }
+    const s = timeToMin(b.startTime), e = timeToMin(b.endTime);
+    const prev = blocks[i - 1], next = blocks[i + 1];
+    const lead = (solid(prev) && prev.endTime === b.startTime) ? Math.min(breakMinutes, e - s) : 0;
+    const trail = (solid(next) && next.startTime === b.endTime) ? Math.min(breakMinutes, e - s - lead) : 0;
+    if(lead) out.push(piece('break', s, s + lead));
+    if(e - trail > s + lead) out.push(Object.assign({}, b, piece('free', s + lead, e - trail)));
+    if(trail){
+      const last = out[out.length - 1];
+      // Hueco más corto que dos descansos: un solo ☕ seguido.
+      if(last && last.type === 'break' && last.end === e - trail) Object.assign(last, piece('break', last.start, e));
+      else out.push(piece('break', e - trail, e));
+    }
+  });
+  return out;
 }
 /* ---------- 6A-4.2: eventos all-day "contexto" (blocksSchedule:false) ----------
    Reciben tal cual el array `eventContext` que ya calcula
@@ -2904,7 +2945,7 @@ function renderSemana(){
     const dayDate = `${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
     const dayResult = window.Scheduler ? window.Scheduler.buildDayBlocks(dateStr, schedCtx) : { blocks: [], eventContext: [] };
     const agendaHtml = window.Scheduler
-      ? renderSemanaAgenda(buildSemanaDayAgendaBlocks(dateStr, schedCtx))
+      ? renderSemanaAgenda(semanaAgendaWithBreaks(buildSemanaDayAgendaBlocks(dateStr, schedCtx), window.Scheduler.DEFAULTS.breakMinutes))
       : `<p class="empty-hint">No se pudo calcular la agenda (falta el módulo de planificación).</p>`;
     // 6A-4.2: eventos all-day contextuales de ese día, pintados aparte de
     // la agenda (no son un bloque 🔒/📚/🟢 más, ver renderEventContextBadges).
