@@ -1039,7 +1039,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.21';
+const APP_VERSION = '2.3.22';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2517,6 +2517,38 @@ async function cancelReminderPush(reminderId){
   }catch(e){
     console.warn('No se pudo cancelar el recordatorio en Web Push (el recordatorio local sigue cancelado)', e);
     return { ok:false, reason:'network-or-server-error' };
+  }
+}
+
+/* ==================================================================
+   RECORDATORIOS APAGADOS (app de exámenes)
+   Los recordatorios y sus notificaciones están apagados: startApp() no
+   arranca el polling ni reconcilia la suscripción Web Push, y una vez por
+   cuenta y dispositivo cancela en el servidor los avisos que quedaran
+   pendientes y da de baja este dispositivo. state.reminders no se toca
+   (si algún día se vuelven a encender, siguen ahí). El servidor tiene su
+   propio interruptor (api/push/send-due.js), que es el que garantiza que
+   no llegue nada al móvil aunque haya una versión vieja de la app.
+   ================================================================== */
+const REMINDERS_ENABLED = false;
+const REMINDERS_OFF_CLEANUP_KEY = 'organizator:remindersOffCleanup:v1';
+/** Limpieza de una sola vez (por cuenta y dispositivo). Si algo falla (sin
+ * red), se reintenta en el siguiente arranque. Nunca lanza. */
+async function disableRemindersOnThisDevice(){
+  try{
+    const key = `${REMINDERS_OFF_CLEANUP_KEY}:${currentUser && currentUser.id != null ? currentUser.id : 'anon'}`;
+    try{ if(localStorage.getItem(key)) return { ok:true, skipped:true }; }catch(e){}
+    const pending = (state.reminders || []).filter(r => r && r.status === 'pending');
+    let failed = 0;
+    for(const r of pending){
+      const res = await cancelReminderPush(r.id);
+      if(!res || !res.ok) failed++;
+    }
+    await unsubscribePushForThisDevice();
+    if(failed === 0){ try{ localStorage.setItem(key, String(Date.now())); }catch(e){} }
+    return { ok: failed === 0, cancelled: pending.length - failed };
+  }catch(e){
+    return { ok:false };
   }
 }
 
@@ -8099,12 +8131,19 @@ async function startApp(){
   // vencidos mientras la app está abierta (ver RECORDATORIOS — disparo
   // automático más arriba). startReminderPolling() es idempotente, así
   // que no pasa nada si startApp() llegara a ejecutarse más de una vez.
+  // App de exámenes: con los recordatorios apagados no se arranca nada de
+  // esto y se hace la limpieza de una vez (ver RECORDATORIOS APAGADOS).
+  if(REMINDERS_ENABLED){
   startReminderPolling();
   // R-8.2-E: reconcilia en segundo plano la suscripción Web Push si el
   // usuario ya tenía el permiso concedido de una sesión anterior. SIN
   // await a propósito (best-effort, ver reconcilePushSubscriptionOnStartup):
   // nunca debe retrasar ni poder bloquear el arranque de la app.
   reconcilePushSubscriptionOnStartup();
+  } else {
+    // Sin await: nunca retrasa el arranque.
+    disableRemindersOnThisDevice();
+  }
   showView(state.prefs.defaultHome || 'inicio');
 }
 

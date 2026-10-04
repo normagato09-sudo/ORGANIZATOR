@@ -268,6 +268,8 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     function initPWA(){}
     function startReminderPolling(){}
     function reconcilePushSubscriptionOnStartup(){ __page.calls.push('reconcilePush'); }
+    const REMINDERS_ENABLED = false;
+    function disableRemindersOnThisDevice(){ __page.calls.push('disableReminders'); }
     function showView(v){ __page.calls.push('showView:' + v); }
   `, sb, { filename: 'stubs' });
   vm.runInContext(defaultsSrc, sb, { filename: 'organizator.html (defaultPrefs/defaultIA)' });

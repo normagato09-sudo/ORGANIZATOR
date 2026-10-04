@@ -287,6 +287,8 @@ async function loadPage(device) {
     function initPWA(){}
     function startReminderPolling(){}
     function reconcilePushSubscriptionOnStartup(){}
+    const REMINDERS_ENABLED = false;
+    function disableRemindersOnThisDevice(){}
     function showView(){}
   `, sb, { filename: 'stubs' });
   vm.runInContext(escSrc, sb, { filename: 'organizator.html (esc)' });

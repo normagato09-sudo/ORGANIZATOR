@@ -3,7 +3,7 @@
  *
  * POST /api/push/send-due   (llamado por QStash, NUNCA por el navegador)
  *   body: { pushReminderId: number }
- *   → 200 { ok: true, status: 'sent'|'already_handled'|'no_subscriptions' }
+ *   → 200 { ok: true, status: 'sent'|'already_handled'|'no_subscriptions'|'disabled' }
  *   → 401 { error: string }   (firma de QStash ausente/ inválida)
  *   → 400/500 { error: string }
  *
@@ -31,6 +31,11 @@
 const db = require('../../lib/db');
 const vapid = require('../../lib/vapid');
 const qstashReceiver = require('../../lib/qstash-receiver');
+
+// App de exámenes: interruptor de los avisos de recordatorios (ver abajo).
+// Apagado. Solo los tests lo encienden (setPushRemindersEnabledForTests)
+// para seguir comprobando el envío por si algún día se vuelve a activar.
+let PUSH_REMINDERS_ENABLED = false;
 
 function readRawBody(req) {
   return new Promise((resolve, reject) => {
@@ -78,6 +83,19 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     console.error('[api/push/send-due] Error de configuración de la base de datos:', err);
     return res.status(500).json({ error: 'La base de datos no está configurada todavía.' });
+  }
+
+  // App de exámenes: los recordatorios están apagados. Un aviso programado
+  // antes (en QStash) que llegue ahora se marca como cancelado y NO se
+  // envía al móvil, venga de la versión de la app que venga. Para volver
+  // a encenderlos basta con poner PUSH_REMINDERS_ENABLED a true arriba.
+  if (!PUSH_REMINDERS_ENABLED) {
+    try {
+      await sql`UPDATE push_reminders SET status = 'cancelled' WHERE id = ${pushReminderId} AND status = 'pending'`;
+    } catch (err) {
+      console.error('[api/push/send-due] Error al cancelar el reminder (recordatorios apagados):', err);
+    }
+    return res.status(200).json({ ok: true, status: 'disabled' });
   }
 
   // Reclamo atómico: solo una invocación (incluidos reintentos de QStash)
@@ -165,3 +183,4 @@ module.exports = async function handler(req, res) {
 // comentario de cabecera). Ningún otro endpoint de api/push/*.js lo
 // necesita (ninguno verifica una firma de webhook).
 module.exports.config = { api: { bodyParser: false } };
+module.exports.setPushRemindersEnabledForTests = (enabled) => { PUSH_REMINDERS_ENABLED = !!enabled; };

@@ -125,6 +125,14 @@ function makeFakeDb() {
       return [];
     }
 
+    // send-due.js con los recordatorios apagados: cancela por id si sigue pending.
+    if (text.includes("SET status = 'cancelled'") && text.includes("AND status = 'pending'") && values.length === 1) {
+      const [id] = values;
+      const row = reminders.find(r => r.id === id && r.status === 'pending');
+      if (row) row.status = 'cancelled';
+      return [];
+    }
+
     if (text.includes("SET status = 'cancelled'")) {
       const [id, userId] = values;
       const row = reminders.find(r => r.id === id && r.user_id === userId);
@@ -516,9 +524,17 @@ function signQStashLikeJWT({ rawBody, url, signingKey }) {
 
     const resOk = makeRes();
     await handler(makeStreamReq({ rawBody: validBody, headers: { 'upstash-signature': 'ok' } }), resOk);
-    check('I4. reminder pending -> 200 status "sent"', resOk._status === 200 && resOk._json.status === 'sent');
-    check('I5. la fila pasa a "triggered"', fakeDb._reminders[0].status === 'triggered');
-    check('I6. se intenta enviar a AMBAS suscripciones del usuario', sendCalls.length === 2);
+    // App de exámenes: los recordatorios están apagados (PUSH_REMINDERS_ENABLED
+    // = false en send-due.js): un reminder que llega a su hora no se envía.
+    check('I4. recordatorios apagados: reminder pending -> 200 status "disabled"', resOk._status === 200 && resOk._json.status === 'disabled');
+    check('I5. la fila queda "cancelled"', fakeDb._reminders[0].status === 'cancelled');
+    check('I6. no se envía nada a ninguna suscripción', sendCalls.length === 0);
+
+    // El resto de la sección comprueba el envío con el interruptor encendido
+    // (por si algún día se vuelven a activar los avisos). Solo para el test.
+    handler.setPushRemindersEnabledForTests(true);
+    fakeDb._reminders[0].status = 'pending';
+    await handler(makeStreamReq({ rawBody: validBody, headers: { 'upstash-signature': 'ok' } }), makeRes());
     check('I7. el payload enviado por VAPID tiene la forma correcta (title/body/url/tag)', sendCalls[0].payload.title === 'ORGANIZATOR' && sendCalls[0].payload.body === 'Tarea: Entregar informe' && typeof sendCalls[0].payload.url === 'string' && sendCalls[0].payload.tag === 'push-reminder-1');
     // R-8.2-C: el payload también lleva el reminderId de ORGANIZATOR (no
     // el id interno de push_reminders) — lo necesita sw.js para avisar a
@@ -545,6 +561,7 @@ function signQStashLikeJWT({ rawBody, url, signingKey }) {
     const resNoSubs = makeRes();
     await handler(makeStreamReq({ rawBody: JSON.stringify({ pushReminderId: 3 }), headers: { 'upstash-signature': 'ok' } }), resNoSubs);
     check('I11. reminder pending sin ninguna suscripción -> 200 "no_subscriptions", y aun así queda triggered', resNoSubs._status === 200 && resNoSubs._json.status === 'no_subscriptions' && fakeDb._reminders[2].status === 'triggered');
+    handler.setPushRemindersEnabledForTests(false);
   }
 
   console.log(`\n${pass} pasaron, ${fail} fallaron.`);
