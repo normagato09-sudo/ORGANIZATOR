@@ -273,6 +273,19 @@ function contrast(a, b) {
     check('I5. Cuenta: cerrar sesión y estado de sincronización', src.includes('id="btn-logout"') && src.includes('id="sync-status-text"'));
   }
 
+  {
+    const { sb } = makeSandbox();
+    const yes = await sb.addSubject({ name: 'Arte', color: '#D64545' });
+    const no = await sb.addSubject({ name: 'Tutoría', color: '#3A7BD5', graded: false });
+    check('J1. "Lleva nota": sí por defecto, no si se desmarca', yes.subject.graded === true && no.subject.graded === false);
+    await sb.updateSubject(no.subject.id, { name: 'Tutoría', color: '#3A7BD5', graded: true });
+    check('J2. se puede volver a marcar', sb.state.subjects.find(x => x.id === no.subject.id).graded === true);
+    const modalSrc2 = html.slice(html.indexOf('function openSubjectModal('), html.indexOf('function openSubjectModal(') + 9000);
+    check('J3. la ventana de la asignatura tiene la casilla "Lleva nota" (marcada salvo graded === false)', modalSrc2.includes('id="subject-graded" name="graded"') && modalSrc2.includes("existing && existing.graded === false ? '' : 'checked'") && modalSrc2.includes("graded: fd.get('graded') === 'on'"));
+    sb.state.subjects.find(x => x.id === no.subject.id).graded = false;
+    check('J4. en Ajustes una asignatura sin nota dice "No lleva nota"', sb.renderSubjectRows().includes('No lleva nota'));
+  }
+
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);
   process.exit(fail ? 1 : 0);
 })().catch(err => { console.error(err); process.exit(1); });

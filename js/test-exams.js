@@ -72,7 +72,7 @@ function makeSandbox({ subjects = [MATES, LENGUA], exams = [], confirmAnswer = t
   vm.createContext(sb);
   vm.runInContext([escSrc, formatGradeSrc, studyConstSrc, ymdSrc, examsSrc,
     'Object.assign(this, { termForDate, examTypeLabel, examSubject, validateExamData, addExam, updateExam, deleteExam, examsOnDate, examRowHTML, confirmDeleteExam, daysBetween, daysLeftLabel, upcomingExams, renderUpcomingHTML, UPCOMING_LIST_MAX, ' +
-    'parseGradeInput, termAverage, subjectTermExams, termFinalOf, setExamGrade, setSubjectTermFinal, renderNotasHTML });'].join('\n'), sb);
+    'parseGradeInput, termAverage, subjectTermExams, termFinalOf, setExamGrade, setSubjectTermFinal, renderNotasHTML, isSubjectGraded, loadNotasOpen });'].join('\n'), sb);
   return { sb, saved, savedSubjects, calls };
 }
 
@@ -277,12 +277,55 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
       && (await form.sb.updateExam(added.exam.id, { ...FORM, grade: '9' }), added.exam.grade === 9)
       && (await form.sb.updateExam(added.exam.id, FORM), added.exam.grade === 9));
     check('G20. nota no válida en el formulario -> error', (await form.sb.addExam({ ...FORM, grade: '10,5' })).errors.grade);
-    check('G21. la ventana del examen tiene la casilla "Nota (opcional)"', openExamModalSrc.includes('name="grade"') && openExamModalSrc.includes("grade: fd.get('grade') || ''"));
+    check('G21. la ventana del examen tiene la casilla "Nota (opcional)"', openExamModalSrc.includes('name="grade"') && openExamModalSrc.includes("if(gradedSelected()) data.grade = fd.get('grade') || '';"));
     check('G22. menú: Inicio, Calendario, Horario, Notas, Ajustes (en ese orden)', (() => {
       const order = ['inicio', 'calendario', 'horario', 'notas', 'ajustes'].map(v => html.indexOf(`data-view="${v}"`));
       return order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]) && html.includes('id="view-notas"')
         && html.includes("currentView === 'notas') renderNotas()");
     })());
+  }
+
+  // =====================================================================
+  section('H) Notas: desplegables y "Lleva nota"');
+  // =====================================================================
+  {
+    const exams = [
+      { id: 'a', subjectId: 's1', type: 'examen', title: 'T1', date: '2026-10-10', term: 1, grade: 7 },
+      { id: 'b', subjectId: 's1', type: 'examen', title: 'T2', date: '2026-10-20', term: 1, grade: 8 },
+      { id: 'c', subjectId: 's2', type: 'examen', title: 'L1', date: '2026-10-15', term: 1, grade: 4 },
+    ];
+    const { sb } = makeSandbox({ exams });
+    const closed = sb.renderNotasHTML({ subjects: {}, terms: {} }, 1);
+    const mates = closed.slice(closed.indexOf('data-notas-subject="s1"'));
+    check('H1. cada asignatura es un desplegable, cerrado por defecto, con nombre, color y resumen "1.º 7,5 · 2.º — · 3.º —"',
+      closed.includes('<details class="block notas-subject" data-notas-subject="s1" style="border-left-color:#D64545;">')
+      && /<span>1\.º <strong data-term-avg="s1\|1">7,5<\/strong><\/span> · <span>2\.º <strong data-term-avg="s1\|2">—<\/strong><\/span> · <span>3\.º <strong data-term-avg="s1\|3">—<\/strong><\/span>/.test(mates));
+    check('H2. dentro, cada trimestre es otro desplegable: el actual abierto y los demás cerrados', mates.includes('data-notas-term="s1|1" open>') && mates.includes('data-notas-term="s1|2">') && mates.includes('data-notas-term="s1|3">') && mates.includes('(ahora)'));
+    const saved = sb.renderNotasHTML({ subjects: { s1: true }, terms: { 's1|1': false, 's1|3': true } }, 1);
+    check('H3. respeta lo que el usuario dejó abierto o cerrado', saved.includes('data-notas-subject="s1" style="border-left-color:#D64545;" open>') && saved.includes('data-notas-term="s1|1">')
+      && saved.includes('data-notas-term="s1|3" open>') && saved.includes('data-notas-subject="s2" style="border-left-color:#3A7BD5;">'));
+    check('H4. en julio/agosto (sin trimestre actual) ningún trimestre se abre solo', !sb.renderNotasHTML({ subjects: {}, terms: {} }, null).includes('" open>'));
+    check('H5. sin localStorage (o vacío) no falla: todo con los valores por defecto', JSON.stringify(sb.loadNotasOpen()) === '{"subjects":{},"terms":{}}');
+    const notasSrc = extractBetween(html, 'function renderNotas(){', '\n}\n', 'renderNotas()');
+    check('H6. se guarda por dispositivo en localStorage solo lo que toca el usuario, y hay "Abrir todo / Cerrar todo"',
+      html.includes("const NOTAS_OPEN_KEY = 'organizator:notasOpen:v1';") && html.includes('localStorage.setItem(NOTAS_OPEN_KEY')
+      && notasSrc.includes('id="notas-toggle-all"') && notasSrc.includes("'Cerrar todo' : 'Abrir todo'") && notasSrc.includes(":scope > summary"));
+
+    const off = makeSandbox({ subjects: [MATES, { ...LENGUA, graded: false }], exams });
+    const offOut = off.sb.renderNotasHTML({ subjects: {}, terms: {} }, 1);
+    check('H7. una asignatura que no lleva nota no sale en Notas', offOut.includes('data-notas-subject="s1"') && !offOut.includes('data-notas-subject="s2"'));
+    check('H8. sus exámenes siguen ahí (Calendario e Inicio) y su nota no se borra', off.sb.examsOnDate('2026-10-15').length === 1 && off.sb.state.exams[2].grade === 4
+      && off.sb.renderUpcomingHTML('2026-10-05').includes('L1'));
+    off.sb.state.subjects[1].graded = true;
+    check('H9. si vuelve a llevar nota, reaparece con sus notas', off.sb.renderNotasHTML({ subjects: {}, terms: {} }, 1).includes('data-term-avg="s2|1">4<'));
+    check('H10. isSubjectGraded: sí por defecto (sin campo), no solo con false', off.sb.isSubjectGraded({}) && off.sb.isSubjectGraded({ graded: true }) && !off.sb.isSubjectGraded({ graded: false }));
+    const none = makeSandbox({ subjects: [{ ...MATES, graded: false }] });
+    check('H11. si ninguna lleva nota, lo dice', none.sb.renderNotasHTML({ subjects: {}, terms: {} }, 1).includes('Ninguna asignatura lleva nota'));
+    check('H12. la ventana del examen oculta la casilla de nota si la asignatura no lleva nota (y entonces no la toca)',
+      openExamModalSrc.includes('id="exam-grade-group"') && openExamModalSrc.includes('gradeGroup.hidden = !gradedSelected();') && openExamModalSrc.includes("subjectSelect.addEventListener('change', updateGradeField);"));
+    const keep = makeSandbox({ subjects: [{ ...MATES, graded: false }], exams: [{ id: 'k', subjectId: 's1', type: 'examen', title: 'X', date: '2026-10-10', term: 1, grade: 6 }] });
+    await keep.sb.updateExam('k', FORM);
+    check('H13. editar un examen de una asignatura sin nota conserva la nota guardada', keep.sb.state.exams[0].grade === 6);
   }
 
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);

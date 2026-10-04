@@ -353,10 +353,13 @@
   .color-swatch span{display:block;width:28px;height:28px;border-radius:50%;border:2px solid var(--surface);}
   .color-swatch input:checked + span{outline:2px solid var(--ink);outline-offset:2px;}
   .color-swatch input:focus-visible + span{outline:2px dashed var(--ink);outline-offset:2px;}
+  .form-group label.checkbox-row{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer;margin:0;}
+  .form-group .checkbox-row input{width:18px;height:18px;margin:0;padding:0;flex:none;}
   .color-custom-row{display:flex;align-items:center;gap:10px;margin-top:10px;font-size:13px;color:var(--ink-soft);}
   .color-custom-row input[type=color]{width:44px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px;background:var(--surface);cursor:pointer;}
   .form-error{font-size:12px;color:var(--alta);margin-top:4px;}
   .form-error:empty,.form-warning:empty{display:none;}
+  .form-group[hidden]{display:none;}
   .form-warning{font-size:12px;color:var(--media);margin-top:6px;}
   /* Vista Horario: lunes a viernes de 8:00 a 14:30 en filas de media hora.
      En el ordenador ocupa todo el ancho; en el móvil en vertical se ve un
@@ -547,11 +550,23 @@
   .upcoming-days{flex:none;font-size:12px;font-weight:600;white-space:nowrap;padding:4px 9px;border-radius:999px;}
   .upcoming-more{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
   /* Notas: una tarjeta por asignatura, con sus tres trimestres. */
-  section.block.notas-subject{background:var(--surface);border:1px solid var(--line);border-left:6px solid;border-radius:14px;padding:16px 18px;margin-bottom:20px;}
-  .notas-subject-name{font-size:16px;font-weight:600;margin:0 0 12px;}
-  .notas-terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
-  .notas-term{background:var(--paper);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0;}
-  .notas-term-head{font-size:13px;font-weight:600;}
+  /* Notas: cada asignatura y cada trimestre es un desplegable (<details>). */
+  details.block.notas-subject{background:var(--surface);border:1px solid var(--line);border-left:6px solid;border-radius:14px;padding:0;margin-bottom:12px;}
+  .notas-subject-head, .notas-term-head{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
+  .notas-subject-head::-webkit-details-marker, .notas-term-head::-webkit-details-marker{display:none;}
+  .notas-subject-head::before, .notas-term-head::before{content:'▸';color:var(--ink-soft);font-size:12px;transition:transform .15s ease;}
+  details[open] > .notas-subject-head::before, details[open] > .notas-term-head::before{transform:rotate(90deg);}
+  .notas-subject-head{padding:14px 18px;}
+  .notas-subject-name{flex:1;min-width:0;font-size:16px;font-weight:600;}
+  .notas-subject-sum{font-size:13px;color:var(--ink-soft);white-space:nowrap;}
+  .notas-subject-sum strong{color:var(--ink);}
+  .notas-terms{display:flex;flex-direction:column;gap:8px;padding:0 18px 16px;}
+  .notas-term{background:var(--paper);border-radius:10px;min-width:0;}
+  .notas-term-head{font-size:13px;font-weight:600;padding:10px 12px;}
+  .notas-term-head > span:first-of-type{flex:1;}
+  .notas-now{font-weight:500;color:var(--ink-soft);}
+  .notas-term-avg{font-size:13px;}
+  .notas-term-body{display:flex;flex-direction:column;gap:8px;padding:0 12px 12px;}
   .notas-empty{font-size:12px;color:var(--ink-soft);}
   .notas-exam{display:flex;align-items:center;gap:10px;}
   .notas-exam-main{flex:1;min-width:0;}
@@ -1024,7 +1039,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.20';
+const APP_VERSION = '2.3.21';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -4273,7 +4288,9 @@ function validateSubjectData(data, excludeId){
   const rawGrade = data && data.passGrade;
   const passGrade = (rawGrade === undefined || rawGrade === null || rawGrade === '') ? DEFAULT_PASS_GRADE : parsePassGrade(rawGrade);
   if(passGrade === null) errors.passGrade = 'La nota de aprobado debe estar entre 0 y 10 (por ejemplo 5 o 4,5).';
-  return { ok: Object.keys(errors).length === 0, value: { name, color, passGrade }, errors };
+  // "Lleva nota": sí salvo que llegue false expresamente.
+  const graded = !(data && data.graded === false);
+  return { ok: Object.keys(errors).length === 0, value: { name, color, passGrade, graded }, errors };
 }
 /** Crea una asignatura. { ok: true, subject } o { ok: false, errors }. */
 async function addSubject(data){
@@ -4322,7 +4339,7 @@ function renderSubjectRows(){
     <div class="schedule-row subject-row" data-subject-row="${esc(s.id)}">
       <div class="sched-main">
         <div class="sched-name"><span class="priority-dot subject-dot" style="background:${esc(s.color)};"></span>${esc(s.name)}</div>
-        <div class="sched-meta">Aprobado con ${esc(formatGrade(s.passGrade ?? DEFAULT_PASS_GRADE))}</div>
+        <div class="sched-meta">${s.graded === false ? 'No lleva nota' : `Aprobado con ${esc(formatGrade(s.passGrade ?? DEFAULT_PASS_GRADE))}`}</div>
       </div>
       <div class="subject-actions">
         <button type="button" class="btn btn-sm" data-subject-edit="${esc(s.id)}">Editar</button>
@@ -4394,6 +4411,10 @@ function openSubjectModal({subjectId=null}={}){
         <input type="text" id="subject-pass-grade" name="passGrade" inputmode="decimal" style="max-width:120px;" value="${esc(formatGrade(existing ? (existing.passGrade ?? DEFAULT_PASS_GRADE) : DEFAULT_PASS_GRADE))}">
         <div class="form-error" data-error-for="passGrade"></div>
       </div>
+      <div class="form-group">
+        <label class="checkbox-row"><input type="checkbox" id="subject-graded" name="graded" ${existing && existing.graded === false ? '' : 'checked'}> Lleva nota</label>
+        <div class="row-sub" style="font-size:12px;color:var(--ink-soft);margin-top:4px;">Si no lleva nota, no sale en Notas y sus exámenes no piden nota. Sus notas guardadas no se borran.</div>
+      </div>
       <div class="modal-actions">
         <div></div>
         <div class="right">
@@ -4430,7 +4451,7 @@ function openSubjectModal({subjectId=null}={}){
   form.addEventListener('submit', async (e)=>{
     e.preventDefault();
     const fd = new FormData(form);
-    const data = { name: fd.get('name') || '', color: pickedColor(), passGrade: (fd.get('passGrade') || '').trim() };
+    const data = { name: fd.get('name') || '', color: pickedColor(), passGrade: (fd.get('passGrade') || '').trim(), graded: fd.get('graded') === 'on' };
     const result = editing ? await updateSubject(subjectId, data) : await addSubject(data);
     form.querySelectorAll('[data-error-for]').forEach(el => { el.textContent = (result.errors && result.errors[el.dataset.errorFor]) || ''; });
     if(!result.ok) return;
@@ -4637,7 +4658,7 @@ function openExamModal({examId=null, date=null}={}){
           <select id="exam-term" name="term">${termOptions}</select>
           <div class="form-error" data-error-for="term"></div>
         </div>
-        <div class="form-group"><label for="exam-grade">Nota (opcional)</label>
+        <div class="form-group" id="exam-grade-group"><label for="exam-grade">Nota (opcional)</label>
           <input type="text" id="exam-grade" name="grade" inputmode="decimal" maxlength="5" placeholder="—" value="${existing && typeof existing.grade === 'number' ? esc(formatGrade(existing.grade)) : ''}">
           <div class="form-error" data-error-for="grade"></div>
         </div>
@@ -4657,6 +4678,13 @@ function openExamModal({examId=null, date=null}={}){
 
   const form = modalBox.querySelector('#exam-form');
   const dateInput = form.querySelector('#exam-date');
+  // "Lleva nota": sin nota, la casilla no sale (y al guardar no se toca la nota).
+  const subjectSelect = form.querySelector('#exam-subject');
+  const gradeGroup = form.querySelector('#exam-grade-group');
+  const gradedSelected = () => isSubjectGraded(state.subjects.find(s => s.id === subjectSelect.value));
+  const updateGradeField = () => { gradeGroup.hidden = !gradedSelected(); };
+  subjectSelect.addEventListener('change', updateGradeField);
+  updateGradeField();
   const termSelect = form.querySelector('#exam-term');
   // El trimestre sigue a la fecha hasta que el usuario lo cambia a mano.
   let termTouched = !!existing && existing.term !== termForDate(existing.date);
@@ -4683,8 +4711,8 @@ function openExamModal({examId=null, date=null}={}){
     const data = {
       subjectId: fd.get('subjectId') || '', type: fd.get('type') || '', title: fd.get('title') || '',
       date: fd.get('date') || '', time: fd.get('time') || '', term: fd.get('term') || '', notes: fd.get('notes') || '',
-      grade: fd.get('grade') || '',
     };
+    if(gradedSelected()) data.grade = fd.get('grade') || '';
     const result = editing ? await updateExam(examId, data) : await addExam(data);
     form.querySelectorAll('[data-error-for]').forEach(el => { el.textContent = (result.errors && result.errors[el.dataset.errorFor]) || ''; });
     if(!result.ok) return;
@@ -4841,51 +4869,114 @@ function notasExamRowHTML(exam){
       ${gradeInputHTML(`data-exam-grade="${esc(exam.id)}"`, typeof exam.grade === 'number' ? exam.grade : null, `Nota de ${exam.title}`)}
     </div>`;
 }
-function renderNotasHTML(){
-  if(!state.subjects.length){
-    return `<div class="empty-state">Primero añade tus asignaturas en Ajustes › Asignaturas.</div>`;
+/* ---------- Notas: desplegables ----------
+   Cada asignatura es un desplegable (cerrado: nombre, color y la media de
+   cada trimestre) y dentro cada trimestre es otro. Por defecto las
+   asignaturas salen cerradas y, dentro, solo el trimestre actual abierto.
+   Lo que el usuario abre o cierra se recuerda en este dispositivo
+   (localStorage, no se sincroniza). Las asignaturas que no llevan nota
+   (subject.graded === false) no salen aquí. */
+const NOTAS_OPEN_KEY = 'organizator:notasOpen:v1';
+function loadNotasOpen(){
+  try{
+    const v = JSON.parse(localStorage.getItem(NOTAS_OPEN_KEY) || 'null');
+    if(v && typeof v === 'object') return { subjects: (v.subjects && typeof v.subjects === 'object') ? v.subjects : {}, terms: (v.terms && typeof v.terms === 'object') ? v.terms : {} };
+  }catch(e){}
+  return { subjects: {}, terms: {} };
+}
+function saveNotasOpen(open){
+  try{ localStorage.setItem(NOTAS_OPEN_KEY, JSON.stringify(open)); }catch(e){}
+}
+/** true salvo que la asignatura diga expresamente que no lleva nota. */
+function isSubjectGraded(subject){
+  return !subject || subject.graded !== false;
+}
+function notasTermAvgHTML(subjectId, term){
+  const avg = termAverage(subjectTermExams(subjectId, term));
+  return `<strong data-term-avg="${esc(subjectId)}|${term}">${avg === null ? '—' : esc(formatGrade(avg))}</strong>`;
+}
+
+function renderNotasHTML(open = loadNotasOpen(), currentTerm = termForDate(todayStr())){
+  const subjects = [...state.subjects].filter(isSubjectGraded).sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'));
+  if(!subjects.length){
+    return state.subjects.length
+      ? `<div class="empty-state">Ninguna asignatura lleva nota. Puedes cambiarlo en Ajustes › Asignaturas.</div>`
+      : `<div class="empty-state">Primero añade tus asignaturas en Ajustes › Asignaturas.</div>`;
   }
-  const subjects = [...state.subjects].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'));
   return subjects.map(subject => {
     const terms = EXAM_TERMS.map(term => {
       const exams = subjectTermExams(subject.id, term);
-      const avg = termAverage(exams);
+      const key = `${subject.id}|${term}`;
+      const isOpen = Object.prototype.hasOwnProperty.call(open.terms, key) ? !!open.terms[key] : term === currentTerm;
       return `
-        <div class="notas-term">
-          <div class="notas-term-head">${term}.º trimestre</div>
-          ${exams.length ? exams.map(notasExamRowHTML).join('') : `<div class="notas-empty">Sin exámenes ni entregas.</div>`}
-          <div class="notas-summary">
-            <div class="notas-avg">Media: <strong data-term-avg="${esc(subject.id)}|${term}">${avg === null ? '—' : esc(formatGrade(avg))}</strong></div>
-            <label class="notas-final">Nota final oficial
-              ${gradeInputHTML(`data-term-final="${esc(subject.id)}|${term}"`, termFinalOf(subject, term), `Nota final oficial del ${term}.º trimestre de ${subject.name}`)}
-            </label>
+        <details class="notas-term" data-notas-term="${esc(key)}"${isOpen ? ' open' : ''}>
+          <summary class="notas-term-head"><span>${term}.º trimestre${term === currentTerm ? ' <span class="notas-now">(ahora)</span>' : ''}</span><span class="notas-term-avg">${notasTermAvgHTML(subject.id, term)}</span></summary>
+          <div class="notas-term-body">
+            ${exams.length ? exams.map(notasExamRowHTML).join('') : `<div class="notas-empty">Sin exámenes ni entregas.</div>`}
+            <div class="notas-summary">
+              <div class="notas-avg">Media: ${notasTermAvgHTML(subject.id, term)}</div>
+              <label class="notas-final">Nota final oficial
+                ${gradeInputHTML(`data-term-final="${esc(subject.id)}|${term}"`, termFinalOf(subject, term), `Nota final oficial del ${term}.º trimestre de ${subject.name}`)}
+              </label>
+            </div>
           </div>
-        </div>`;
+        </details>`;
     }).join('');
     const noTerm = subjectTermExams(subject.id, null);
+    const noTermKey = `${subject.id}|none`;
     const noTermHTML = noTerm.length ? `
-        <div class="notas-term">
-          <div class="notas-term-head">Sin trimestre</div>
-          ${noTerm.map(notasExamRowHTML).join('')}
-        </div>` : '';
+        <details class="notas-term" data-notas-term="${esc(noTermKey)}"${open.terms[noTermKey] ? ' open' : ''}>
+          <summary class="notas-term-head"><span>Sin trimestre</span></summary>
+          <div class="notas-term-body">${noTerm.map(notasExamRowHTML).join('')}</div>
+        </details>` : '';
+    const summary = EXAM_TERMS.map(t => `<span>${t}.º ${notasTermAvgHTML(subject.id, t)}</span>`).join(' · ');
     return `
-      <section class="block notas-subject" style="border-left-color:${esc(subject.color)};">
-        <h2 class="notas-subject-name"><span class="priority-dot subject-dot" style="background:${esc(subject.color)};"></span>${esc(subject.name)}</h2>
+      <details class="block notas-subject" data-notas-subject="${esc(subject.id)}" style="border-left-color:${esc(subject.color)};"${open.subjects[subject.id] ? ' open' : ''}>
+        <summary class="notas-subject-head">
+          <span class="notas-subject-name"><span class="priority-dot subject-dot" style="background:${esc(subject.color)};"></span>${esc(subject.name)}</span>
+          <span class="notas-subject-sum">${summary}</span>
+        </summary>
         <div class="notas-terms">${terms}${noTermHTML}</div>
-      </section>`;
+      </details>`;
   }).join('');
 }
 function renderNotas(){
   const el = document.getElementById('view-notas');
   if(!el) return;
+  const open = loadNotasOpen();
   el.innerHTML = `
     <div class="area-head">
       <div class="area-head-l">
         <div class="ic" style="background:var(--paper);color:var(--ink);">📝</div>
         <div><h1>Notas</h1><p>Tus notas y la media de cada trimestre</p></div>
       </div>
+      <button type="button" class="btn btn-sm" id="notas-toggle-all" style="width:auto;" hidden></button>
     </div>
-    ${renderNotasHTML()}`;
+    ${renderNotasHTML(open)}`;
+  const allDetails = () => [...el.querySelectorAll('details[data-notas-subject], details[data-notas-term]')];
+  const remember = (d) => {
+    if(d.dataset.notasSubject) open.subjects[d.dataset.notasSubject] = d.open;
+    else open.terms[d.dataset.notasTerm] = d.open;
+  };
+  const toggleAllBtn = el.querySelector('#notas-toggle-all');
+  const updateToggleAll = () => {
+    const list = allDetails();
+    toggleAllBtn.hidden = !list.length;
+    toggleAllBtn.textContent = list.length && list.every(d => d.open) ? 'Cerrar todo' : 'Abrir todo';
+  };
+  // Solo se guarda lo que toca el usuario (no los valores por defecto).
+  allDetails().forEach(d => {
+    d.querySelector(':scope > summary').addEventListener('click', () => {
+      setTimeout(() => { remember(d); saveNotasOpen(open); updateToggleAll(); }, 0);
+    });
+  });
+  toggleAllBtn.addEventListener('click', () => {
+    const openAll = !allDetails().every(d => d.open);
+    allDetails().forEach(d => { d.open = openAll; remember(d); });
+    saveNotasOpen(open);
+    updateToggleAll();
+  });
+  updateToggleAll();
   // Las medias se actualizan en su sitio (sin repintar la vista, para no
   // quitar el foco de la casilla siguiente).
   const refreshAverages = () => {
