@@ -38,6 +38,7 @@ const loadStateSrc = extractBetween(html, 'async function loadState(){', '\nasyn
 const saveStudySrc = extractBetween(html, 'async function saveSubjects(){', '\nasync function savePrefs(){', 'saveSubjects/saveExams/saveStudySessions');
 const sanitizeSrc = extractBetween(html, '/** Valida una lista importada de asignaturas', '\nfunction initSettingsDataIO(){', 'sanitizeImportedStudyItems()');
 const importBlockSrc = extractBetween(html, '    const sanitizedStudy = {};', '    // R-8.2-C: el registro', 'bloque de import de STUDY_KEYS');
+const subjectsBlockSrc = extractBetween(html, '/* ==================================================================\n   ASIGNATURAS (app de exámenes, paso 2)', '\n/* ==================================================================\n   RENDER: AJUSTES', 'bloque ASIGNATURAS');
 const exportDataSrc = extractBetween(html, 'function exportData(){', '\n  try{', 'función exportData()');
 const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'función initSettingsDataIO()');
 const deleteAllSrc = extractBetween(html, 'async function deleteAllData(){', '\n/* ==================================================================\n   IA — ASISTENTE PERSONAL', 'función deleteAllData()');
@@ -68,7 +69,8 @@ function makeSandbox(initial) {
     },
   };
   vm.createContext(sandbox);
-  vm.runInContext([studyConstSrc, loadStateSrc, saveStudySrc, sanitizeSrc,
+  vm.runInContext([studyConstSrc, loadStateSrc, saveStudySrc, sanitizeSrc, subjectsBlockSrc,
+    'this.sanitizeImportedSubjects = sanitizeImportedSubjects;',
     'this.STUDY_KEYS = STUDY_KEYS; this.loadState = loadState; this.saveSubjects = saveSubjects;',
     'this.saveExams = saveExams; this.saveStudySessions = saveStudySessions;',
     'this.sanitizeImportedStudyItems = sanitizeImportedStudyItems;',
@@ -144,7 +146,7 @@ function makeSandbox(initial) {
 
     // Bloque real del import, ejecutado aislado.
     const runImport = (data) => {
-      const ctx = { state: {}, data, STUDY_KEYS: sandbox.STUDY_KEYS, sanitizeImportedStudyItems: sandbox.sanitizeImportedStudyItems };
+      const ctx = { state: {}, data, STUDY_KEYS: sandbox.STUDY_KEYS, sanitizeImportedStudyItems: sandbox.sanitizeImportedStudyItems, sanitizeImportedSubjects: sandbox.sanitizeImportedSubjects };
       vm.createContext(ctx);
       vm.runInContext(importBlockSrc + '\nthis.sanitizedStudy = sanitizedStudy;', ctx);
       return ctx;

@@ -340,6 +340,20 @@
   .day-pill.on{background:var(--ink);color:var(--paper);border-color:var(--ink);}
   .add-schedule-btn{display:block;width:100%;text-align:left;padding:14px 18px;border:none;background:transparent;color:var(--ink-soft);font-size:13px;font-weight:500;cursor:pointer;}
   .add-schedule-btn:hover{background:var(--paper);color:var(--ink);}
+  /* Paso 2 (asignaturas): filas con botones propios, paleta de colores y avisos del formulario. */
+  .subject-row{cursor:default;}
+  .subject-row:hover{background:transparent;}
+  .subject-dot{width:10px;height:10px;margin-right:8px;display:inline-block;vertical-align:middle;}
+  .subject-actions{display:flex;gap:6px;flex:none;}
+  .color-swatches{display:flex;flex-wrap:wrap;gap:8px;}
+  .color-swatch{position:relative;cursor:pointer;}
+  .color-swatch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;}
+  .color-swatch span{display:block;width:28px;height:28px;border-radius:50%;border:2px solid var(--surface);}
+  .color-swatch input:checked + span{outline:2px solid var(--ink);outline-offset:2px;}
+  .color-swatch input:focus-visible + span{outline:2px dashed var(--ink);outline-offset:2px;}
+  .form-error{font-size:12px;color:var(--alta);margin-top:4px;}
+  .form-error:empty,.form-warning:empty{display:none;}
+  .form-warning{font-size:12px;color:var(--media);margin-top:6px;}
   .btn-danger{border-color:var(--alta);color:var(--alta);}
   .btn-danger:hover{background:var(--alta);color:var(--surface);}
   .settings-actions{display:flex;flex-wrap:wrap;gap:10px;}
@@ -907,7 +921,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.9';
+const APP_VERSION = '2.3.10';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -1170,6 +1184,32 @@ const EXAM_DELIVERY_STATUSES = ['pendiente', 'entregado'];
 const DEFAULT_PASS_GRADE = 5;
 const STUDY_SESSION_KINDS = ['estudio', 'repaso', 'trabajo', 'ensayo']; // ensayo: el día antes de una exposición
 const STUDY_SESSION_STATUSES = ['pendiente', 'hecha', 'saltada'];
+// Paleta de colores de las asignaturas (paso 2): contraste >= 3.5:1 sobre el
+// fondo claro de la app y sobre un fondo oscuro.
+const SUBJECT_COLORS = [
+  { name: 'Rojo',     color: '#D64545' },
+  { name: 'Naranja',  color: '#C4621A' },
+  { name: 'Mostaza',  color: '#A07800' },
+  { name: 'Verde',    color: '#3A9149' },
+  { name: 'Turquesa', color: '#118A84' },
+  { name: 'Azul',     color: '#3A7BD5' },
+  { name: 'Índigo',   color: '#5B63D6' },
+  { name: 'Violeta',  color: '#8E57D1' },
+  { name: 'Rosa',     color: '#D14E8E' },
+  { name: 'Marrón',   color: '#9C6B3E' },
+];
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;
+
+/** Nota de aprobado a partir de lo que escribe el usuario ("4,5", "4.5",
+ * 5...). Devuelve un número de 0 a 10 redondeado a 2 decimales, o null si
+ * no es una nota válida. */
+function parsePassGrade(value){
+  if(typeof value === 'number') return Number.isFinite(value) && value >= 0 && value <= 10 ? Math.round(value * 100) / 100 : null;
+  if(typeof value !== 'string') return null;
+  const text = value.trim().replace(',', '.');
+  if(!/^\d+(\.\d+)?$/.test(text)) return null;
+  return parsePassGrade(Number(text));
+}
 
 /** Peso por defecto (% de la nota) de un tipo de prueba; 0 si el tipo no
  * existe y para la recuperación (sustituye una nota, no suma). */
@@ -3824,6 +3864,183 @@ function openEventCategoryModal({categoryId=null}={}){
 }
 
 /* ==================================================================
+   ASIGNATURAS (app de exámenes, paso 2)
+   Crear, editar y borrar asignaturas desde Ajustes. Modelo: ver STUDY_KEYS.
+   - El nombre es obligatorio y no se repite (sin distinguir mayúsculas).
+   - El color se elige de SUBJECT_COLORS (contraste >= 3.5:1 sobre el
+     fondo claro y sobre un fondo oscuro). Un color ya usado por otra
+     asignatura solo se avisa: se puede guardar igual.
+   - passGrade (nota mínima de aprobado) admite decimales con coma o
+     punto, de 0 a 10; por defecto DEFAULT_PASS_GRADE.
+   - Una asignatura con exámenes no se puede borrar.
+   ================================================================== */
+/** Nota con coma decimal para mostrarla: 5 -> "5", 4.5 -> "4,5". */
+function formatGrade(n){
+  return String(n).replace('.', ',');
+}
+function findSubjectByName(name, excludeId){
+  const key = String(name || '').trim().toLocaleLowerCase('es');
+  return state.subjects.find(s => s.id !== excludeId && String(s.name || '').trim().toLocaleLowerCase('es') === key) || null;
+}
+/** Asignatura (distinta de excludeId) que ya usa ese color, o null. */
+function findSubjectByColor(color, excludeId){
+  const key = String(color || '').toUpperCase();
+  return state.subjects.find(s => s.id !== excludeId && String(s.color || '').toUpperCase() === key) || null;
+}
+function countExamsForSubject(subjectId){
+  return state.exams.filter(e => e && e.subjectId === subjectId).length;
+}
+/** Primer color de la paleta que no usa ninguna asignatura (o el primero). */
+function nextFreeSubjectColor(){
+  const free = SUBJECT_COLORS.find(c => !findSubjectByColor(c.color));
+  return (free || SUBJECT_COLORS[0]).color;
+}
+/** Valida los datos de una asignatura. Devuelve { ok, value, errors }:
+ * value = { name, color, passGrade } ya normalizado; errors = { name?,
+ * color?, passGrade? } con el mensaje para el formulario. */
+function validateSubjectData(data, excludeId){
+  const errors = {};
+  const name = String((data && data.name) || '').trim();
+  if(!name) errors.name = 'Escribe un nombre.';
+  else if(findSubjectByName(name, excludeId)) errors.name = 'Ya tienes una asignatura con ese nombre.';
+  const color = String((data && data.color) || '').toUpperCase();
+  if(!SUBJECT_COLORS.some(c => c.color === color)) errors.color = 'Elige un color de la paleta.';
+  const rawGrade = data && data.passGrade;
+  const passGrade = (rawGrade === undefined || rawGrade === null || rawGrade === '') ? DEFAULT_PASS_GRADE : parsePassGrade(rawGrade);
+  if(passGrade === null) errors.passGrade = 'La nota de aprobado debe estar entre 0 y 10 (por ejemplo 5 o 4,5).';
+  return { ok: Object.keys(errors).length === 0, value: { name, color, passGrade }, errors };
+}
+/** Crea una asignatura. { ok: true, subject } o { ok: false, errors }. */
+async function addSubject(data){
+  const check = validateSubjectData(data, null);
+  if(!check.ok) return { ok: false, errors: check.errors };
+  const now = Date.now();
+  const subject = { id: uid(), ...check.value, createdAt: now, updatedAt: now };
+  state.subjects.push(subject);
+  await saveSubjects();
+  return { ok: true, subject };
+}
+/** Edita una asignatura. { ok: true, subject } o { ok: false, errors }. */
+async function updateSubject(id, data){
+  const subject = state.subjects.find(s => s.id === id);
+  if(!subject) return { ok: false, errors: { name: 'Esta asignatura ya no existe.' } };
+  const check = validateSubjectData(data, id);
+  if(!check.ok) return { ok: false, errors: check.errors };
+  Object.assign(subject, check.value, { updatedAt: Date.now() });
+  await saveSubjects();
+  return { ok: true, subject };
+}
+/** Borra una asignatura si no tiene exámenes. { ok: true } o
+ * { ok: false, examCount } (o { ok: false, notFound: true }). */
+async function deleteSubject(id){
+  if(!state.subjects.some(s => s.id === id)) return { ok: false, notFound: true };
+  const examCount = countExamsForSubject(id);
+  if(examCount > 0) return { ok: false, examCount };
+  state.subjects = state.subjects.filter(s => s.id !== id);
+  await saveSubjects();
+  return { ok: true };
+}
+
+function examCountLabel(n){
+  return n === 1 ? '1 examen' : `${n} exámenes`;
+}
+function renderSubjectRows(){
+  const sorted = [...state.subjects].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'));
+  const rows = sorted.map(s=>`
+    <div class="schedule-row subject-row" data-subject-row="${esc(s.id)}">
+      <div class="sched-main">
+        <div class="sched-name"><span class="priority-dot subject-dot" style="background:${esc(s.color)};"></span>${esc(s.name)}</div>
+        <div class="sched-meta">Aprobado con ${esc(formatGrade(s.passGrade ?? DEFAULT_PASS_GRADE))}</div>
+      </div>
+      <div class="subject-actions">
+        <button type="button" class="btn btn-sm" data-subject-edit="${esc(s.id)}">Editar</button>
+        <button type="button" class="btn btn-sm" data-subject-delete="${esc(s.id)}">Borrar</button>
+      </div>
+    </div>`).join('');
+  const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no tienes asignaturas. Añade las de este curso para poder apuntar sus exámenes.</div>`;
+  return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-subject">+ Añadir asignatura</button>`;
+}
+
+/** Pide confirmación y borra la asignatura; si tiene exámenes, avisa de
+ * cuántos y no la borra. */
+async function confirmDeleteSubject(id){
+  const subject = state.subjects.find(s => s.id === id);
+  if(!subject) return;
+  const examCount = countExamsForSubject(id);
+  if(examCount > 0){
+    const fix = examCount === 1 ? 'Borra ese examen o cámbialo de asignatura primero.' : 'Borra esos exámenes o cámbialos de asignatura primero.';
+    alert(`No se puede borrar "${subject.name}": tiene ${examCountLabel(examCount)}. ${fix}`);
+    return;
+  }
+  if(!confirm(`¿Borrar la asignatura "${subject.name}"?`)) return;
+  const result = await deleteSubject(id);
+  if(result.ok){ showToast('Asignatura borrada'); renderAjustes(); }
+}
+
+function openSubjectModal({subjectId=null}={}){
+  const editing = !!subjectId;
+  const existing = editing ? state.subjects.find(s=>s.id===subjectId) : null;
+  if(editing && !existing) return;
+  const currentColor = existing && SUBJECT_COLORS.some(c => c.color === String(existing.color).toUpperCase())
+    ? String(existing.color).toUpperCase() : nextFreeSubjectColor();
+  const swatches = SUBJECT_COLORS.map(c=>`
+    <label class="color-swatch" title="${esc(c.name)}">
+      <input type="radio" name="color" value="${c.color}" ${c.color===currentColor?'checked':''} aria-label="${esc(c.name)}">
+      <span style="background:${c.color};"></span>
+    </label>`).join('');
+
+  modalBox.innerHTML = `
+    <h3>${editing?'Editar':'Añadir'} asignatura</h3>
+    <form id="subject-form" novalidate>
+      <div class="form-group"><label for="subject-name">Nombre</label>
+        <input type="text" id="subject-name" name="name" maxlength="60" value="${existing?esc(existing.name):''}" placeholder="Ej. Matemáticas, Historia…">
+        <div class="form-error" data-error-for="name"></div>
+      </div>
+      <div class="form-group"><label>Color</label>
+        <div class="color-swatches">${swatches}</div>
+        <div class="form-warning" id="subject-color-warning"></div>
+        <div class="form-error" data-error-for="color"></div>
+      </div>
+      <div class="form-group"><label for="subject-pass-grade">Nota mínima de aprobado</label>
+        <input type="text" id="subject-pass-grade" name="passGrade" inputmode="decimal" style="max-width:120px;" value="${esc(formatGrade(existing ? (existing.passGrade ?? DEFAULT_PASS_GRADE) : DEFAULT_PASS_GRADE))}">
+        <div class="form-error" data-error-for="passGrade"></div>
+      </div>
+      <div class="modal-actions">
+        <div></div>
+        <div class="right">
+          <button type="button" class="btn" id="subject-cancel-btn">Cancelar</button>
+          <button type="submit" class="btn btn-dark">Guardar</button>
+        </div>
+      </div>
+    </form>`;
+
+  const form = modalBox.querySelector('#subject-form');
+  const showColorWarning = ()=>{
+    const picked = form.querySelector('input[name="color"]:checked');
+    const other = picked ? findSubjectByColor(picked.value, subjectId) : null;
+    modalBox.querySelector('#subject-color-warning').textContent = other ? `Este color ya lo usa "${other.name}". Puedes guardarlo igualmente.` : '';
+  };
+  form.querySelectorAll('input[name="color"]').forEach(r => r.addEventListener('change', showColorWarning));
+  showColorWarning();
+
+  modalBox.querySelector('#subject-cancel-btn').addEventListener('click', closeModal);
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(form);
+    const data = { name: fd.get('name') || '', color: fd.get('color') || '', passGrade: (fd.get('passGrade') || '').trim() };
+    const result = editing ? await updateSubject(subjectId, data) : await addSubject(data);
+    form.querySelectorAll('[data-error-for]').forEach(el => { el.textContent = (result.errors && result.errors[el.dataset.errorFor]) || ''; });
+    if(!result.ok) return;
+    closeModal();
+    showToast(editing ? 'Asignatura guardada' : 'Asignatura añadida');
+    renderAjustes();
+  });
+
+  overlay.classList.add('open');
+  modalBox.querySelector('#subject-name').focus();
+}
+
+/* ==================================================================
    RENDER: AJUSTES
    ================================================================== */
 function renderScheduleRows(){
@@ -4066,6 +4283,12 @@ function renderAjustes(){
       </div>
     </section>`;
 
+  const asignaturasHtml = `
+      <section class="block">
+        <div class="block-head"><h2>Asignaturas</h2><span class="hint">Las asignaturas de este curso, con su color y la nota con la que se aprueban</span></div>
+        <div class="settings-list" id="subjects-list">${renderSubjectRows()}</div>
+      </section>`;
+
   const organizacionHtml = `
       <section class="block">
         <div class="block-head"><h2>Horarios bloqueados</h2><span class="hint">Define los bloques fijos de tu rutina (escuela, trabajo, gimnasio…) para que la IA nunca te ponga nada encima</span></div>
@@ -4163,6 +4386,7 @@ function renderAjustes(){
     </div>
 
     <div class="settings-accordion">
+      ${ajustesAccordionSection('asignaturas', 'Asignaturas', asignaturasHtml)}
       ${ajustesAccordionSection('organizacion', 'Organización', organizacionHtml)}
       ${ajustesAccordionSection('ia', 'Inteligencia artificial', iaHtml)}
       ${ajustesAccordionSection('recordatorios', 'Recordatorios', recordatoriosHtml)}
@@ -4240,6 +4464,15 @@ function renderAjustes(){
       try{ await subscribeToPushNotifications(); }catch(e){}
     }
     renderAjustes();
+  });
+
+  const addSubjectBtn = el.querySelector('#btn-add-subject');
+  if(addSubjectBtn) addSubjectBtn.addEventListener('click', ()=> openSubjectModal());
+  el.querySelectorAll('[data-subject-edit]').forEach(btn=>{
+    btn.addEventListener('click', ()=> openSubjectModal({ subjectId: btn.dataset.subjectEdit }));
+  });
+  el.querySelectorAll('[data-subject-delete]').forEach(btn=>{
+    btn.addEventListener('click', ()=> confirmDeleteSubject(btn.dataset.subjectDelete));
   });
 
   const addSchedBtn = el.querySelector('#btn-add-schedule');
@@ -4841,6 +5074,26 @@ function sanitizeImportedStudyItems(arr){
   return { kept, discarded };
 }
 
+/** Valida las asignaturas de una copia importada (ya filtradas por id):
+ * sin nombre -> se descarta; color que no es #RRGGBB -> el primero de la
+ * paleta; passGrade no válido -> DEFAULT_PASS_GRADE. { kept, discarded }. */
+function sanitizeImportedSubjects(arr){
+  const kept = [];
+  let discarded = 0;
+  (Array.isArray(arr) ? arr : []).forEach(s=>{
+    const name = s && typeof s.name === 'string' ? s.name.trim() : '';
+    if(!name){ discarded++; return; }
+    const passGrade = parsePassGrade(s.passGrade);
+    kept.push({
+      ...s,
+      name,
+      color: HEX_COLOR_RE.test(s.color || '') ? s.color : SUBJECT_COLORS[0].color,
+      passGrade: passGrade === null ? DEFAULT_PASS_GRADE : passGrade,
+    });
+  });
+  return { kept, discarded };
+}
+
 function initSettingsDataIO(){
   const input = document.getElementById('import-file-input');
   if(!input) return;
@@ -4885,6 +5138,10 @@ function initSettingsDataIO(){
       sanitizedStudy[key] = sanitizeImportedStudyItems(data[key]);
       state[key] = sanitizedStudy[key].kept;
     }
+    // Paso 2: además, las asignaturas necesitan nombre, color y nota de aprobado válidos.
+    const sanitizedSubjects = sanitizeImportedSubjects(state.subjects);
+    state.subjects = sanitizedSubjects.kept;
+    sanitizedStudy.subjects.discarded += sanitizedSubjects.discarded;
     // R-8.2-C: el registro de reconciliación es puramente interno (no
     // forma parte del formato exportado/importado, ver exportData()) —
     // se reinicia al importar, porque cualquier marca antigua ya no
