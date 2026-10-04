@@ -907,7 +907,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.8';
+const APP_VERSION = '2.3.9';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -916,6 +916,7 @@ function defaultPrefs(){
     calendarView: 'month',        // vista de calendario predeterminada (de momento solo existe 'month')
     dayStartHour: 8,              // primera hora del día, para futuras vistas por horas
     dayEndHour: 22,               // última hora del día, para futuras vistas por horas
+    studyDaysBefore: 10,          // días de estudio antes de un examen (cada prueba puede cambiarlo)
   };
 }
 function defaultIA(){
@@ -937,6 +938,9 @@ let state = {
   // sustituye reminder.status ni forma parte de su modelo (ver bloque
   // RECORDATORIOS — reconciliación local↔Web Push más abajo).
   reminderNotificationLedger: {},
+  // App de exámenes (paso 1, solo modelo de datos): asignaturas, exámenes/
+  // entregas y sesiones del plan de estudio. Ver STUDY_KEYS en ALMACENAMIENTO.
+  subjects: [], exams: [], studySessions: [],
   prefs: defaultPrefs(),
   ia: defaultIA(),
 };
@@ -1066,6 +1070,13 @@ async function loadState(){
     const rnl = await window.storage.get('reminderNotificationLedger', false);
     state.reminderNotificationLedger = rnl ? JSON.parse(rnl.value) : {};
   }catch(e){ state.reminderNotificationLedger = {}; }
+  for(const key of STUDY_KEYS){
+    try{
+      const s = await window.storage.get(key, false);
+      const value = s ? JSON.parse(s.value) : [];
+      state[key] = Array.isArray(value) ? value : [];
+    }catch(e){ state[key] = []; }
+  }
   // Ajustes: se cargan por separado y se combinan con los valores por defecto,
   // así si en el futuro se añaden más claves no se rompe con datos antiguos.
   try{
@@ -1097,6 +1108,18 @@ async function saveReminders(){
   try{ await window.storage.set('reminders', JSON.stringify(state.reminders), false); }
   catch(e){ console.error('No se pudieron guardar los recordatorios', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
 }
+async function saveSubjects(){
+  try{ await window.storage.set('subjects', JSON.stringify(state.subjects), false); }
+  catch(e){ console.error('No se pudieron guardar las asignaturas', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveExams(){
+  try{ await window.storage.set('exams', JSON.stringify(state.exams), false); }
+  catch(e){ console.error('No se pudieron guardar los exámenes', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+async function saveStudySessions(){
+  try{ await window.storage.set('studySessions', JSON.stringify(state.studySessions), false); }
+  catch(e){ console.error('No se pudieron guardar las sesiones de estudio', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
 async function savePrefs(){
   try{ await window.storage.set('settingsPrefs', JSON.stringify(state.prefs), false); }
   catch(e){ console.error('No se pudieron guardar las preferencias', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
@@ -1104,6 +1127,80 @@ async function savePrefs(){
 async function saveIA(){
   try{ await window.storage.set('settingsIA', JSON.stringify(state.ia), false); }
   catch(e){ console.error('No se pudo guardar la configuración de IA', e); showToast('No se pudo guardar. Inténtalo de nuevo.'); }
+}
+
+/* ---------- App de exámenes: modelo de datos (paso 1) ----------
+   Tres listas sincronizadas con la cuenta (sql/005_study_keys.sql):
+   - subjects: { id, name, color, passGrade (nota mínima de aprobado, 5 por
+       defecto), createdAt, updatedAt }
+   - exams (exámenes y entregas): { id, subjectId, type (EXAM_TYPE_INFO),
+       title, date, time|null, durationMinutes|null, term: 1|2|3|null,
+       weight (% de la nota; por defecto el de su tipo), topics: [{ id, name }],
+       difficulty: 1-5,
+       studyDaysBefore|null (solo pruebas: días de estudio solo para esta;
+         null = prefs.studyDaysBefore),
+       deliveryStatus: 'pendiente'|'entregado'|null (solo entregas),
+       recovers: { examId } | { term } | null (solo recuperación: la prueba
+         o el trimestre que recupera; su nota SUSTITUYE a la de lo
+         recuperado si es mayor, no suma con peso propio),
+       grade|null, notes, createdAt, updatedAt }
+   - studySessions: { id, examId, subjectId, date, startTime|null,
+       plannedMinutes, kind: 'estudio'|'repaso'|'trabajo'|'ensayo', topicIds: [],
+       status: 'pendiente'|'hecha'|'saltada', actualMinutes|null,
+       completedAt|null, createdAt, updatedAt }
+   Todo elemento lleva `id`: js/sync-merge.js fusiona las listas por id.
+   Grupos de tipos: 'prueba' se estudia en una ventana de días antes de la
+   fecha (examStudyDays); 'entrega' tiene estado pendiente/entregado y se
+   trabaja desde que se apunta hasta la fecha de entrega. */
+const STUDY_KEYS = ['subjects', 'exams', 'studySessions'];
+const EXAM_TYPE_INFO = {
+  examen:       { label: 'Examen',                   group: 'prueba',  weight: 20 },
+  parcial:      { label: 'Parcial',                  group: 'prueba',  weight: 30 },
+  trimestral:   { label: 'Trimestral',               group: 'prueba',  weight: 40 },
+  final:        { label: 'Final',                    group: 'prueba',  weight: 50 },
+  recuperacion: { label: 'Recuperación',             group: 'prueba',  weight: 0 }, // sustituye, no suma (ver recovers)
+  trabajo:      { label: 'Trabajo',                  group: 'entrega', weight: 15 },
+  exposicion:   { label: 'Exposición',               group: 'entrega', weight: 10 },
+  ejercicios:   { label: 'Ejercicios para entregar', group: 'entrega', weight: 10 },
+  deberes:      { label: 'Deberes',                  group: 'entrega', weight: 5 },
+};
+const EXAM_TYPES = Object.keys(EXAM_TYPE_INFO);
+const EXAM_TERMS = [1, 2, 3];
+const EXAM_DELIVERY_STATUSES = ['pendiente', 'entregado'];
+const DEFAULT_PASS_GRADE = 5;
+const STUDY_SESSION_KINDS = ['estudio', 'repaso', 'trabajo', 'ensayo']; // ensayo: el día antes de una exposición
+const STUDY_SESSION_STATUSES = ['pendiente', 'hecha', 'saltada'];
+
+/** Peso por defecto (% de la nota) de un tipo de prueba; 0 si el tipo no
+ * existe y para la recuperación (sustituye una nota, no suma). */
+function defaultExamWeight(type){
+  return Object.prototype.hasOwnProperty.call(EXAM_TYPE_INFO, type) ? EXAM_TYPE_INFO[type].weight : 0;
+}
+/** true para examen, parcial, trimestral, final y recuperación. */
+function isStudyWindowType(type){
+  return Object.prototype.hasOwnProperty.call(EXAM_TYPE_INFO, type) && EXAM_TYPE_INFO[type].group === 'prueba';
+}
+/** true para trabajo, exposición, ejercicios y deberes (estado pendiente/entregado). */
+function isDeliveryType(type){
+  return Object.prototype.hasOwnProperty.call(EXAM_TYPE_INFO, type) && EXAM_TYPE_INFO[type].group === 'entrega';
+}
+/** Valida el campo `recovers` de una recuperación: { examId } con un id de
+ * texto no vacío, o { term } con 1, 2 o 3. Cualquier otra cosa -> null.
+ * Nunca lanza ni modifica `value`. */
+function sanitizeRecovers(value){
+  if(!value || typeof value !== 'object') return null;
+  if(typeof value.examId === 'string' && value.examId.trim()) return { examId: value.examId };
+  if(EXAM_TERMS.includes(value.term)) return { term: value.term };
+  return null;
+}
+/** Días de estudio antes de una prueba: los suyos si los tiene (entero >= 1),
+ * si no los de Ajustes (prefs.studyDaysBefore, 10 por defecto). null para
+ * las entregas, que no usan ventana de estudio. */
+function examStudyDays(exam, prefs){
+  if(!exam || !isStudyWindowType(exam.type)) return null;
+  const valid = n => Number.isInteger(n) && n >= 1;
+  if(valid(exam.studyDaysBefore)) return exam.studyDaysBefore;
+  return valid(prefs && prefs.studyDaysBefore) ? prefs.studyDaysBefore : 10;
 }
 
 /* ==================================================================
@@ -4176,6 +4273,9 @@ function exportData(){
       customSchedules: state.customSchedules,
       eventCategories: state.eventCategories,
       reminders: state.reminders,
+      subjects: state.subjects,
+      exams: state.exams,
+      studySessions: state.studySessions,
       prefs: state.prefs,
       ia: state.ia,
     }
@@ -4724,6 +4824,23 @@ function sanitizeImportedEventCategories(arr){
   return { kept, discarded };
 }
 
+/** Valida una lista importada de asignaturas, exámenes o sesiones de
+ * estudio (STUDY_KEYS). Solo descarta lo que rompería la sincronización:
+ * elementos que no son objetos o sin `id` de texto no vacío (sync-merge.js
+ * fusiona por id). El resto de campos se conserva tal cual. Una copia
+ * antigua sin estas claves deja la lista vacía, como el resto del import.
+ * Devuelve { kept, discarded }. */
+function sanitizeImportedStudyItems(arr){
+  const kept = [];
+  let discarded = 0;
+  (Array.isArray(arr) ? arr : []).forEach(item=>{
+    const hasId = item && typeof item === 'object' && !Array.isArray(item) && typeof item.id === 'string' && item.id.trim().length > 0;
+    if(!hasId){ discarded++; return; }
+    kept.push({ ...item });
+  });
+  return { kept, discarded };
+}
+
 function initSettingsDataIO(){
   const input = document.getElementById('import-file-input');
   if(!input) return;
@@ -4763,6 +4880,11 @@ function initSettingsDataIO(){
     // igual que tasks/customSchedules — el saneamiento por-campo (como el
     // que ya tienen events/eventCategories) es de una fase posterior.
     state.reminders = Array.isArray(data.reminders) ? data.reminders : [];
+    const sanitizedStudy = {};
+    for(const key of STUDY_KEYS){
+      sanitizedStudy[key] = sanitizeImportedStudyItems(data[key]);
+      state[key] = sanitizedStudy[key].kept;
+    }
     // R-8.2-C: el registro de reconciliación es puramente interno (no
     // forma parte del formato exportado/importado, ver exportData()) —
     // se reinicia al importar, porque cualquier marca antigua ya no
@@ -4787,11 +4909,15 @@ function initSettingsDataIO(){
     try{
       await Promise.all([
         saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
+        saveSubjects(), saveExams(), saveStudySessions(),
         saveReminderNotificationLedger(), savePrefs(), saveIA(),
       ]);
       const discardedParts = [];
       if(sanitizedEvents.discarded) discardedParts.push(`${sanitizedEvents.discarded} evento(s)`);
       if(sanitizedCategories.discarded) discardedParts.push(`${sanitizedCategories.discarded} categoría(s)`);
+      if(sanitizedStudy.subjects.discarded) discardedParts.push(`${sanitizedStudy.subjects.discarded} asignatura(s)`);
+      if(sanitizedStudy.exams.discarded) discardedParts.push(`${sanitizedStudy.exams.discarded} examen(es)`);
+      if(sanitizedStudy.studySessions.discarded) discardedParts.push(`${sanitizedStudy.studySessions.discarded} sesión(es) de estudio`);
       // SYNC: se sube ya a la cuenta (sin esperar al debounce) para poder
       // decir si el cambio ha llegado a los demás dispositivos.
       const uploaded = (typeof flushAccountChanges === 'function') ? await flushAccountChanges() : true;
@@ -4818,6 +4944,9 @@ async function deleteAllData(){
   state.customSchedules = [];
   state.eventCategories = [];
   state.reminders = [];
+  state.subjects = [];
+  state.exams = [];
+  state.studySessions = [];
   state.reminderNotificationLedger = {}; // R-8.2-C: interno, se borra junto con los reminders
   state.prefs = defaultPrefs();
   state.ia = defaultIA();
@@ -4832,6 +4961,7 @@ async function deleteAllData(){
   try{
     await Promise.all([
       saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
+      saveSubjects(), saveExams(), saveStudySessions(),
       saveReminderNotificationLedger(), savePrefs(), saveIA(),
     ]);
     // SYNC: mismo criterio que al importar (ver initSettingsDataIO).

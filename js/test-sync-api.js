@@ -232,6 +232,15 @@ const PREFS_A = { defaultHome: 'calendario', showCompletedTasks: false };
       { key: 'eventCategories', value: [], baseRev: 0 }, { key: 'reminders', value: [], baseRev: 0 },
     ] } });
     check('B12. se aceptan las 7 claves sincronizadas', all._status === 200 && Object.keys(all._json.results).length === 4);
+
+    const study = await call(handler, { method: 'PUT', cookie: cookieFor(A), body: { items: [
+      { key: 'subjects', value: [{ id: 's1', name: 'Mates', color: '#3366ff' }], baseRev: 0 },
+      { key: 'exams', value: [{ id: 'e1', subjectId: 's1', type: 'examen', title: 'Parcial', date: '2026-10-20' }], baseRev: 0 },
+      { key: 'studySessions', value: [], baseRev: 0 },
+    ] } });
+    const gotStudy = await call(handler, { method: 'GET', cookie: cookieFor(A) });
+    check('B13. se aceptan subjects, exams y studySessions (app de exámenes)', study._status === 200 && Object.keys(study._json.results).length === 3
+      && gotStudy._json.items.exams.value[0].id === 'e1' && same(gotStudy._json.items.studySessions.value, []));
   }
 
   // =====================================================================
@@ -332,12 +341,13 @@ const PREFS_A = { defaultHome: 'calendario', showCompletedTasks: false };
     await bad('E2. JSON inválido como string', '{no es json');
     await bad('E3. sin "items"', { tasks: [] });
     await bad('E4. "items" vacío', { items: [] });
-    await bad('E5. más de 7 elementos', { items: Array.from({ length: 8 }, () => ({ key: 'tasks', value: [], baseRev: 0 })) });
+    await bad('E5. más de 10 elementos', { items: Array.from({ length: 11 }, () => ({ key: 'tasks', value: [], baseRev: 0 })) });
     await bad('E6. clave repetida', { items: [{ key: 'tasks', value: [], baseRev: 0 }, { key: 'tasks', value: [], baseRev: 0 }] });
     await bad('E7. reminderNotificationLedger (local por dispositivo, nunca se sube)', { items: [{ key: 'reminderNotificationLedger', value: {}, baseRev: 0 }] });
     await bad('E8. clave inventada', { items: [{ key: 'passwords', value: [], baseRev: 0 }] });
     await bad('E9. clave "__proto__"', { items: [{ key: '__proto__', value: {}, baseRev: 0 }] });
     await bad('E10. clave "constructor"', { items: [{ key: 'constructor', value: {}, baseRev: 0 }] });
+    await bad('E10b. "exams" que no es una lista', { items: [{ key: 'exams', value: { id: 'e1' }, baseRev: 0 }] });
     await bad('E11. tasks que no es lista', { items: [{ key: 'tasks', value: { a: 1 }, baseRev: 0 }] });
     await bad('E12. settingsPrefs que es lista', { items: [{ key: 'settingsPrefs', value: [], baseRev: 0 }] });
     await bad('E13. value null', { items: [{ key: 'settingsIA', value: null, baseRev: 0 }] });
@@ -377,14 +387,21 @@ const PREFS_A = { defaultHome: 'calendario', showCompletedTasks: false };
   }
 
   // =====================================================================
-  section('G) lib/user-data.js coincide con sql/004_user_data.sql');
+  section('G) lib/user-data.js coincide con el CHECK de la tabla (último sql/*.sql que lo define)');
   // =====================================================================
   {
     const fs = require('fs');
     const userData = require(path.join(ROOT, 'lib', 'user-data.js'));
-    const sqlText = fs.readFileSync(path.join(ROOT, 'sql', '004_user_data.sql'), 'utf8');
-    const checkBlock = (sqlText.match(/CHECK \(key IN \(([\s\S]*?)\)\)/) || [])[1] || '';
+    // El CHECK vigente es el del archivo de sql/ más reciente que lo define
+    // (004 lo crea, 005 lo amplía con las claves de la app de exámenes).
+    const sqlFiles = fs.readdirSync(path.join(ROOT, 'sql')).filter(f => f.endsWith('.sql')).sort();
+    const checkBlocks = sqlFiles.map(f => {
+      const text = fs.readFileSync(path.join(ROOT, 'sql', f), 'utf8');
+      return (text.match(/CHECK \(key IN \(([\s\S]*?)\)\)/) || [])[1];
+    }).filter(Boolean);
+    const checkBlock = checkBlocks[checkBlocks.length - 1] || '';
     const sqlKeys = [...checkBlock.matchAll(/'([^']+)'/g)].map(m => m[1]).sort();
+    check('G0. sql/005_study_keys.sql define el CHECK vigente', sqlFiles.includes('005_study_keys.sql') && checkBlocks.length >= 2);
     check('G1. la lista blanca de lib/user-data.js es la misma que el CHECK de la tabla', same(sqlKeys, [...userData.ALLOWED_KEYS].sort()));
     check('G2. reminderNotificationLedger no está en ninguna de las dos', !sqlKeys.includes('reminderNotificationLedger') && !userData.isAllowedKey('reminderNotificationLedger'));
   }

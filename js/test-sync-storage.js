@@ -505,6 +505,37 @@ const T = (id, title) => ({ id, title, done: false });
   }
 
   // =====================================================================
+  section('J2) App de exámenes: subjects, exams y studySessions se sincronizan');
+  // =====================================================================
+  {
+    const user = 913;
+    const STUDY = ['subjects', 'exams', 'studySessions'];
+    check('J7. las tres claves de estudio están en SYNCED_KEYS', STUDY.every(k => SyncStorage.SYNCED_KEYS.includes(k)));
+    const listOf = async (storage, key) => { const r = await storage.get(key); return r ? JSON.parse(r.value) : null; };
+    const phone = makeDevice('móvil-estudio');
+    const phoneApp = await openApp(phone, user);
+    await phoneApp.storage.set('subjects', JSON.stringify([{ id: 's1', name: 'Mates', color: '#3366ff' }]));
+    await phoneApp.storage.set('exams', JSON.stringify([{ id: 'e1', subjectId: 's1', type: 'examen', title: 'Parcial', date: '2026-10-20' }]));
+    await phoneApp.storage.set('studySessions', JSON.stringify([{ id: 'ss1', examId: 'e1', subjectId: 's1', date: '2026-10-18', plannedMinutes: 45, kind: 'estudio', status: 'pendiente' }]));
+    await phoneApp.store.flush();
+    check('J8. las tres listas llegan al servidor de la cuenta', fakeDb.valueOf(user, 'subjects')[0].id === 's1' && fakeDb.valueOf(user, 'exams')[0].id === 'e1' && fakeDb.valueOf(user, 'studySessions')[0].id === 'ss1');
+
+    const pc = makeDevice('pc-estudio');
+    const pcApp = await openApp(pc, user);
+    await pcApp.store.sync();
+    check('J9. otro dispositivo de la misma cuenta las descarga al sincronizar', (await listOf(pcApp.storage, 'exams'))[0].title === 'Parcial' && (await listOf(pcApp.storage, 'studySessions'))[0].plannedMinutes === 45);
+
+    // Los dos añaden un examen distinto a la vez: la fusión por id conserva ambos.
+    await pcApp.storage.set('exams', JSON.stringify([...(await listOf(pcApp.storage, 'exams')), { id: 'e2', subjectId: 's1', type: 'trabajo', title: 'Trabajo' }]));
+    await pcApp.store.flush();
+    await phoneApp.storage.set('exams', JSON.stringify([...(await listOf(phoneApp.storage, 'exams')), { id: 'e3', subjectId: 's1', type: 'deberes', title: 'Deberes' }]));
+    await phoneApp.store.flush();
+    check('J10. exámenes añadidos a la vez en dos dispositivos: no se pierde ninguno', deepEqual(fakeDb.valueOf(user, 'exams').map(e => e.id).sort(), ['e1', 'e2', 'e3']));
+    await phoneApp.store.deactivate();
+    await pcApp.store.deactivate();
+  }
+
+  // =====================================================================
   section('K) activate(): sustituye window.storage y engancha los eventos');
   // =====================================================================
   {

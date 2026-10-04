@@ -7,7 +7,7 @@
  *   - Los datos se guardan en una caché local POR USUARIO (IndexedDB
  *     'organizator-data-u<id>'): otra cuenta en el mismo dispositivo abre
  *     otra base distinta y nunca ve nada de esta.
- *   - Las 7 claves sincronizadas (ver SYNCED_KEYS, igual que la lista
+ *   - Las 10 claves sincronizadas (ver SYNCED_KEYS, igual que la lista
  *     blanca de lib/user-data.js) se suben a /api/data poco después de
  *     cada cambio y se descargan al arrancar, al volver la conexión y al
  *     volver a la pestaña.
@@ -34,7 +34,7 @@
 })(typeof self !== 'undefined' ? self : this, function (root, SyncMerge) {
   'use strict';
 
-  const SYNCED_KEYS = ['tasks', 'events', 'customSchedules', 'eventCategories', 'reminders', 'settingsPrefs', 'settingsIA'];
+  const SYNCED_KEYS = ['tasks', 'events', 'customSchedules', 'eventCategories', 'reminders', 'settingsPrefs', 'settingsIA', 'subjects', 'exams', 'studySessions'];
   const DB_PREFIX = 'organizator-data-u';
   const DB_VERSION = 1;
   const KV_STORE = 'kv';
