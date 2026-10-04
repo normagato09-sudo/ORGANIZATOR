@@ -168,6 +168,8 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
       && src.includes('const formTypes = EXAM_TYPES.filter(t => EXAM_FORM_TYPES.includes(t) || (existing && existing.type === t));') && src.includes('formTypes.filter('));
     check('E2c. un examen con un tipo quitado (p. ej. Trabajo) se sigue viendo y editando', sb.validateExamData({ ...FORM, type: 'trabajo' }).ok
       && sb.examRowHTML({ id: 't', subjectId: 's1', type: 'trabajo', title: 'Viejo', date: '2026-10-20', time: null, term: 1 }).includes('Trabajo · Mates'));
+    check('E2e. Calendario sin barra lateral (su código sigue) y más ancho', html.includes('const showAside = false;') && html.includes('id="sidebar"')
+      && html.includes('main:has(#view-calendario.active){max-width:1240px;}') && html.includes('function updateSidebar('));
     check('E2d. Calendario: solo "+ Examen" (Tarea y Evento ocultos, su código sigue)', html.includes('<button class="btn btn-sm" id="day-add-task" hidden>') && html.includes('<button class="btn btn-sm" id="day-add-event" hidden>')
       && html.includes(".btn[hidden]") && html.includes("document.getElementById('day-add-task').addEventListener"));
     check('E3. el trimestre se rellena con la fecha y sigue a la fecha hasta que lo cambias a mano',
@@ -213,7 +215,7 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
     const inicio = extractBetween(html, '<div class="view active" id="view-inicio">', '<!-- ===================== CALENDARIO', 'vista Inicio');
     check('F12. Inicio: "Hoy" y el asistente ocultos (su HTML y su código siguen), sin barra lateral',
       /<section class="block" hidden>\s*<div class="block-head">\s*<h2>Hoy<\/h2>/.test(inicio) && /<section class="block" hidden>\s*<div class="block-head">\s*<h2>🤖 Asistente ORGANIZATOR<\/h2>/.test(inicio)
-      && inicio.includes('id="today-timeline"') && inicio.includes('id="ia-chat-form"') && html.includes("const showAside = (name === 'calendario');")
+      && inicio.includes('id="today-timeline"') && inicio.includes('id="ia-chat-form"') && html.includes('const showAside = false;')
       && (inicio.match(/<section class="block">/g) || []).length === 1 && html.includes('section.block[hidden]'));
     check('F11. Inicio pinta el bloque arriba del todo', html.indexOf('id="upcoming-exams"') > 0 && html.indexOf('id="upcoming-exams"') < html.indexOf('id="today-timeline"')
       && extractBetween(html, 'function renderInicio(){', '\n}\n', 'renderInicio()').includes('renderUpcoming();'));

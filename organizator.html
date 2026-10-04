@@ -362,6 +362,8 @@
      En el ordenador ocupa todo el ancho; en el móvil en vertical se ve un
      día cada vez (pestañas L M X J V) y en horizontal la semana entera. */
   main:has(#view-horario.active){max-width:none;}
+  /* Calendario sin barra lateral: usa ese espacio. */
+  main:has(#view-calendario.active){max-width:1240px;}
   .horario-wrap{overflow-x:auto;}
   .horario-grid{display:grid;grid-template-columns:52px repeat(5,minmax(90px,1fr));min-width:500px;}
   .horario-day-name{font-size:13px;font-weight:600;text-align:center;padding:6px 0;margin:0 3px 8px;border-radius:8px;color:var(--ink-soft);}
@@ -1022,7 +1024,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.19';
+const APP_VERSION = '2.3.20';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2630,9 +2632,9 @@ function showView(name){
   currentView = name;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   document.querySelectorAll('.rail-item').forEach(r => r.classList.toggle('active', r.dataset.view === name));
-  // App de exámenes: Inicio solo muestra el próximo examen y los siguientes
-  // (sin la barra lateral de Ahora/Siguiente, eventos y tareas).
-  const showAside = (name === 'calendario');
+  // App de exámenes: la barra lateral (Ahora/Siguiente, eventos y tareas)
+  // ya no sale en ninguna vista; su código se conserva.
+  const showAside = false;
   app.classList.toggle('no-aside', !showAside);
   sidebar.style.display = showAside ? '' : 'none';
   window.scrollTo(0,0);
