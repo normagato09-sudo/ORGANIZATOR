@@ -521,6 +521,21 @@
   .upcoming-meta{font-size:12px;color:var(--ink-soft);overflow-wrap:anywhere;}
   .upcoming-days{flex:none;font-size:12px;font-weight:600;white-space:nowrap;}
   .upcoming-more{font-size:12px;color:var(--ink-soft);margin:8px 0 0;}
+  /* Notas: una tarjeta por asignatura, con sus tres trimestres. */
+  section.block.notas-subject{background:var(--surface);border:1px solid var(--line);border-left:6px solid;border-radius:14px;padding:16px 18px;margin-bottom:20px;}
+  .notas-subject-name{font-size:16px;font-weight:600;margin:0 0 12px;}
+  .notas-terms{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;}
+  .notas-term{background:var(--paper);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px;min-width:0;}
+  .notas-term-head{font-size:13px;font-weight:600;}
+  .notas-empty{font-size:12px;color:var(--ink-soft);}
+  .notas-exam{display:flex;align-items:center;gap:10px;}
+  .notas-exam-main{flex:1;min-width:0;}
+  .notas-exam-title{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .notas-exam-meta{font-size:11px;color:var(--ink-soft);}
+  .grade-input{flex:none;width:56px;box-sizing:border-box;text-align:center;font:inherit;font-size:14px;padding:6px 4px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);}
+  .notas-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:8px;margin-top:2px;}
+  .notas-avg{font-size:13px;}
+  .notas-final{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);}
   .cal-exams{display:flex;flex-direction:column;gap:2px;min-width:0;}
   .cal-exam{font-size:10px;line-height:1.35;font-weight:600;color:var(--ink);border-left:3px solid;border-radius:4px;padding:1px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .day-panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
@@ -777,6 +792,7 @@
     <button class="rail-item" data-view="calendario"><div class="ic">📅</div><div class="lb">Calendario</div></button>
     <!-- "Semana" ya no sale en el menú (app de exámenes); su vista y su código se conservan. -->
     <button class="rail-item" data-view="horario"><div class="ic">🕘</div><div class="lb">Horario</div></button>
+    <button class="rail-item" data-view="notas"><div class="ic">📝</div><div class="lb">Notas</div></button>
     <button class="rail-item settings" data-view="ajustes"><div class="ic">⚙️</div><div class="lb">Ajustes</div></button>
   </nav>
 
@@ -884,6 +900,9 @@
     <!-- ===================== HORARIO de clases (contenido generado por JS, ver renderHorario()) ===================== -->
     <div class="view" id="view-horario"></div>
 
+    <!-- ===================== NOTAS (contenido generado por JS, ver renderNotas()) ===================== -->
+    <div class="view" id="view-notas"></div>
+
     <!-- ===================== AJUSTES (contenido generado por JS, ver renderAjustes()) ===================== -->
     <div class="view" id="view-ajustes"></div>
 
@@ -977,7 +996,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.13';
+const APP_VERSION = '2.3.14';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2573,6 +2592,7 @@ function renderCurrentView(){
   else if(currentView === 'calendario') renderCalendar();
   else if(currentView === 'semana') renderSemana();
   else if(currentView === 'horario') renderHorario();
+  else if(currentView === 'notas') renderNotas();
   else if(currentView === 'ajustes') renderAjustes();
 }
 
@@ -4367,7 +4387,14 @@ function validateExamData(data){
   if(term === undefined) errors.term = 'Elige el 1.º, 2.º o 3.er trimestre.';
   const notes = String(d.notes || '').trim();
   if(notes.length > EXAM_NOTES_MAX) errors.notes = `Máximo ${EXAM_NOTES_MAX} caracteres.`;
-  return { ok: Object.keys(errors).length === 0, value: { subjectId, type, title, date, time, term: term === undefined ? null : term, notes }, errors };
+  const value = { subjectId, type, title, date, time, term: term === undefined ? null : term, notes };
+  // La nota solo se toca si el formulario la trae (vacía = sin nota).
+  if(Object.prototype.hasOwnProperty.call(d, 'grade')){
+    const grade = parseGradeInput(d.grade);
+    if(grade === undefined) errors.grade = 'La nota debe estar entre 0 y 10 (por ejemplo 7 o 6,5).';
+    else value.grade = grade;
+  }
+  return { ok: Object.keys(errors).length === 0, value, errors };
 }
 /** Crea un examen o entrega. { ok: true, exam } o { ok: false, errors }. */
 async function addExam(data){
@@ -4379,7 +4406,7 @@ async function addExam(data){
     id: uid(), subjectId: v.subjectId, type: v.type, title: v.title, date: v.date, time: v.time,
     durationMinutes: null, term: v.term, weight: defaultExamWeight(v.type), topics: [], difficulty: 3,
     studyDaysBefore: null, deliveryStatus: isDeliveryType(v.type) ? 'pendiente' : null, recovers: null,
-    grade: null, notes: v.notes, createdAt: now, updatedAt: now,
+    grade: v.grade ?? null, notes: v.notes, createdAt: now, updatedAt: now,
   };
   state.exams.push(exam);
   await saveExams();
@@ -4496,9 +4523,15 @@ function openExamModal({examId=null, date=null}={}){
           <div class="form-error" data-error-for="time"></div>
         </div>
       </div>
-      <div class="form-group"><label for="exam-term">Trimestre</label>
-        <select id="exam-term" name="term">${termOptions}</select>
-        <div class="form-error" data-error-for="term"></div>
+      <div class="form-row-2">
+        <div class="form-group"><label for="exam-term">Trimestre</label>
+          <select id="exam-term" name="term">${termOptions}</select>
+          <div class="form-error" data-error-for="term"></div>
+        </div>
+        <div class="form-group"><label for="exam-grade">Nota (opcional)</label>
+          <input type="text" id="exam-grade" name="grade" inputmode="decimal" maxlength="5" placeholder="—" value="${existing && typeof existing.grade === 'number' ? esc(formatGrade(existing.grade)) : ''}">
+          <div class="form-error" data-error-for="grade"></div>
+        </div>
       </div>
       <div class="form-group"><label for="exam-notes">Notas (opcional)</label>
         <textarea id="exam-notes" name="notes" rows="3" maxlength="${EXAM_NOTES_MAX}" placeholder="Temas que entran, material…">${existing ? esc(existing.notes || '') : ''}</textarea>
@@ -4541,6 +4574,7 @@ function openExamModal({examId=null, date=null}={}){
     const data = {
       subjectId: fd.get('subjectId') || '', type: fd.get('type') || '', title: fd.get('title') || '',
       date: fd.get('date') || '', time: fd.get('time') || '', term: fd.get('term') || '', notes: fd.get('notes') || '',
+      grade: fd.get('grade') || '',
     };
     const result = editing ? await updateExam(examId, data) : await addExam(data);
     form.querySelectorAll('[data-error-for]').forEach(el => { el.textContent = (result.errors && result.errors[el.dataset.errorFor]) || ''; });
@@ -4623,6 +4657,153 @@ function renderUpcoming(){
   el.innerHTML = renderUpcomingHTML(todayStr());
   el.querySelectorAll('[data-upcoming-exam]').forEach(btn => {
     btn.addEventListener('click', () => openExamModal({ examId: btn.dataset.upcomingExam }));
+  });
+}
+
+/* ==================================================================
+   NOTAS (app de exámenes)
+   Por asignatura y trimestre: los exámenes y entregas con su nota
+   (exam.grade, de 0 a 10) y la MEDIA del trimestre (media normal: todas
+   las notas cuentan igual; las pruebas sin nota no cuentan). En cada
+   trimestre, la nota final oficial se apunta a mano y se guarda dentro de
+   la asignatura (subject.termFinals = { 1: nota|null, 2: …, 3: … }). Esa
+   nota solo se guarda y se muestra: no entra en ninguna media y no hay
+   nota del curso.
+   ================================================================== */
+/** Nota de 0 a 10 escrita por el usuario ("7,5", "7.5", 8…): número
+ * redondeado a 2 decimales, null si está vacía, o undefined si no vale. */
+function parseGradeInput(value){
+  if(value === null || value === undefined) return null;
+  if(typeof value === 'string' && value.trim() === '') return null;
+  const n = parsePassGrade(value);
+  return n === null ? undefined : n;
+}
+/** Media normal de las notas que hay (null si ninguna tiene nota). */
+function termAverage(exams){
+  const grades = (exams || []).map(e => e && e.grade).filter(g => typeof g === 'number' && Number.isFinite(g));
+  if(!grades.length) return null;
+  return Math.round(grades.reduce((a,b) => a + b, 0) / grades.length * 100) / 100;
+}
+/** Exámenes de una asignatura en un trimestre (term null = sin trimestre), por fecha. */
+function subjectTermExams(subjectId, term){
+  return state.exams.filter(e => e && e.subjectId === subjectId && (e.term ?? null) === term)
+    .sort((a,b) => String(a.date).localeCompare(String(b.date)) || String(a.title).localeCompare(String(b.title), 'es'));
+}
+function termFinalOf(subject, term){
+  const v = subject && subject.termFinals && subject.termFinals[term];
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+/** Pone (o quita, con '') la nota de un examen. { ok, grade } o { ok: false, error }. */
+async function setExamGrade(examId, raw){
+  const exam = state.exams.find(e => e && e.id === examId);
+  if(!exam) return { ok: false, error: 'Este examen ya no existe.' };
+  const grade = parseGradeInput(raw);
+  if(grade === undefined) return { ok: false, error: 'La nota debe estar entre 0 y 10.' };
+  if(exam.grade === grade) return { ok: true, grade };
+  exam.grade = grade;
+  exam.updatedAt = Date.now();
+  await saveExams();
+  return { ok: true, grade };
+}
+/** Pone (o quita, con '') la nota final oficial de un trimestre. */
+async function setSubjectTermFinal(subjectId, term, raw){
+  const subject = state.subjects.find(s => s.id === subjectId);
+  if(!subject) return { ok: false, error: 'Esta asignatura ya no existe.' };
+  if(!EXAM_TERMS.includes(term)) return { ok: false, error: 'Trimestre no válido.' };
+  const grade = parseGradeInput(raw);
+  if(grade === undefined) return { ok: false, error: 'La nota debe estar entre 0 y 10.' };
+  if(termFinalOf(subject, term) === grade) return { ok: true, grade };
+  subject.termFinals = { 1: termFinalOf(subject, 1), 2: termFinalOf(subject, 2), 3: termFinalOf(subject, 3), [term]: grade };
+  subject.updatedAt = Date.now();
+  await saveSubjects();
+  return { ok: true, grade };
+}
+
+function gradeInputHTML(attrs, value, label){
+  return `<input type="text" class="grade-input" inputmode="decimal" maxlength="5" ${attrs} value="${value === null ? '' : esc(formatGrade(value))}" placeholder="—" aria-label="${esc(label)}">`;
+}
+function notasExamRowHTML(exam){
+  return `
+    <div class="notas-exam">
+      <div class="notas-exam-main">
+        <div class="notas-exam-title">${esc(exam.title)}</div>
+        <div class="notas-exam-meta">${esc(examTypeLabel(exam.type))} · ${esc(humanDateShort(exam.date))}</div>
+      </div>
+      ${gradeInputHTML(`data-exam-grade="${esc(exam.id)}"`, typeof exam.grade === 'number' ? exam.grade : null, `Nota de ${exam.title}`)}
+    </div>`;
+}
+function renderNotasHTML(){
+  if(!state.subjects.length){
+    return `<div class="empty-state">Primero añade tus asignaturas en Ajustes › Asignaturas.</div>`;
+  }
+  const subjects = [...state.subjects].sort((a,b) => (a.name||'').localeCompare(b.name||'', 'es'));
+  return subjects.map(subject => {
+    const terms = EXAM_TERMS.map(term => {
+      const exams = subjectTermExams(subject.id, term);
+      const avg = termAverage(exams);
+      return `
+        <div class="notas-term">
+          <div class="notas-term-head">${term}.º trimestre</div>
+          ${exams.length ? exams.map(notasExamRowHTML).join('') : `<div class="notas-empty">Sin exámenes ni entregas.</div>`}
+          <div class="notas-summary">
+            <div class="notas-avg">Media: <strong data-term-avg="${esc(subject.id)}|${term}">${avg === null ? '—' : esc(formatGrade(avg))}</strong></div>
+            <label class="notas-final">Nota final oficial
+              ${gradeInputHTML(`data-term-final="${esc(subject.id)}|${term}"`, termFinalOf(subject, term), `Nota final oficial del ${term}.º trimestre de ${subject.name}`)}
+            </label>
+          </div>
+        </div>`;
+    }).join('');
+    const noTerm = subjectTermExams(subject.id, null);
+    const noTermHTML = noTerm.length ? `
+        <div class="notas-term">
+          <div class="notas-term-head">Sin trimestre</div>
+          ${noTerm.map(notasExamRowHTML).join('')}
+        </div>` : '';
+    return `
+      <section class="block notas-subject" style="border-left-color:${esc(subject.color)};">
+        <h2 class="notas-subject-name"><span class="priority-dot subject-dot" style="background:${esc(subject.color)};"></span>${esc(subject.name)}</h2>
+        <div class="notas-terms">${terms}${noTermHTML}</div>
+      </section>`;
+  }).join('');
+}
+function renderNotas(){
+  const el = document.getElementById('view-notas');
+  if(!el) return;
+  el.innerHTML = `
+    <div class="area-head">
+      <div class="area-head-l">
+        <div class="ic" style="background:var(--paper);color:var(--ink);">📝</div>
+        <div><h1>Notas</h1><p>Tus notas y la media de cada trimestre</p></div>
+      </div>
+    </div>
+    ${renderNotasHTML()}`;
+  // Las medias se actualizan en su sitio (sin repintar la vista, para no
+  // quitar el foco de la casilla siguiente).
+  const refreshAverages = () => {
+    el.querySelectorAll('[data-term-avg]').forEach(out => {
+      const [subjectId, term] = out.dataset.termAvg.split('|');
+      const avg = termAverage(subjectTermExams(subjectId, Number(term)));
+      out.textContent = avg === null ? '—' : formatGrade(avg);
+    });
+  };
+  // Se guarda al salir de la casilla o al pulsar Intro; si no vale, se avisa y se deja como estaba.
+  const bind = (input, save, current) => {
+    const commit = async () => {
+      const result = await save(input.value);
+      if(!result.ok){ showToast(result.error); input.value = current() === null ? '' : formatGrade(current()); return; }
+      input.value = result.grade === null ? '' : formatGrade(result.grade);
+      refreshAverages();
+    };
+    input.addEventListener('change', commit);
+    input.addEventListener('keydown', (e) => { if(e.key === 'Enter'){ e.preventDefault(); input.blur(); } });
+  };
+  el.querySelectorAll('[data-exam-grade]').forEach(input => {
+    const id = input.dataset.examGrade;
+    bind(input, (v) => setExamGrade(id, v), () => { const e = state.exams.find(x => x && x.id === id); return e && typeof e.grade === 'number' ? e.grade : null; });
+  });
+  el.querySelectorAll('[data-term-final]').forEach(input => {
+    const [subjectId, term] = input.dataset.termFinal.split('|');
+    bind(input, (v) => setSubjectTermFinal(subjectId, Number(term), v), () => termFinalOf(state.subjects.find(s => s.id === subjectId), Number(term)));
   });
 }
 

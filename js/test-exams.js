@@ -1,11 +1,12 @@
 /**
- * ORGANIZATOR — Tests de exámenes y entregas en el Calendario (app de exámenes)
+ * ORGANIZATOR — Tests de exámenes y entregas: Calendario, Inicio y Notas (app de exámenes)
  *
  * Suite Node pura, SIN navegador ni jsdom: extrae literalmente de
- * organizator.html las constantes del modelo (STUDY_*), isValidYMDDate y el
- * bloque "EXÁMENES Y ENTREGAS (app de exámenes)", y los ejecuta en un
- * sandbox (mismo patrón que test-subjects.js). Del calendario y de la
- * ventana solo se comprueba el contenido.
+ * organizator.html las constantes del modelo (STUDY_*), isValidYMDDate,
+ * formatGrade y los bloques "EXÁMENES Y ENTREGAS (app de exámenes)" y
+ * "NOTAS (app de exámenes)" (seguidos, hasta RENDER: AJUSTES), y los
+ * ejecuta en un sandbox (mismo patrón que test-subjects.js). Del
+ * calendario y de la ventana solo se comprueba el contenido.
  *
  * Uso:  node js/test-exams.js
  * Sale con código 0 si todo pasa, 1 si algo falla.
@@ -31,6 +32,7 @@ const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: mode
 const examsSrc = extractBetween(html, `${HDR}EXÁMENES Y ENTREGAS (app de exámenes)`, `\n${HDR}RENDER: AJUSTES`, 'bloque EXÁMENES Y ENTREGAS');
 const ymdSrc = extractBetween(html, 'const IMPORT_DATE_YMD_RE', '\n}\n', 'isValidYMDDate()') + '\n}\n';
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';
+const formatGradeSrc = extractBetween(html, 'function formatGrade(n){', '}', 'formatGrade()') + '}';
 const renderCalendarSrc = extractBetween(html, 'function renderCalendar(){', '\nfunction renderDayPanel(){', 'renderCalendar()');
 const renderDayPanelSrc = extractBetween(html, 'function renderDayPanel(){', "\ndocument.getElementById('cal-prev')", 'renderDayPanel()');
 const openExamModalSrc = extractBetween(examsSrc, 'function openExamModal(', '\n}\n', 'openExamModal()');
@@ -48,6 +50,7 @@ const LENGUA = { id: 's2', name: 'Lengua <b>', color: '#3A7BD5', passGrade: 5 };
 
 function makeSandbox({ subjects = [MATES, LENGUA], exams = [], confirmAnswer = true } = {}) {
   const saved = [];
+  const savedSubjects = [];
   const calls = { confirms: [], toasts: [], renders: 0 };
   let seq = 0;
   const sb = {
@@ -55,6 +58,7 @@ function makeSandbox({ subjects = [MATES, LENGUA], exams = [], confirmAnswer = t
     state: { subjects: JSON.parse(JSON.stringify(subjects)), exams: JSON.parse(JSON.stringify(exams)) },
     uid: () => 'e' + (++seq),
     saveExams: async () => { saved.push(JSON.stringify(sb.state.exams)); },
+    saveSubjects: async () => { savedSubjects.push(JSON.stringify(sb.state.subjects)); },
     showToast: (m) => calls.toasts.push(m),
     confirm: (m) => { calls.confirms.push(m); return confirmAnswer; },
     renderCurrentView: () => { calls.renders++; },
@@ -66,9 +70,10 @@ function makeSandbox({ subjects = [MATES, LENGUA], exams = [], confirmAnswer = t
     humanDateShort: (x) => 'corta:' + x,
   };
   vm.createContext(sb);
-  vm.runInContext([escSrc, studyConstSrc, ymdSrc, examsSrc,
-    'Object.assign(this, { termForDate, examTypeLabel, examSubject, validateExamData, addExam, updateExam, deleteExam, examsOnDate, examRowHTML, confirmDeleteExam, daysBetween, daysLeftLabel, upcomingExams, renderUpcomingHTML, UPCOMING_LIST_MAX });'].join('\n'), sb);
-  return { sb, saved, calls };
+  vm.runInContext([escSrc, formatGradeSrc, studyConstSrc, ymdSrc, examsSrc,
+    'Object.assign(this, { termForDate, examTypeLabel, examSubject, validateExamData, addExam, updateExam, deleteExam, examsOnDate, examRowHTML, confirmDeleteExam, daysBetween, daysLeftLabel, upcomingExams, renderUpcomingHTML, UPCOMING_LIST_MAX, ' +
+    'parseGradeInput, termAverage, subjectTermExams, termFinalOf, setExamGrade, setSubjectTermFinal, renderNotasHTML });'].join('\n'), sb);
+  return { sb, saved, savedSubjects, calls };
 }
 
 const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026-10-20', time: '', term: '1', notes: '' };
@@ -197,6 +202,70 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
     check('F10. la lista se corta en 10 y dice cuántos más hay', (manyOut.match(/class="upcoming-row"/g) || []).length === many.sb.UPCOMING_LIST_MAX && manyOut.includes('Y 3 más en el Calendario.'));
     check('F11. Inicio pinta el bloque arriba del todo', html.indexOf('id="upcoming-exams"') > 0 && html.indexOf('id="upcoming-exams"') < html.indexOf('id="today-timeline"')
       && extractBetween(html, 'function renderInicio(){', '\n}\n', 'renderInicio()').includes('renderUpcoming();'));
+  }
+
+  // =====================================================================
+  section('G) Notas: nota de cada examen, media del trimestre y nota final oficial');
+  // =====================================================================
+  {
+    const { sb } = makeSandbox();
+    check('G1. parseGradeInput: "7,5" / "8" / vacío / fuera de rango', sb.parseGradeInput('7,5') === 7.5 && sb.parseGradeInput('8') === 8
+      && sb.parseGradeInput('') === null && sb.parseGradeInput('  ') === null && sb.parseGradeInput('11') === undefined && sb.parseGradeInput('abc') === undefined);
+    check('G2. media normal: todas cuentan igual y las que no tienen nota no cuentan', sb.termAverage([{ grade: 5 }, { grade: 8 }, { grade: null }, { grade: 6.5 }]) === 6.5
+      && sb.termAverage([{ grade: 7 }, { grade: 8 }, { grade: 8 }]) === 7.67 && sb.termAverage([{ grade: null }]) === null && sb.termAverage([]) === null);
+
+    const exams = [
+      { id: 'a', subjectId: 's1', type: 'examen', title: 'Tema 1', date: '2026-10-10', term: 1, grade: 6, weight: 50 },
+      { id: 'b', subjectId: 's1', type: 'trabajo', title: 'Trabajo', date: '2026-10-01', term: 1, grade: null, weight: 5 },
+      { id: 'c', subjectId: 's1', type: 'examen', title: 'Tema 4', date: '2027-01-20', term: 2, grade: 9 },
+      { id: 'd', subjectId: 's2', type: 'examen', title: 'Lengua 1', date: '2026-10-15', term: 1, grade: 3 },
+      { id: 'e', subjectId: 's1', type: 'deberes', title: 'Julio', date: '2027-07-05', term: null, grade: null },
+    ];
+    const n = makeSandbox({ exams });
+    check('G3. exámenes de una asignatura y trimestre, por fecha', same(n.sb.subjectTermExams('s1', 1).map(e => e.id), ['b', 'a']) && same(n.sb.subjectTermExams('s1', null).map(e => e.id), ['e']));
+    const r = await n.sb.setExamGrade('b', '8,5');
+    check('G4. poner nota a un examen la guarda (y la media pasa a 7,25, sin pesos)', r.ok && n.sb.state.exams[1].grade === 8.5 && n.saved.length === 1
+      && n.sb.termAverage(n.sb.subjectTermExams('s1', 1)) === 7.25);
+    const badGrade = await n.sb.setExamGrade('b', '12');
+    check('G5. una nota fuera de 0–10 no se guarda y da error', !badGrade.ok && badGrade.error && n.sb.state.exams[1].grade === 8.5 && n.saved.length === 1);
+    await n.sb.setExamGrade('b', '');
+    check('G6. borrar la casilla quita la nota', n.sb.state.exams[1].grade === null && n.saved.length === 2);
+    await n.sb.setExamGrade('a', '6');
+    check('G7. si la nota no cambia no se vuelve a guardar', n.saved.length === 2);
+
+    const f = await n.sb.setSubjectTermFinal('s1', 1, '7');
+    const mates = n.sb.state.subjects[0];
+    check('G8. la nota final oficial se guarda dentro de la asignatura', f.ok && same(mates.termFinals, { 1: 7, 2: null, 3: null }) && n.savedSubjects.length === 1 && typeof mates.updatedAt === 'number');
+    await n.sb.setSubjectTermFinal('s1', 3, '9,5');
+    check('G9. cada trimestre tiene la suya', same(mates.termFinals, { 1: 7, 2: null, 3: 9.5 }) && n.sb.termFinalOf(mates, 3) === 9.5);
+    check('G10. la nota final oficial NO cambia la media del trimestre', n.sb.termAverage(n.sb.subjectTermExams('s1', 1)) === 6);
+    check('G11. nota final no válida o trimestre inexistente -> error', !(await n.sb.setSubjectTermFinal('s1', 1, '-1')).ok && !(await n.sb.setSubjectTermFinal('s1', 4, '5')).ok && n.savedSubjects.length === 2);
+
+    const out = n.sb.renderNotasHTML();
+    const matesCard = out.slice(out.indexOf('Mates'), out.indexOf('Lengua &lt;b&gt;') > out.indexOf('Mates') ? out.indexOf('Lengua &lt;b&gt;', out.indexOf('Mates')) : undefined);
+    check('G12. una tarjeta por asignatura (por nombre) con su color y sus 3 trimestres', out.indexOf('Lengua &lt;b&gt;') < out.indexOf('Mates')
+      && out.includes('border-left-color:#D64545') && ['1.º trimestre', '2.º trimestre', '3.º trimestre'].every(t => matesCard.includes(t)));
+    check('G13. casillas de nota por examen y de nota final por trimestre, con su valor', out.includes('data-exam-grade="a"') && out.includes('data-exam-grade="c" value="9"')
+      && out.includes('data-term-final="s1|1" value="7"') && out.includes('data-term-final="s1|3" value="9,5"') && out.includes('data-term-final="s1|2" value=""'));
+    check('G14. media de cada trimestre ("—" si no hay notas)', out.includes('data-term-avg="s1|1">6<') && out.includes('data-term-avg="s1|2">9<') && out.includes('data-term-avg="s1|3">—<'));
+    check('G15. los que no tienen trimestre salen aparte, sin media ni nota final', matesCard.includes('Sin trimestre') && matesCard.includes('data-exam-grade="e"') && !out.includes('data-term-final="s1|null"'));
+    check('G16. no se calcula ninguna nota del curso', !/curso/i.test(out));
+    check('G17. sin asignaturas: pide crearlas', makeSandbox({ subjects: [] }).sb.renderNotasHTML().includes('Ajustes › Asignaturas'));
+
+    const form = makeSandbox();
+    const added = await form.sb.addExam({ ...FORM, grade: '6,5' });
+    check('G18. el formulario del examen también pone la nota', added.ok && added.exam.grade === 6.5);
+    await form.sb.updateExam(added.exam.id, { ...FORM, grade: '' });
+    check('G19. y la puede quitar; si el formulario no trae nota, no se toca', added.exam.grade === null
+      && (await form.sb.updateExam(added.exam.id, { ...FORM, grade: '9' }), added.exam.grade === 9)
+      && (await form.sb.updateExam(added.exam.id, FORM), added.exam.grade === 9));
+    check('G20. nota no válida en el formulario -> error', (await form.sb.addExam({ ...FORM, grade: '10,5' })).errors.grade);
+    check('G21. la ventana del examen tiene la casilla "Nota (opcional)"', openExamModalSrc.includes('name="grade"') && openExamModalSrc.includes("grade: fd.get('grade') || ''"));
+    check('G22. menú: Inicio, Calendario, Horario, Notas, Ajustes (en ese orden)', (() => {
+      const order = ['inicio', 'calendario', 'horario', 'notas', 'ajustes'].map(v => html.indexOf(`data-view="${v}"`));
+      return order.every(i => i > 0) && order.every((i, k) => k === 0 || i > order[k - 1]) && html.includes('id="view-notas"')
+        && html.includes("currentView === 'notas') renderNotas()");
+    })());
   }
 
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);
