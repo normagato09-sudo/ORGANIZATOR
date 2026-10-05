@@ -1,7 +1,7 @@
 /**
  * ORGANIZATOR — Polyfill de window.storage (Fase 6, PWA)
  *
- * organizator.html guarda todos sus datos (tareas, eventos, Rubik, horarios
+ * organizator.html guarda todos sus datos (tareas, eventos, asignaturas, exámenes, horarios
  * personalizados, ajustes...) llamando a `window.storage.get/set/delete/list`.
  * Esa API la proporciona automáticamente el entorno de artefactos de Claude.ai,
  * pero NO existe en un navegador normal (por ejemplo, al abrir la app ya
