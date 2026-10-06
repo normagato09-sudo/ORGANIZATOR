@@ -282,9 +282,8 @@ async function loadPage(device) {
     function todayStr(){ return '2026-09-27'; }
     function showToast(m){ __page.toasts.push(m); }
     function renderCurrentView(){}
-    function initIA(){ __page.calls.push('initIA'); }
     function initSettingsDataIO(){}
-    function initPWA(){}
+    function initPWA(){ __page.calls.push('initPWA'); }
     function startReminderPolling(){}
     function reconcilePushSubscriptionOnStartup(){}
     const REMINDERS_ENABLED = false;
@@ -314,7 +313,7 @@ async function loadPage(device) {
   };
   page.clickOutside = async () => { el('modal-overlay').fire('click', { target: el('modal-overlay') }); await settle(); };
   page.store = () => sb.SyncStorage.current();
-  page.appStarted = () => page.calls.includes('initIA');
+  page.appStarted = () => page.calls.includes('initPWA');
   // Cerrar la página: su almacén deja de sincronizar en segundo plano.
   page.close = async () => { await sb.SyncStorage.deactivate(); await settle(); };
   return page;

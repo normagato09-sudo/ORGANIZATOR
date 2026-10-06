@@ -9,11 +9,6 @@
  * cual, sin tocar ni un carácter) — mismo patrón que el resto de la suite
  * (test-ia-week-validation.js, test-ia-revalidate-before-apply.js, etc.).
  *
- * También comprueba, por separado, que schedulerContext() de
- * js/ai-actions.js (el único punto de ese archivo tocado en esta fase)
- * resuelve blocksSchedule igual que el resto de la app, sin afectar a
- * buildActionContext ni al resto del contrato público de AIActions.
- *
  * Uso:  node js/test-event-categories.js
  * Sale con código 0 si todo pasa, 1 si algo falla.
  */
@@ -25,11 +20,9 @@ const vm = require('vm');
 const ROOT = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT, 'organizator.html');
 const SCHEDULER_PATH = path.join(ROOT, 'js', 'scheduler.js');
-const AI_ACTIONS_PATH = path.join(ROOT, 'js', 'ai-actions.js');
 
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const schedulerSrc = fs.readFileSync(SCHEDULER_PATH, 'utf8');
-const aiActionsSrc = fs.readFileSync(AI_ACTIONS_PATH, 'utf8');
 
 function extractBetween(source, startMarker, endMarker, label) {
   const start = source.indexOf(startMarker);
@@ -278,53 +271,6 @@ function makeSandbox() {
     check('13. eventsForScheduler() no toca ni copia state.tasks (misma referencia, sin campos nuevos)',
       sb.state.tasks[0] === originalTask && !('blocksSchedule' in sb.state.tasks[0]));
     check('13. task.category (texto libre) sigue intacto, sin relación con eventCategories', sb.state.tasks[0].category === 'Cole');
-  }
-
-  // =====================================================================
-  section('14) Propuestas IA / schedulerContext no rompen su contrato');
-  // =====================================================================
-  {
-    // 14a) El único cambio de esta fase en ai-actions.js es schedulerContext();
-    // buildActionContext (el texto que lee la IA) no debe mencionar categorías.
-    const buildActionContextSrc = extractBetween(
-      aiActionsSrc,
-      'function buildActionContext() {',
-      '\n  /* ---------------- Aplicar el resultado de la IA ---------------- */',
-      'buildActionContext'
-    );
-    check('14. buildActionContext() no se ha tocado: no menciona categoryId/eventCategories',
-      !/categoryId|eventCategories/.test(buildActionContextSrc));
-
-    // 14b) schedulerContext() resuelve blocksSchedule vía eventsForScheduler()
-    // cuando existe, y sigue funcionando (sin lanzar) cuando no existe.
-    const schedulerContextSrc = extractBetween(
-      aiActionsSrc,
-      'function schedulerContext() {',
-      '\n\n  async function applyCreateTask',
-      'schedulerContext'
-    );
-    const sb2 = {};
-    sb2.global = sb2;
-    sb2.console = console;
-    vm.createContext(sb2);
-    sb2.state = {
-      tasks: [{ id: 't1' }],
-      events: [{ id: 'e1', allDay: true, categoryId: 'catA' }],
-      customSchedules: [],
-    };
-    vm.runInContext(schedulerContextSrc + '\nthis.schedulerContext = schedulerContext;', sb2, { filename: 'ai-actions.js (schedulerContext)' });
-    const ctxWithoutHelper = sb2.schedulerContext();
-    check('14. sin eventsForScheduler() disponible, schedulerContext() no lanza y usa state.events tal cual (fallback seguro)',
-      Array.isArray(ctxWithoutHelper.events) && ctxWithoutHelper.events[0].id === 'e1' && ctxWithoutHelper.tasks[0].id === 't1');
-
-    sb2.eventsForScheduler = () => sb2.state.events.map(e => Object.assign({}, e, { blocksSchedule: e.categoryId === 'catA' ? false : true }));
-    const ctxWithHelper = sb2.schedulerContext();
-    check('14. con eventsForScheduler() disponible, schedulerContext() la usa y blocksSchedule llega resuelto',
-      ctxWithHelper.events[0].blocksSchedule === false);
-
-    // 14c) El contrato público de AIActions (runIAAction/buildActionContext/ACTION_SCHEMA/ACTION_RULES) sigue igual.
-    check('14. ai-actions.js sigue exportando exactamente el mismo contrato público (AIActions)',
-      /global\.AIActions = \{ runIAAction, buildActionContext, ACTION_SCHEMA, ACTION_RULES \};/.test(aiActionsSrc));
   }
 
   // =====================================================================

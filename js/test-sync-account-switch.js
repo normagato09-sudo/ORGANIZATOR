@@ -41,7 +41,7 @@ const ledgerSaveSrc = extractBetween(html, 'async function saveReminderNotificat
 const authBlockSrc = extractBetween(html, `${HDR}AUTENTICACIÓN`, '\n</script>', 'bloque AUTENTICACIÓN + INICIALIZACIÓN');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n(async function init(){', 'startApp()');
 // Paso 8: bloque real de Exportar / Importar / Borrar datos (incluye el saneamiento de importación).
-const dataIOSrc = extractBetween(html, '/* ---------- Exportar / Importar / Borrar datos ---------- */', `\n\n${HDR}IA — ASISTENTE PERSONAL`, 'bloque Exportar/Importar/Borrar');
+const dataIOSrc = extractBetween(html, '/* ---------- Exportar / Importar / Borrar datos ---------- */', `\n\n${HDR}PWA — registro del Service Worker`, 'bloque Exportar/Importar/Borrar');
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -264,8 +264,7 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     function todayStr(){ return '2026-09-27'; }
     function showToast(m){ __page.toasts.push(m); }
     function renderCurrentView(){ __page.calls.push('render'); }
-    function initIA(){ __page.calls.push('initIA'); }
-    function initPWA(){}
+    function initPWA(){ __page.calls.push('initPWA'); }
     function startReminderPolling(){}
     function reconcilePushSubscriptionOnStartup(){ __page.calls.push('reconcilePush'); }
     const REMINDERS_ENABLED = false;
@@ -318,9 +317,9 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   section('A) Primer uso: la hermana inicia sesión y crea tareas');
   // =====================================================================
   let page = await loadPage(phone);
-  check('A1. sin sesión se muestra el login y la app no arranca', page.authVisible() && !page.calls.includes('initIA'));
+  check('A1. sin sesión se muestra el login y la app no arranca', page.authVisible() && !page.calls.includes('initPWA'));
   await page.login(SIS.email, SIS.password);
-  check('A2. tras el login arranca la app', !page.authVisible() && page.calls.includes('initIA'));
+  check('A2. tras el login arranca la app', !page.authVisible() && page.calls.includes('initPWA'));
   check('A3. window.storage es el almacén de SU cuenta', page.store() && page.store().userId === SIS.id && page.sb.storage === page.store().storage);
   check('A4. se guarda el último usuario (sin token)', JSON.parse(phone.localStorage.get('organizator:lastUser')).id === SIS.id && !/token|password/i.test(phone.localStorage.get('organizator:lastUser')));
   await page.addTask('s1', 'Examen de mates');
@@ -351,7 +350,7 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   section('C) El hermano entra en el mismo móvil');
   // =====================================================================
   page = await loadPage(phone);
-  check('C1. tras recargar se pide login (no se entra solo en la cuenta anterior)', page.authVisible() && !page.calls.includes('initIA'));
+  check('C1. tras recargar se pide login (no se entra solo en la cuenta anterior)', page.authVisible() && !page.calls.includes('initPWA'));
   await page.login(BRO.email, BRO.password);
   check('C2. el hermano NO ve ninguna tarea de la hermana', page.app.state.tasks.length === 0);
   check('C3. su window.storage no tiene nada de ella', (await page.sb.storage.get('tasks')) === null && (await page.sb.storage.get('reminderNotificationLedger')) === null);
@@ -405,7 +404,7 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   const newDevice = makeDevice();
   newDevice.online = false;
   const fresh = await loadPage(newDevice);
-  check('G4. sin conexión y sin usuario previo en el dispositivo: login (no se inventa sesión)', fresh.authVisible() && !fresh.calls.includes('initIA'));
+  check('G4. sin conexión y sin usuario previo en el dispositivo: login (no se inventa sesión)', fresh.authVisible() && !fresh.calls.includes('initPWA'));
 
   // =====================================================================
   section('H) Cerrar sesión sin conexión y con cambios sin subir');
@@ -456,7 +455,7 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   broken.cookieUserId = BRO.id;
   const brokenPage = await loadPage(broken, { withSyncStorage: false, legacyStorage: legacy });
   check('J1. no se cargan datos del almacén antiguo (compartido entre cuentas)', brokenPage.app.state.tasks.length === 0);
-  check('J2. se avisa al usuario y la app no sigue arrancando', brokenPage.toasts.some(t => /no se pudieron cargar/i.test(t)) && !brokenPage.calls.includes('initIA'));
+  check('J2. se avisa al usuario y la app no sigue arrancando', brokenPage.toasts.some(t => /no se pudieron cargar/i.test(t)) && !brokenPage.calls.includes('initPWA'));
 
   // =====================================================================
   section('K) Ajustes: estado, exportar, importar y borrar actúan sobre la cuenta actual (paso 8)');

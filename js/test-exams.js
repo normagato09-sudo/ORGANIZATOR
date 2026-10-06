@@ -213,9 +213,9 @@ const FORM = { subjectId: 's1', type: 'examen', title: '  Tema 3  ', date: '2026
     const manyOut = many.sb.renderUpcomingHTML('2026-10-05');
     check('F10. la lista se corta en 10 y dice cuántos más hay', (manyOut.match(/class="upcoming-row"/g) || []).length === many.sb.UPCOMING_LIST_MAX && manyOut.includes('Y 3 más en el Calendario.'));
     const inicio = extractBetween(html, '<div class="view active" id="view-inicio">', '<!-- ===================== CALENDARIO', 'vista Inicio');
-    check('F12. Inicio: "Hoy" y el asistente ocultos (su HTML y su código siguen), sin barra lateral',
-      /<section class="block" hidden>\s*<div class="block-head">\s*<h2>Hoy<\/h2>/.test(inicio) && /<section class="block" hidden>\s*<div class="block-head">\s*<h2>🤖 Asistente ORGANIZATOR<\/h2>/.test(inicio)
-      && inicio.includes('id="today-timeline"') && inicio.includes('id="ia-chat-form"') && html.includes('const showAside = false;')
+    check('F12. Inicio: "Hoy" oculto (su HTML y su código siguen), sin asistente de IA ni barra lateral',
+      /<section class="block" hidden>\s*<div class="block-head">\s*<h2>Hoy<\/h2>/.test(inicio) && !inicio.includes('Asistente ORGANIZATOR')
+      && inicio.includes('id="today-timeline"') && !html.includes('id="ia-chat-form"') && html.includes('const showAside = false;')
       && (inicio.match(/<section class="block">/g) || []).length === 1 && html.includes('section.block[hidden]'));
     check('F11. Inicio pinta el bloque arriba del todo', html.indexOf('id="upcoming-exams"') > 0 && html.indexOf('id="upcoming-exams"') < html.indexOf('id="today-timeline"')
       && extractBetween(html, 'function renderInicio(){', '\n}\n', 'renderInicio()').includes('renderUpcoming();'));

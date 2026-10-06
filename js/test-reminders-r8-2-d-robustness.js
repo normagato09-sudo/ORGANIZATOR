@@ -90,7 +90,7 @@ const remindersSrc = extractBetween(
 const deleteAllDataSrc = extractBetween(
   html,
   'async function deleteAllData(){',
-  '\n\n/* ==================================================================\n   IA — ASISTENTE PERSONAL',
+  '\n\n/* ==================================================================\n   PWA — registro del Service Worker',
   'función deleteAllData()'
 );
 

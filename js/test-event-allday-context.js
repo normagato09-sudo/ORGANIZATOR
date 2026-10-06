@@ -41,11 +41,9 @@ const { execFileSync } = require('child_process');
 const ROOT = path.join(__dirname, '..');
 const HTML_PATH = path.join(ROOT, 'organizator.html');
 const SCHEDULER_PATH = path.join(ROOT, 'js', 'scheduler.js');
-const AI_ACTIONS_PATH = path.join(ROOT, 'js', 'ai-actions.js');
 
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const schedulerSrc = fs.readFileSync(SCHEDULER_PATH, 'utf8');
-const aiActionsSrc = fs.readFileSync(AI_ACTIONS_PATH, 'utf8');
 
 function extractBetween(source, startMarker, endMarker, label) {
   const start = source.indexOf(startMarker);
@@ -390,28 +388,6 @@ function dowOf(y, m, d) {
     check('15. getFreeSlotsFormatted() ofrece los mismos huecos con o sin el evento-contexto',
       JSON.stringify(withoutCtx) === JSON.stringify(withCtx) && withCtx.length > 0);
 
-    // 15b) schedulerContext() de ai-actions.js sigue resolviendo blocksSchedule
-    // vía eventsForScheduler() cuando existe, tal como ya hacía en 6A-3.
-    const schedulerContextSrc = extractBetween(
-      aiActionsSrc,
-      'function schedulerContext() {',
-      '\n\n  async function applyCreateTask',
-      'schedulerContext'
-    );
-    const sb2 = {};
-    sb2.global = sb2;
-    sb2.console = console;
-    vm.createContext(sb2);
-    sb2.state = {
-      tasks: [{ id: 't1' }],
-      events: [{ id: 'ctx1', allDay: true, categoryId: 'catCtx' }],
-      customSchedules: [],
-    };
-    sb2.eventsForScheduler = () => sb2.state.events.map(e => Object.assign({}, e, { blocksSchedule: e.categoryId === 'catCtx' ? false : true }));
-    vm.runInContext(schedulerContextSrc + '\nthis.schedulerContext = schedulerContext;', sb2, { filename: 'ai-actions.js (schedulerContext)' });
-    const built = sb2.schedulerContext();
-    check('15. schedulerContext() entrega a la IA el evento-contexto con blocksSchedule=false ya resuelto (huecos siguen disponibles para proponer tareas)',
-      built.events[0].blocksSchedule === false && built.tasks[0].id === 't1');
   }
 
   // =====================================================================

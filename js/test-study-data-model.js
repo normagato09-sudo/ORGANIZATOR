@@ -41,7 +41,7 @@ const importBlockSrc = extractBetween(html, '    const sanitizedStudy = {};', ' 
 const subjectsBlockSrc = extractBetween(html, '/* ==================================================================\n   ASIGNATURAS (app de exámenes, paso 2)', '\n/* ==================================================================\n   RENDER: AJUSTES', 'bloque ASIGNATURAS');
 const exportDataSrc = extractBetween(html, 'function exportData(){', '\n  try{', 'función exportData()');
 const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'función initSettingsDataIO()');
-const deleteAllSrc = extractBetween(html, 'async function deleteAllData(){', '\n/* ==================================================================\n   IA — ASISTENTE PERSONAL', 'función deleteAllData()');
+const deleteAllSrc = extractBetween(html, 'async function deleteAllData(){', '\n/* ==================================================================\n   PWA — registro del Service Worker', 'función deleteAllData()');
 
 let pass = 0, fail = 0;
 function check(label, ok) {
