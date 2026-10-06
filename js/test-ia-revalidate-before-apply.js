@@ -3,9 +3,8 @@
  *
  * Suite Node pura, SIN navegador ni jsdom: extrae literalmente el código
  * real de organizator.html (revalidateIAProposalBeforeApply,
- * wireIAProposalButtons, applyIAProposal, buildSemanaDayAgendaBlocks,
- * spliceProposalsIntoBlocks, getWeekIAProposalsForDate, ciclo de vida de
- * propuestas de 5D) y lo ejecuta con el js/scheduler.js real del proyecto
+ * wireIAProposalButtons, applyIAProposal, spliceProposalsIntoBlocks,
+ * ciclo de vida de propuestas de 5D) y lo ejecuta con el js/scheduler.js real del proyecto
  * (cargado tal cual, sin tocar ni un carácter) — igual que test-ia-week-
  * validation.js hace con validateWeeklyProposal.
  *
@@ -17,9 +16,6 @@
  *     applyIAProposal(): si falla, NO se crea la entidad, la propuesta
  *     sigue "pending" (recuperable), recibe schedulingWarning y se avisa
  *     por toast; si pasa, el comportamiento es exactamente el de 5F-2.
- *  C) buildSemanaDayAgendaBlocks()/spliceProposalsIntoBlocks() ya no
- *     ocultan en silencio una propuesta pending cuyo hueco antiguo dejó
- *     de caber (_noRoom): sigue apareciendo, con aviso.
  *
  * Uso:  node js/test-ia-revalidate-before-apply.js
  * Sale con código 0 si todo pasa, 1 si algo falla.
@@ -86,9 +82,7 @@ const src = [
   extractFn(/async function applyIAProposal\(it, date\)\{/, 'applyIAProposal'),
   extractFn(/function revalidateIAProposalBeforeApply\(it\)\{/, 'revalidateIAProposalBeforeApply'),
   extractFn(/function wireIAProposalButtons\(container\)\{/, 'wireIAProposalButtons'),
-  extractFn(/function getWeekIAProposalsForDate\(dateStr\)\{/, 'getWeekIAProposalsForDate'),
   extractFn(/function spliceProposalsIntoBlocks\(blocks, placedProposals\)\{/, 'spliceProposalsIntoBlocks'),
-  extractFn(/function buildSemanaDayAgendaBlocks\(dateStr, schedCtx\)\{/, 'buildSemanaDayAgendaBlocks'),
 ].join('\n');
 
 check(typeof src === 'string' && src.length > 0, 'todas las funciones necesarias se extrajeron literalmente de organizator.html');
@@ -121,17 +115,16 @@ function buildSandbox({ initialProposals = [], events = [], tasks = [], customSc
   const currentView = 'inicio';
   function renderInicio() {}
   function renderCalendar() {}
-  function renderSemana() {}
 
   const context = {
     state, window: window_, uid, todayStr, pad, sanitizeRecurrence, showToast,
-    currentView, renderInicio, renderCalendar, renderSemana,
+    currentView, renderInicio, renderCalendar,
     module: { exports: {} }, console,
   };
   vm.createContext(context);
   vm.runInContext(schedulerSrc, context, { filename: 'js/scheduler.js' });
   vm.runInContext(
-    src + '\nmodule.exports = { wireIAProposalButtons, applyIAProposal, revalidateIAProposalBeforeApply, setIAProposalStatus, getIAProposalById, getIAProposalFromBatch, buildSemanaDayAgendaBlocks, spliceProposalsIntoBlocks, get iaProposals(){ return iaProposals; } };',
+    src + '\nmodule.exports = { wireIAProposalButtons, applyIAProposal, revalidateIAProposalBeforeApply, setIAProposalStatus, getIAProposalById, getIAProposalFromBatch, spliceProposalsIntoBlocks, get iaProposals(){ return iaProposals; } };',
     context,
     { filename: 'organizator.html (extraído 5F-3C)' }
   );
@@ -285,44 +278,6 @@ section('A — revalidateIAProposalBeforeApply(), comprobaciones directas');
     await btn.click();
     check(p.status === 'applied', 'B4. segundo intento (hueco ya libre) sí la aplica: sigue siendo recuperable');
     check(env.state.events.length === 0 && env.state.tasks.length === 1, 'B4. se crea exactamente 1 tarea en total (no quedó duplicada por el primer intento fallido)');
-  }
-
-  // =====================================================================
-  // C — buildSemanaDayAgendaBlocks()/spliceProposalsIntoBlocks(): una
-  // propuesta pending cuyo hueco antiguo ya no cabe (_noRoom) sigue
-  // apareciendo en los bloques de Semana, con aviso, en vez de
-  // desaparecer en silencio.
-  // =====================================================================
-  section('C — propuestas desplazadas (_noRoom) siguen visibles en Semana');
-  {
-    const DATE = '2026-09-15';
-    // Propuesta semanal pendiente, colocada originalmente en 10:00-10:45.
-    const p = { id: 'ia-c1', batchId: 'batch-c1', source: 'week', status: 'pending', title: 'Repasar temario', kind: 'task', reason: null, time: '10:00', _endTime: '10:45', _durationMinutes: 45, applyDate: DATE, noSlot: false };
-    // Después de generarse, se añade un evento nuevo que ocupa TODO el
-    // rango 09:00-11:00 — el hueco exacto de la propuesta (10:00-10:45)
-    // ya no encaja en ningún bloque libre.
-    const events = [{ id: 'ev-new', date: DATE, startTime: '09:00', endTime: '11:00' }];
-    const env = buildSandbox({ initialProposals: [p], events });
-    const schedCtx = { events: env.state.events, tasks: env.state.tasks, customSchedules: env.state.customSchedules };
-    const blocks = env.buildSemanaDayAgendaBlocks(DATE, schedCtx);
-
-    const proposalBlocks = blocks.filter(b => b.type === 'proposal' && b.id === p.id);
-    check(proposalBlocks.length === 1, 'C1. la propuesta desplazada sigue presente en los bloques (no desaparece)');
-    check(proposalBlocks.length === 1 && typeof proposalBlocks[0].schedulingWarning === 'string' && proposalBlocks[0].schedulingWarning.length > 0, 'C2. la propuesta desplazada lleva un schedulingWarning explicando el motivo');
-    check(p.status === 'pending', 'C3. la propuesta real en iaProposals sigue pending (no se descarta ni se recoloca)');
-    check(typeof p.schedulingWarning === 'string' && p.schedulingWarning.length > 0, 'C4. la propuesta real en iaProposals también recibe el aviso (persiste entre renders)');
-  }
-  {
-    // Control: si el hueco SIGUE libre, la propuesta se sigue colocando
-    // en su hora real (comportamiento sin cambios, mismo camino de 5E-4).
-    const DATE = '2026-09-16';
-    const p = { id: 'ia-c2', batchId: 'batch-c2', source: 'week', status: 'pending', title: 'Repasar temario', kind: 'task', reason: null, time: '10:00', _endTime: '10:45', _durationMinutes: 45, applyDate: DATE, noSlot: false };
-    const env = buildSandbox({ initialProposals: [p] });
-    const schedCtx = { events: env.state.events, tasks: env.state.tasks, customSchedules: env.state.customSchedules };
-    const blocks = env.buildSemanaDayAgendaBlocks(DATE, schedCtx);
-    const proposalBlock = blocks.find(b => b.type === 'proposal' && b.id === p.id);
-    check(!!proposalBlock && proposalBlock.startTime === '10:00', 'C5. con el hueco libre, la propuesta se sigue colocando en su hora real (sin regresión)');
-    check(!!proposalBlock && proposalBlock.schedulingWarning === undefined, 'C6. con el hueco libre, no lleva ningún aviso');
   }
 
   console.log(`\n${passed} pasaron, ${failures} fallaron.`);

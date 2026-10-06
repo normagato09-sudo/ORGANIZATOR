@@ -181,9 +181,9 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
     ] });
     const rows = sb.renderScheduleRows();
     check('D6. en Ajustes las clases llevan el punto de color de su asignatura', rows.includes('background:#D64545') && (rows.match(/subject-dot/g) || []).length === 1);
-    check('D7. menú: Inicio, Calendario, Horario, Ajustes (sin Semana); la vista Semana sigue existiendo',
+    check('D7. menú: Inicio, Calendario, Horario, Ajustes (sin Semana); la vista Semana ya no existe',
       ['inicio', 'calendario', 'horario', 'ajustes'].every(v => html.includes(`data-view="${v}"`)) && !html.includes('data-view="semana"')
-      && html.includes('id="view-semana"') && html.includes('function renderSemana(){') && renderCurrentViewSrc.includes("currentView === 'horario') renderHorario()"));
+      && !html.includes('id="view-semana"') && !html.includes('function renderSemana(){') && renderCurrentViewSrc.includes("currentView === 'horario') renderHorario()"));
     check('D8. import: una clase cuya asignatura no viene en la copia pierde el subjectId', importFnSrc.includes('!state.subjects.some(x => x.id === s.subjectId)) ? { ...s, subjectId: null }'));
     check('D9. js/scheduler.js no usa subjectId (no se toca)', !fs.readFileSync(path.join(ROOT, 'js', 'scheduler.js'), 'utf8').includes('subjectId'));
   }

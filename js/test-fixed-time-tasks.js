@@ -38,7 +38,7 @@ const sources = [
   ['config', extractBetween(html, 'const PRIORITIES = ', '\n\n/* ==================================================================\n   AJUSTES', 'PRIORITIES/DOW_*/MONTH_NAMES')],
   ['fechas', extractBetween(html, '/* ==================================================================\n   UTILIDADES DE FECHA', '\n\n/* ==================================================================\n   HORARIOS BLOQUEADOS', 'UTILIDADES DE FECHA')],
   ['horarios', extractBetween(html, 'function schedulesForDow(dow){', '\n}\n', 'schedulesForDow') + '\n}\n'],
-  ['semana helpers', extractBetween(html, 'function dowOfDate(dateStr){', '\nfunction weekGoForward(){', 'dowOfDate/getWeekMonday/getWeekDays')],
+  ['semana helpers', extractBetween(html, 'function dowOfDate(dateStr){', '\n\n/* ==================================================================\n   ALMACENAMIENTO', 'dowOfDate/getWeekMonday/getWeekDays')],
   ['recurrencia', extractBetween(html, '/* ==================================================================\n   SANEAMIENTO DE EVENTOS/CATEGORÍAS IMPORTADOS', '\n\nfunction initSettingsDataIO(){', 'SANEAMIENTO + RECURRENCIA')],
   ['categorías + R-6', extractBetween(html, '/* ==================================================================\n   CATEGORÍAS DE EVENTOS (Fase 6A-3)', '\n\n/* ==================================================================\n   RECORDATORIOS — cálculo de remindAt', 'CATEGORÍAS + R-6')],
   ['CRUD', extractBetween(html, '/* ==================================================================\n   CRUD', '\n\n/* ==================================================================\n   RECORDATORIOS', 'CRUD')],
@@ -53,7 +53,7 @@ const sources = [
   ['expire', extractBetween(html, 'function iaExpirePendingProposalsBeforeReset(){', '\n/** Franja real de una propuesta IA', 'iaExpirePendingProposalsBeforeReset')],
   ['applyIAProposal', extractBetween(html, '/** Franja real de una propuesta IA', '\n/* ---------- Organizar mi día', 'iaProposalSlot/findIAProposalSourceTask/applyIAProposal')],
   ['runIADay + runIAWeek', extractBetween(html, 'async function runIADay(){', '\n/* ---------- Chat con la IA', 'runIADay + runIAWeek')],
-  ['badges', extractBetween(html, 'function renderEventContextBadges(eventContext){', '\n/* ---------- Semana: lo del día', 'renderEventContextBadges')],
+  ['badges', extractBetween(html, 'function renderEventContextBadges(eventContext){', '\n\n/* ==================================================================\n   RECURRENCIA — UI compartida', 'renderEventContextBadges')],
 ];
 
 function makeSandbox() {
@@ -66,7 +66,6 @@ function makeSandbox() {
   sandbox.iaThreadAddPending = () => ({});
   sandbox.iaThreadResolve = () => {};
   sandbox.wireIAProposalButtons = () => {};
-  sandbox.renderSemana = () => {};
   sandbox.renderInicio = () => {};
   sandbox.renderCalendar = () => {};
   sandbox.renderCurrentView = () => {};
@@ -93,10 +92,6 @@ function check(name, cond) {
   else { fail++; console.log(`  ❌ ${name}`); }
 }
 function section(title) { console.log(`\n${title}`); }
-
-// Vista Semana: agenda de un día y lo que queda sin bloque.
-const semanaSrc = extractBetween(html, 'function renderSemanaAgenda(blocks){', '\n\n/* ---------- 5E-4: propuestas IA semanales', 'renderSemanaAgenda')
-  + '\n' + extractBetween(html, '/* ---------- Semana: lo del día que NO ocupa', '\nfunction renderSemanaDayItems(items){', 'semanaDayUnplacedItems');
 
 // Semana futura fija: el resultado no depende del día del test.
 const MON = '2030-03-11', WED = '2030-03-13', SUN = '2030-03-17';
@@ -153,23 +148,6 @@ const fixedTask = (o) => Object.assign({ id: 'fija', title: 'Dentista', dueDate:
     check('C. la propuesta no se coloca encima del dentista: queda sin hora', !!p && !p.time);
     check('C. revalidar una propuesta encima falla', !sb.revalidateIAProposalBeforeApply({ id: 'z', time: '17:15', _endTime: '17:45', applyDate: WED }).valid);
     check('C. revalidar en otra hora libre sí vale', sb.revalidateIAProposalBeforeApply({ id: 'z', time: '06:00', _endTime: '06:30', applyDate: WED }).valid);
-  }
-
-  section('D — vista Semana: bloque 📚 en su hora, sin repetirla aparte');
-  {
-    const sb = makeSandbox();
-    vm.runInContext(semanaSrc, sb, { filename: 'organizator.html (Semana)' });
-    sb.state.tasks.push(fixedTask());
-    const schedCtx = { events: [], tasks: sb.tasksForScheduler(MON, SUN), customSchedules: [] };
-    const blocks = sb.Scheduler.buildDayBlocks(WED, schedCtx).blocks;
-    check('D. bloque de tarea 17:00–18:00 con su id', blocks.some(b => b.type === 'busy' && b.kinds[0] === 'task' && b.ids[0] === 'fija' && b.startTime === '17:00' && b.endTime === '18:00'));
-    const html = sb.renderSemanaAgenda(blocks);
-    check('D. se pinta como 📚 Dentista', /📚<\/div>\s*<div class="ia-ag-body"><div class="ia-ag-title">Dentista/.test(html));
-    const occ = sb.taskOccurrencesInRange(sb.state.tasks, MON, SUN);
-    const unplaced = sb.semanaDayUnplacedItems(WED, blocks, occ, []);
-    check('D. no aparece otra vez en la lista "sin bloque"', !unplaced.some(it => it.id === 'fija'));
-    sb.state.tasks[0].done = true;
-    check('D. hecha: ✅ en su bloque', sb.renderSemanaAgenda(sb.Scheduler.buildDayBlocks(WED, { events: [], tasks: sb.tasksForScheduler(MON, SUN), customSchedules: [] }).blocks).includes('✅'));
   }
 
   section('E — chat (ai-actions.js): tampoco coloca ni recoloca encima');

@@ -58,7 +58,7 @@ const dateUtilsSrc = extractBetween(
   '\n\n/* ==================================================================\n   HORARIOS BLOQUEADOS',
   'bloque UTILIDADES DE FECHA'
 );
-const weekHelpersSrc = extractBetween(html, 'function dowOfDate(dateStr){', '\nfunction weekGoForward(){', 'helpers dowOfDate/getWeekMonday');
+const weekHelpersSrc = extractBetween(html, 'function dowOfDate(dateStr){', '\n\n/* ==================================================================\n   ALMACENAMIENTO', 'helpers dowOfDate/getWeekMonday');
 const recurrenceSrc = extractBetween(
   html,
   '/* ==================================================================\n   SANEAMIENTO DE EVENTOS/CATEGORÍAS IMPORTADOS',

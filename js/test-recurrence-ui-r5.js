@@ -90,7 +90,7 @@ const dateUtilsSrc = extractBetween(
 const weekHelpersSrc = extractBetween(
   html,
   'function dowOfDate(dateStr){',
-  '\nfunction weekGoForward(){',
+  '\n\n/* ==================================================================\n   ALMACENAMIENTO',
   'helpers dowOfDate/getWeekMonday'
 );
 
