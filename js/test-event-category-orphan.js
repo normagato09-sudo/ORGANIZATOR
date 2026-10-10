@@ -101,18 +101,8 @@ const modalCollapsibleSrc = extractBetween(
 // lanza un ReferenceError antes de llegar a generar el <select> de
 // categoría. Se extraen literalmente (no se reimplementan) los mismos
 // bloques que ya usan test-reminders-model.js/test-reminders-ui.js.
-const remindersFase1Src = extractBetween(
-  html,
-  '/* ==================================================================\n   RECORDATORIOS — estructura de datos mínima (Fase 1)',
-  '\n\n/* ==================================================================\n   CATEGORÍAS DE EVENTOS (Fase 6A-3)',
-  'bloque RECORDATORIOS (Fase 1)'
-);
-const remindersFase3Src = extractBetween(
-  html,
-  '/* ==================================================================\n   RECORDATORIOS — integración con la interfaz (Fase 3, SIN notificaciones)',
-  '\n\n/* ==================================================================\n   TOAST',
-  'bloque RECORDATORIOS (Fase 3, integración UI)'
-);
+const remindersFase1Src = ''; // recordatorios locales borrados (bloque 5)
+const remindersFase3Src = ''; // recordatorios locales borrados (bloque 5)
 
 // ---------------- Utilidades de test ----------------
 let pass = 0, fail = 0;

@@ -89,7 +89,7 @@ const recurrenceSrc = extractBetween(
 const categoriesAndR6Src = extractBetween(
   html,
   '/* ==================================================================\n   CATEGORÍAS DE EVENTOS (Fase 6A-3)',
-  '\n\n/* ==================================================================\n   RECORDATORIOS — cálculo de remindAt',
+  '\n\n/* ==================================================================\n   RECORDATORIOS — cancelar en el servidor',
   'bloque CATEGORÍAS DE EVENTOS + RECURRENCIA — integración con vistas (Fase R-6)'
 );
 
@@ -100,7 +100,7 @@ const categoriesAndR6Src = extractBetween(
 const crudSrc = extractBetween(
   html,
   '/* ==================================================================\n   CRUD',
-  '\n\n/* ==================================================================\n   RECORDATORIOS',
+  '\n\n/* ==================================================================\n   CATEGORÍAS DE EVENTOS',
   'bloque CRUD'
 );
 

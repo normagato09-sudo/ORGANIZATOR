@@ -752,12 +752,9 @@
 <!-- R-8.2-D: ledger persistente (IndexedDB propio, independiente de
      window.storage) de qué reminderId ya mostró un push el Service
      Worker — el MISMO archivo que carga sw.js vía importScripts, para
-     que ambos realms compartan una única implementación. Debe cargarse
-     antes del script principal para que triggerDueReminders() ya
-     encuentre window.SWPushLedger disponible (ver bloque RECORDATORIOS
-     — robustez de Web Push, más abajo). Si falla al cargar,
-     window.SWPushLedger simplemente no existe y ese bloque ya está
-     preparado para ese caso (nunca lanza, ver su propia doc). -->
+     que ambos realms compartan una única implementación. La página solo
+     lo vacía (al importar, borrar los datos o cerrar sesión); si falla al
+     cargar, window.SWPushLedger no existe y esas llamadas no hacen nada. -->
 <script src="/js/sw-push-ledger.js"></script>
 
 <!-- Duration Learning (aprendizaje de duración real de tareas): debe
@@ -1144,16 +1141,6 @@ async function updateTask(id, data){
 async function deleteTask(id){
   state.tasks = state.tasks.filter(x=>x.id!==id);
   await saveTasks();
-  // Fase 3 de recordatorios: cancela (no borra) los reminders asociados,
-  // cubriendo TODOS los puntos de entrada de borrado (modal y listas
-  // rápidas), no solo uno. Fase R-7: cancelRemindersForTaskAndOccurrences
-  // (en vez de cancelRemindersForTarget('task', id) a secas) cancela
-  // también los reminders de las ocurrencias de esta tarea (targetId
-  // "id::fecha"), no solo el de la tarea base — si no, quedarían
-  // huérfanos al desaparecer la tarea de la que dependen. Ambas
-  // funciones se definen más abajo en el archivo, pero al ser function
-  // declarations quedan hoisted.
-  await cancelRemindersForTaskAndOccurrences(id);
 }
 async function toggleTask(id){
   const t = state.tasks.find(x=>x.id===id);
@@ -1226,70 +1213,6 @@ async function updateEvent(id, data){
 async function deleteEvent(id){
   state.events = state.events.filter(x=>x.id!==id);
   await saveEvents();
-  // Fase 3 de recordatorios: ver comentario equivalente en deleteTask().
-  await cancelRemindersForTarget('event', id);
-}
-
-/* ==================================================================
-   RECORDATORIOS — estructura de datos mínima (Fase 1)
-   Cada recordatorio: { id, targetType:'event'|'task', targetId, remindAt,
-   status:'pending'|'triggered'|'cancelled', createdAt }. Esta fase SOLO
-   guarda el dato: remindAt se recibe tal cual (nadie calcula todavía
-   cuándo debe avisarse) y nada de esto dispara ninguna notificación —
-   eso queda para una fase posterior. Mismo patrón que el resto del CRUD:
-   los helpers trabajan siempre por id (nunca por posición de array), no
-   lanzan si el id/target no existe, y devuelven null/[] de forma
-   previsible en vez de romper la app.
-   ================================================================== */
-async function addReminder(data){
-  const reminder = {
-    id: uid(),
-    targetType: data.targetType,
-    targetId: data.targetId,
-    remindAt: data.remindAt,
-    status: data.status || 'pending',
-    createdAt: Date.now(),
-  };
-  state.reminders.push(reminder);
-  await saveReminders();
-  return reminder;
-}
-/** Devuelve el recordatorio con ese id, o null si no existe. Nunca lanza. */
-function getReminderById(id){
-  return (state.reminders||[]).find(r=>r.id===id) || null;
-}
-/** Devuelve los recordatorios de un target (targetType+targetId) dado,
- * o [] si no tiene ninguno. Nunca lanza. */
-function getRemindersForTarget(targetType, targetId){
-  return (state.reminders||[]).filter(r=>r.targetType===targetType && r.targetId===targetId);
-}
-/** Actualiza por id (mismo patrón que updateEvent/updateTask: mutación
- * in-place del objeto encontrado, nunca de la posición en el array). El
- * id nunca se sobrescribe aunque `data` incluya uno. Devuelve el
- * recordatorio actualizado, o null si el id no existe (no lanza). */
-async function updateReminder(id, data){
-  const r = state.reminders.find(x=>x.id===id);
-  if(!r) return null;
-  Object.assign(r, data, { id: r.id });
-  await saveReminders();
-  return r;
-}
-/** Cancela un recordatorio por id (status:'cancelled'), sin tocar
- * ningún otro campo ni ningún otro recordatorio. Devuelve el
- * recordatorio actualizado, o null si el id no existe (no lanza). */
-async function cancelReminder(id){
-  const updated = await updateReminder(id, { status: 'cancelled' });
-  // R-8.2-B: intenta cancelar también el equivalente server-side
-  // (best-effort, ver bloque RECORDATORIOS — integración con Web Push
-  // más abajo). El try/catch de aquí es un cinturón de seguridad extra
-  // sobre el que ya tiene cancelReminderPush(): cubre incluso el caso
-  // de que ese helper no exista en el entorno (p.ej. un sandbox de test
-  // que no lo cargó) sin que eso rompa la cancelación local, que ya
-  // quedó aplicada en la línea de arriba.
-  if(updated){
-    try{ await cancelReminderPush(id); }catch(e){ console.warn('No se pudo cancelar el recordatorio en Web Push', e); }
-  }
-  return updated;
 }
 
 /* ==================================================================
@@ -1510,699 +1433,14 @@ async function toggleTaskOccurrenceFromView(taskId, occurrenceDate){
 }
 
 /* ==================================================================
-   RECORDATORIOS — cálculo de remindAt (Fase 2, SIN notificaciones)
-   calculateReminderAt() es una función PURA: no lee ni modifica state
-   ni ningún array, solo calcula a partir de sus argumentos. Recibe una
-   fecha/hora objetivo (string ISO o Date) y una anticipación en
-   minutos, y devuelve el ISO de cuándo debería avisarse (o null si
-   algo es inválido). No sabe nada de eventos de día completo,
-   recurrencia, cumpleaños ni zonas horarias avanzadas: eso son fases
-   posteriores.
-   createReminderForTarget() combina ese cálculo con addReminder() (la
-   creación real de la Fase 1, sin duplicar su lógica) para dejar listo
-   un reminder con remindAt ya calculado. Nada de esta fase se conecta
-   todavía a formularios, calendario, scheduler ni notificaciones: son
-   helpers preparados para que una fase posterior los use.
+   RECORDATORIOS — cancelar en el servidor (Web Push)
+   Los recordatorios locales ya no existen (app de exámenes). Esto queda
+   solo para la limpieza de abajo (RECORDATORIOS APAGADOS), que cancela en
+   el servidor los avisos que quedaran pendientes de versiones anteriores.
    ================================================================== */
-function calculateReminderAt(targetDateTime, minutesBefore){
-  if(typeof targetDateTime !== 'string' && !(targetDateTime instanceof Date)) return null;
-  const target = targetDateTime instanceof Date ? targetDateTime : new Date(targetDateTime);
-  if(isNaN(target.getTime())) return null;
-  if(typeof minutesBefore !== 'number' || !isFinite(minutesBefore) || minutesBefore < 0) return null;
-  return new Date(target.getTime() - minutesBefore * 60000).toISOString();
-}
-async function createReminderForTarget(targetType, targetId, targetDateTime, minutesBefore){
-  if(targetType !== 'event' && targetType !== 'task') return null;
-  if(!targetId) return null;
-  const remindAt = calculateReminderAt(targetDateTime, minutesBefore);
-  if(remindAt === null) return null;
-  const reminder = await addReminder({ targetType, targetId, remindAt, status: 'pending' });
-  // R-8.2-B: tras crear el reminder local (fuente de verdad), intenta
-  // sincronizar su equivalente server-side (best-effort, ver bloque
-  // RECORDATORIOS — integración con Web Push más abajo). El try/catch
-  // de aquí es un cinturón de seguridad extra sobre el que ya tiene
-  // scheduleReminderPush(): el reminder local YA quedó creado en la
-  // línea de arriba pase lo que pase con la red.
-  if(reminder){
-    try{ await scheduleReminderPush(reminder); }catch(e){ console.warn('No se pudo sincronizar el recordatorio con Web Push', e); }
-  }
-  return reminder;
-}
-
-/* ==================================================================
-   RECORDATORIOS — integración con la interfaz (Fase 3, SIN notificaciones)
-   Conecta los helpers de cálculo/creación de las Fases 1 y 2 con los
-   formularios de eventos y tareas. Reglas de esta fase:
-   - como mucho UN reminder activo (status:'pending') por target: crear,
-     actualizar o cancelar reutilizan siempre ese mismo reminder, nunca
-     se duplica;
-   - si el evento/tarea no tiene fecha/hora suficiente para calcular
-     remindAt (p.ej. un evento "todo el día" sin hora, o una tarea sin
-     hora), nunca se crea un reminder: el resultado visible es
-     "Sin recordatorio", sin inventar ninguna regla especial para
-     allDay/recurrencia todavía;
-   - nada de esto dispara ninguna notificación real: eso es una fase
-     posterior (Notification API / Web Push / Scheduler quedan fuera).
-   ================================================================== */
-const REMINDER_OPTIONS = [
-  { minutes: 5,    label: '5 minutos antes' },
-  { minutes: 10,   label: '10 minutos antes' },
-  { minutes: 15,   label: '15 minutos antes' },
-  { minutes: 30,   label: '30 minutos antes' },
-  { minutes: 60,   label: '1 hora antes' },
-  { minutes: 1440, label: '1 día antes' },
-];
-/** Combina fecha ('YYYY-MM-DD') y hora ('HH:mm') en un datetime local
- * ('YYYY-MM-DDTHH:mm:00') apto para calculateReminderAt(), o null si
- * falta cualquiera de las dos, el formato no es el esperado, o el
- * resultado no es una fecha válida. Es la comprobación de "fecha/hora
- * suficiente" que decide si se pueden ofrecer opciones de recordatorio
- * distintas de "Sin recordatorio". */
-function reminderTargetDateTime(dateStr, timeStr){
-  if(!dateStr || !timeStr) return null;
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr) || !/^\d{2}:\d{2}$/.test(timeStr)) return null;
-  const dt = `${dateStr}T${timeStr}:00`;
-  return isNaN(new Date(dt).getTime()) ? null : dt;
-}
-/** HTML de las <option> del <select> de recordatorio de un formulario.
- * Si hasDateTime es false, solo se ofrece "Sin recordatorio" (nunca se
- * muestran opciones que no podrían calcularse correctamente). */
-function reminderOptionsHtml(hasDateTime, selectedMinutes){
-  const sel = String(selectedMinutes==null ? '' : selectedMinutes);
-  let html = `<option value="" ${sel===''?'selected':''}>Sin recordatorio</option>`;
-  if(hasDateTime){
-    html += REMINDER_OPTIONS.map(o=>{
-      const v = String(o.minutes);
-      return `<option value="${v}" ${sel===v?'selected':''}>${o.label}</option>`;
-    }).join('');
-  }
-  return html;
-}
-/** El reminder pending de un target (como mucho hay uno en esta fase),
- * o null si no tiene ninguno activo. No lanza. */
-function pendingReminderForTarget(targetType, targetId){
-  return getRemindersForTarget(targetType, targetId).find(r=>r.status==='pending') || null;
-}
-/** Minutos de anticipación del reminder pending de un target, como
- * string apto para preseleccionar el <select> ('' si no hay reminder,
- * o si su remindAt ya no coincide con ninguna opción conocida para el
- * datetime objetivo ACTUAL, p.ej. porque se cambió la hora después de
- * crear el recordatorio). */
-function currentReminderMinutes(targetType, targetId, targetDateTime){
-  if(!targetDateTime) return '';
-  const reminder = pendingReminderForTarget(targetType, targetId);
-  if(!reminder) return '';
-  const target = new Date(targetDateTime);
-  const remindAt = new Date(reminder.remindAt);
-  if(isNaN(target.getTime()) || isNaN(remindAt.getTime())) return '';
-  const diffMinutes = Math.round((target.getTime() - remindAt.getTime()) / 60000);
-  const match = REMINDER_OPTIONS.find(o=>o.minutes===diffMinutes);
-  return match ? String(match.minutes) : '';
-}
-/** Crea, actualiza o cancela el reminder pending de un target a partir
- * de la anticipación elegida en un formulario (minutesBefore: '' o
- * null = "Sin recordatorio", o un número de minutos). SIEMPRE reutiliza
- * el reminder pending existente si lo había (nunca crea uno duplicado
- * para el mismo target):
- *  - "Sin recordatorio", o datetime/objetivo inválido → cancela el
- *    reminder pending existente (si lo había); nunca crea uno inválido;
- *  - anticipación válida + datetime válido → si ya había un reminder
- *    pending lo actualiza (mismo id, nuevo remindAt, sigue pending); si
- *    no había ninguno, crea uno nuevo con createReminderForTarget().
- * Devuelve el reminder resultante, o null si el resultado final es
- * "sin recordatorio activo". No lanza si el target no existe. */
-async function syncReminderForTarget(targetType, targetId, targetDateTime, minutesBefore){
-  const existing = pendingReminderForTarget(targetType, targetId);
-  const minutes = (minutesBefore===''||minutesBefore==null) ? null : Number(minutesBefore);
-  const remindAt = (minutes!=null) ? calculateReminderAt(targetDateTime, minutes) : null;
-  if(remindAt===null){
-    if(existing) await cancelReminder(existing.id);
-    return null;
-  }
-  if(existing){
-    const updated = await updateReminder(existing.id, { remindAt, status: 'pending' });
-    // R-8.2-B: reprograma el equivalente server-side con el MISMO
-    // reminderId (existing.id) — nunca crea un segundo reminder local
-    // ni un segundo mensaje QStash (schedule-reminder.js ya cancela el
-    // mensaje anterior antes de programar el nuevo, ver R-8.2-A).
-    // Best-effort, mismo cinturón de seguridad que createReminderForTarget().
-    if(updated){
-      try{ await scheduleReminderPush(updated); }catch(e){ console.warn('No se pudo reprogramar el recordatorio con Web Push', e); }
-    }
-    return updated;
-  }
-  return createReminderForTarget(targetType, targetId, targetDateTime, minutes);
-}
-/** Cancela (status:'cancelled') todos los reminders no-cancelados de un
- * target. Se usa al borrar el evento/tarea: el reminder NUNCA se borra
- * físicamente, solo deja de estar activo. No lanza si el target no
- * tenía ningún reminder. */
-async function cancelRemindersForTarget(targetType, targetId){
-  const active = getRemindersForTarget(targetType, targetId).filter(r=>r.status!=='cancelled');
-  for(const r of active){ await cancelReminder(r.id); }
-}
-
-/* ==================================================================
-   RECORDATORIOS — ocurrencias recurrentes de tareas (Fase R-7)
-   Una tarea recurrente tiene un único `id` (tarea base, R-1/R-3) pero
-   puede necesitar un recordatorio propio por cada ocurrencia
-   (occurrenceDate, ver getTaskOccurrences/R-3). Esta fase NO cambia el
-   modelo de reminder ({id, targetType, targetId, remindAt, status,
-   createdAt}, Fases 1-5 de arriba): un recordatorio de ocurrencia sigue
-   siendo `targetType:'task'`, solo que su `targetId` es el id
-   COMPUESTO y determinista de la ocurrencia — el mismo que ya usa R-3
-   para identificarla de forma estable, ver getTaskOccurrenceId
-   ("taskId::YYYY-MM-DD") — en vez del id de la tarea base a secas.
-   Como getRemindersForTarget/pendingReminderForTarget/
-   syncReminderForTarget/cancelRemindersForTarget/getDueReminders/
-   triggerDueReminders ya trabajan de forma genérica por
-   (targetType, targetId) sin conocer nada de recurrencia, NINGUNA de
-   esas funciones necesita cambiar: basta con pasarles el targetId
-   compuesto de la ocurrencia en vez del id de la tarea base. Los
-   helpers de abajo son wrappers finos que solo construyen ese targetId
-   y calculan la fecha/hora objetivo de ESA ocurrencia concreta (ver
-   occurrenceReminderTargetDateTime) — cero lógica de recordatorios
-   duplicada.
-   Dos ocurrencias distintas de la misma tarea (id compuesto distinto)
-   son, a todos los efectos de recordatorios, dos targets
-   completamente independientes: cada una puede tener su propio
-   reminder pending, o ninguno, sin que se pisen entre sí. Un
-   recordatorio de la tarea BASE (targetId sin "::", el que ya crea/
-   gestiona openTaskModal) sigue siendo un target totalmente aparte:
-   ninguno de los helpers de abajo lo toca ni lo sustituye.
-   ================================================================== */
-
-/** Fecha/hora objetivo de la ocurrencia `occurrenceDate` de `task`, lista
- * para pasar a calculateReminderAt() (vía reminderTargetDateTime, Fase
- * 3 — no se reimplementa ese cálculo ni su validación de formato aquí).
- * Prioridad de la hora, tal como pide esta fase:
- *  1) si la tarea tiene una hora PROGRAMADA para justo esta ocurrencia
- *     (task.scheduledDate === occurrenceDate && task.scheduledStart),
- *     se usa esa hora — scheduledStart pertenece a un único
- *     scheduledDate (Scheduler solo agenda una tarea recurrente en un
- *     día concreto, R-6), así que NUNCA se reutiliza para otra fecha;
- *  2) si no, y la tarea tiene dueTime, se usa dueTime (misma hora
- *     "genérica" que ya usa taskRowHTML para cualquier ocurrencia sin
- *     horario propio, ver R-6);
- *  3) si no hay ninguna hora válida, no se inventa ninguna: se
- *     devuelve null (reminderTargetDateTime ya hace exactamente eso),
- *     y quien llame (syncReminderForTaskOccurrence) no crea ningún
- *     recordatorio temporalmente imposible. */
-function occurrenceReminderTargetDateTime(task, occurrenceDate){
-  if(!task) return null;
-  const timeStr = (task.scheduledDate === occurrenceDate && task.scheduledStart) ? task.scheduledStart : (task.dueTime || '');
-  return reminderTargetDateTime(occurrenceDate, timeStr);
-}
-/** Reminder pending de una ocurrencia concreta (taskId+occurrenceDate),
- * o null si no tiene ninguno activo. Reutiliza pendingReminderForTarget
- * (Fase 3) con el targetId compuesto de la ocurrencia (R-3): no
- * reimplementa la búsqueda. No devuelve nunca el reminder de la tarea
- * BASE ni el de otra fecha — targetId distinto, target distinto. */
-function pendingReminderForTaskOccurrence(taskId, occurrenceDate){
-  return pendingReminderForTarget('task', getTaskOccurrenceId(taskId, occurrenceDate));
-}
-/** Minutos de anticipación del reminder pending de una ocurrencia,
- * listos para preseleccionar un <select> si en el futuro se conecta a
- * UI (ver R-7 punto 7: por ahora no hay ningún formulario que lo use).
- * Reutiliza currentReminderMinutes (Fase 3) tal cual. */
-function currentReminderMinutesForTaskOccurrence(task, occurrenceDate){
-  if(!task) return '';
-  return currentReminderMinutes('task', getTaskOccurrenceId(task.id, occurrenceDate), occurrenceReminderTargetDateTime(task, occurrenceDate));
-}
-/** Crea, actualiza o cancela el reminder pending de una ocurrencia
- * concreta, a partir de la anticipación elegida (mismo contrato que
- * syncReminderForTarget, Fase 3, al que delega TODA la lógica de
- * "reutilizar el existente / crear uno nuevo / cancelar" — aquí solo se
- * calcula el targetId compuesto y la fecha/hora objetivo de ESTA
- * ocurrencia). No lanza si `taskId` no existe en state.tasks (createa/
- * sincroniza igualmente si es posible; si no hay tarea o no hay
- * fecha/hora válida, el resultado es "sin recordatorio", igual que el
- * resto de esta fase). */
-async function syncReminderForTaskOccurrence(taskId, occurrenceDate, minutesBefore){
-  const task = (state.tasks||[]).find(t => t.id === taskId);
-  const targetDateTime = occurrenceReminderTargetDateTime(task, occurrenceDate);
-  return syncReminderForTarget('task', getTaskOccurrenceId(taskId, occurrenceDate), targetDateTime, minutesBefore);
-}
-/** Cancela (status:'cancelled') el/los reminder(s) de una ocurrencia
- * concreta — nunca los de otra fecha ni los de la tarea base. Reutiliza
- * cancelRemindersForTarget (Fase 3) con el targetId compuesto. */
-async function cancelReminderForTaskOccurrence(taskId, occurrenceDate){
-  await cancelRemindersForTarget('task', getTaskOccurrenceId(taskId, occurrenceDate));
-}
-/** Cancela TODOS los reminders de una tarea al borrarla: el de la
- * propia tarea base (targetId === taskId, el camino de siempre, Fase 3)
- * Y los de cualquiera de sus ocurrencias (targetId === "taskId::fecha").
- * Sin este segundo grupo, borrar una tarea recurrente dejaría
- * "huérfanos" (pending para siempre) los recordatorios de sus
- * ocurrencias — el único motivo por el que deleteTask() pasa a llamar
- * a esta función en vez de a cancelRemindersForTarget('task', id)
- * directamente. No cambia cancelRemindersForTarget ni
- * getRemindersForTarget: ambas siguen exactamente igual que antes de
- * R-7, esto solo las combina desde fuera. */
-async function cancelRemindersForTaskAndOccurrences(taskId){
-  const occurrencePrefix = `${taskId}::`;
-  const occurrenceReminders = (state.reminders||[]).filter(r =>
-    r.targetType === 'task' && typeof r.targetId === 'string' && r.targetId.startsWith(occurrencePrefix));
-  const active = getRemindersForTarget('task', taskId).concat(occurrenceReminders).filter(r => r.status !== 'cancelled');
-  for(const r of active){ await cancelReminder(r.id); }
-}
-
-/* ==================================================================
-   RECORDATORIOS — motor de detección y disparo lógico (Fase 4)
-   getDueReminders() es una función PURA: no lee más que state.reminders
-   (sin mutarlo) y no depende de posiciones del array. Un reminder está
-   "vencido" si status==='pending' y remindAt<=now (comparación numérica
-   de timestamps, no de strings). triggerDueReminders() es el único que
-   los marca como 'triggered' y persiste, usando updateReminder() (Fase
-   1) — nunca reimplementa esa lógica. Idempotente: un reminder ya
-   'triggered' deja de cumplir status==='pending', así que una segunda
-   pasada con el mismo `now` no vuelve a dispararlo.
-   Todavía SIN Notification API, Service Worker, Web Push, Scheduler,
-   setInterval/setTimeout ni ningún disparo real: esta fase solo decide
-   QUÉ reminders están vencidos y los marca como tal. Mostrar el aviso
-   de verdad es una fase posterior.
-   ================================================================== */
-function getDueReminders(now = new Date()){
-  const nowDate = now instanceof Date ? now : new Date(now);
-  if(isNaN(nowDate.getTime())) return [];
-  const nowTime = nowDate.getTime();
-  return (state.reminders||[]).filter(r=>{
-    if(r.status !== 'pending') return false;
-    const remindAtTime = new Date(r.remindAt).getTime();
-    return !isNaN(remindAtTime) && remindAtTime <= nowTime;
-  });
-}
-async function triggerDueReminders(now = new Date()){
-  const due = getDueReminders(now);
-  const triggered = [];
-  for(const r of due){
-    const updated = await updateReminder(r.id, { status: 'triggered' });
-    if(updated){
-      triggered.push(updated);
-      // Fase 5: intenta mostrar la notificación real tras marcar el
-      // reminder como triggered. showReminderNotification() nunca lanza
-      // (ver su propia doc): si Notification API no existe, no hay
-      // permiso, o falla al crear la notificación, simplemente no se
-      // muestra nada — el reminder YA quedó triggered de forma correcta
-      // y el bucle sigue con el siguiente sin interrumpirse.
-      // R-8.2-C: si el push server-side YA avisó de este reminder
-      // (handleServiceWorkerMessage ya registró la entrega), el
-      // polling local NO vuelve a mostrarlo — el reminder sigue
-      // pasando a 'triggered' arriba exactamente igual, la
-      // reconciliación de "ya avisado" es un concepto aparte.
-      if(!reminderAlreadyNotified(updated.id)){
-        // R-8.2-D: cubre el caso en el que el push YA llegó con
-        // ORGANIZATOR completamente cerrado (sin ninguna pestaña a la
-        // que el Service Worker pudiera avisar por postMessage, así que
-        // reminderAlreadyNotified() de arriba no puede saberlo — se
-        // alimenta solo de mensajes recibidos con la app ya abierta).
-        // Antes de notificar localmente, se consulta (solo lectura,
-        // nunca se escribe desde aquí) el ledger PERSISTENTE del propio
-        // Service Worker (window.SWPushLedger, ver
-        // js/sw-push-ledger.js) — sobrevive cierres/reinicios y no
-        // depende de que hubiera una pestaña abierta cuando llegó el
-        // push. Si no existe (navegador sin Service Worker, fallo de
-        // carga) se trata como "no entregado" y se sigue el
-        // comportamiento de siempre.
-        let alreadyDeliveredByPush = false;
-        if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.hasDelivered === 'function'){
-          try{ alreadyDeliveredByPush = await self.SWPushLedger.hasDelivered(updated.id); }
-          catch(e){ alreadyDeliveredByPush = false; }
-        }
-        if(alreadyDeliveredByPush){
-          // El Service Worker ya mostró el aviso mientras la app estaba
-          // cerrada: se registra en el ledger de la PÁGINA (para que
-          // futuros ticks de este mismo tab ya no vuelvan a consultar
-          // el ledger del Service Worker para este id) pero NUNCA se
-          // muestra una segunda notificación local.
-          try{ await markReminderNotified(updated.id); }catch(e){ console.error('No se pudo registrar la entrega ya realizada por el push', e); }
-        } else {
-          showReminderNotification(updated);
-          try{ await markReminderNotified(updated.id); }catch(e){ console.error('No se pudo registrar la entrega local del aviso', e); }
-          // Best-effort: el canal local ya avisó, así que intenta
-          // cancelar el push server-side todavía pendiente (reutiliza
-          // cancelReminderPush ya existente de R-8.2-B) para que QStash
-          // no entregue una segunda notificación del MISMO reminder. Si
-          // el push ya se envió, cancel-reminder.js ya es idempotente
-          // (no hace nada); si falla la red, no revierte nada de lo de
-          // arriba.
-          try{ await cancelReminderPush(updated.id); }catch(e){ console.warn('No se pudo cancelar el push pendiente tras notificar localmente', e); }
-        }
-      }
-    }
-  }
-  return triggered;
-}
-
-/* ==================================================================
-   RECORDATORIOS — notificación real del navegador (Fase 5)
-   requestReminderNotificationPermission() y showReminderNotification()
-   son los únicos dos puntos que tocan la Notification API del navegador.
-   Ninguno de los dos lanza nunca: si la API no existe, o algo falla al
-   pedir permiso o al crear la notificación, se resuelve a false/null en
-   vez de propagar la excepción — así triggerDueReminders() (justo
-   arriba) puede llamar a showReminderNotification() sin necesidad de su
-   propio try/catch, y un fallo mostrando la notificación de un reminder
-   nunca impide procesar los demás.
-   Todavía SIN Service Worker, Web Push, acciones/botones, sonido
-   personalizado ni vibración: solo el título/cuerpo mínimos para
-   identificar el recordatorio y si es un evento o una tarea.
-   ================================================================== */
-/** Comprueba/solicita permiso de notificaciones del navegador. Nunca
- * lanza: si `Notification` no existe en este entorno, devuelve false
- * directamente. Devuelve true SOLO si el permiso queda en 'granted'
- * (ya lo estaba, o el usuario lo concede al solicitarlo). */
-async function requestReminderNotificationPermission(){
-  if(typeof Notification === 'undefined' || !Notification) return false;
-  if(Notification.permission === 'granted') return true;
-  if(Notification.permission === 'denied') return false;
-  try{
-    const result = await Notification.requestPermission();
-    return result === 'granted';
-  }catch(e){
-    return false;
-  }
-}
-// Fase R-7: el targetId de un reminder de tarea puede ser el id de la
-// tarea base ("abc") o el id compuesto de una de sus ocurrencias
-// ("abc::2026-09-21", ver getTaskOccurrenceId, R-3). Para resolver el
-// título real de la tarea da igual cuál de los dos sea: se toma solo la
-// parte de antes del "::". Un targetId sin "::" (el caso de siempre)
-// se devuelve tal cual — cero cambio de comportamiento para reminders
-// no ligados a una ocurrencia.
-function resolveTaskIdFromReminderTargetId(targetId){
-  if(typeof targetId !== 'string') return targetId;
-  const sep = targetId.indexOf('::');
-  return sep === -1 ? targetId : targetId.slice(0, sep);
-}
-/** Etiqueta legible del objetivo de un reminder ("Evento: X" / "Tarea:
- * Y"), buscando el evento/tarea real por id (nunca por posición) para
- * incluir su título. Si el target ya no existe (se borró y el reminder
- * quedó huérfano), cae a un texto genérico en vez de romper. */
-function reminderNotificationBody(reminder){
-  if(reminder.targetType === 'event'){
-    const ev = (state.events||[]).find(e=>e.id===reminder.targetId);
-    return `Evento: ${ev ? ev.title : 'evento'}`;
-  }
-  if(reminder.targetType === 'task'){
-    const tk = (state.tasks||[]).find(t=>t.id===resolveTaskIdFromReminderTargetId(reminder.targetId));
-    return `Tarea: ${tk ? tk.title : 'tarea'}`;
-  }
-  return 'Recordatorio';
-}
-/** Muestra una notificación real del navegador para un reminder ya
- * triggered. NUNCA modifica el reminder (solo lo lee). Nunca lanza:
- * si `Notification` no existe, si el permiso no es 'granted', o si
- * `new Notification(...)` falla por cualquier motivo, devuelve null en
- * vez de propagar el error. Devuelve la notificación creada si tuvo
- * éxito. Sigue siendo síncrona y devolviendo la MISMA forma que antes de
- * R-8 (una instancia real de `Notification`, nunca una Promise) para no
- * romper ningún llamador ni test existente.
- * R-8: única adición — al pulsar la notificación se enfoca la ventana de
- * ORGANIZATOR (antes no hacía nada). Esto solo cubre el caso "la app
- * sigue abierta" (aunque la pestaña esté en segundo plano/minimizada):
- * ver sw.js para la limitación real de R-8 con la app COMPLETAMENTE
- * cerrada (requiere un backend de Web Push que no existe). */
-function showReminderNotification(reminder){
-  if(typeof Notification === 'undefined' || !Notification) return null;
-  if(Notification.permission !== 'granted') return null;
-  try{
-    const notif = new Notification('ORGANIZATOR', { body: reminderNotificationBody(reminder) });
-    notif.onclick = () => {
-      try{ if(typeof window !== 'undefined' && typeof window.focus === 'function') window.focus(); }catch(e){}
-      try{ notif.close(); }catch(e){}
-    };
-    return notif;
-  }catch(e){
-    return null;
-  }
-}
-
-/* ==================================================================
-   RECORDATORIOS — disparo automático mientras la app está abierta
-   (Fase R-7.1)
-   Diagnóstico: triggerDueReminders() (Fase 4) y showReminderNotification()
-   (Fase 5) ya funcionaban correctamente cuando se llamaban, pero nada en
-   organizator.html las llamaba nunca fuera de sus propios tests — no
-   había ningún setInterval/setTimeout/visibilitychange/focus ni ningún
-   otro ciclo que ejecutara triggerDueReminders() mientras la app
-   permanecía abierta. Por eso el recordatorio se creaba bien pero nunca
-   se disparaba: nadie preguntaba periódicamente "¿hay algo vencido?".
-   Esta fase SOLO añade ese ciclo (polling ligero con setInterval,
-   startApp() lo arranca una vez) — no cambia el modelo de reminders, no
-   cambia la identidad de las ocurrencias (R-7), no reimplementa nada de
-   getDueReminders/triggerDueReminders/showReminderNotification: el
-   callback del intervalo se limita a llamar a triggerDueReminders(), que
-   sigue siendo la ÚNICA función responsable de localizar due reminders,
-   pasarlos a 'triggered' y avisar a showReminderNotification(). El
-   intervalo tampoco crea reminders nuevos: solo puede disparar los que
-   ya existían.
-   Idempotencia: startReminderPolling() se apoya en
-   reminderPollingIntervalId (module-level, no en `state`) para no crear
-   un segundo intervalo si se llama más de una vez (p.ej. si startApp()
-   se ejecutara dos veces en la misma pestaña) — la segunda llamada es
-   un no-op que devuelve el id ya existente. stopReminderPolling() limpia
-   el intervalo si algún código futuro (logout, tests) lo necesita.
-   ================================================================== */
-let reminderPollingIntervalId = null;
-const REMINDER_POLLING_INTERVAL_MS = 20000; // 20s: frecuencia razonable (rango pedido 15-30s), sin sobrecargar la pestaña.
-
-/** Un "tick" del polling: delega TODO en triggerDueReminders() (Fase 4),
- * sin decidir ni recalcular nada por su cuenta — así no hay ninguna
- * lógica de disparo duplicada entre el polling y triggerDueReminders().
- * No lanza: si triggerDueReminders() fallara, el intervalo no se
- * detiene (mismo espíritu que showReminderNotification(), que ya nunca
- * lanza) — un fallo puntual no debe dejar de detectar el siguiente
- * recordatorio 20s después. */
-async function reminderPollingTick(now = new Date()){
-  let triggered = [];
-  try{
-    triggered = await triggerDueReminders(now);
-  }catch(e){
-    console.error('Fallo comprobando recordatorios vencidos', e);
-  }
-  // R-8.2-C: aprovecha el mismo ciclo de polling para limpiar marcas de
-  // reconciliación caducadas (ver pruneReminderNotificationLedger, no
-  // crea ningún setInterval nuevo). Un fallo aquí nunca hace que el
-  // tick deje de devolver los reminders que sí se dispararon arriba.
-  const nowMs = now instanceof Date ? now.getTime() : Number(now);
-  try{
-    await pruneReminderNotificationLedger(nowMs);
-  }catch(e){
-    console.error('Fallo limpiando el registro de notificaciones entregadas', e);
-  }
-  // R-8.2-D: mismo criterio, reutilizando el mismo ciclo (sin
-  // setInterval propio) para limpiar también el ledger PERSISTENTE del
-  // Service Worker (window.SWPushLedger, ver js/sw-push-ledger.js). Si
-  // no existe (sin Service Worker, fallo de carga), no hace nada.
-  if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.pruneDelivered === 'function'){
-    try{ await self.SWPushLedger.pruneDelivered(nowMs); }
-    catch(e){ console.error('Fallo limpiando el ledger persistente de push del Service Worker', e); }
-  }
-  return triggered;
-}
-/** Arranca el polling de recordatorios si no está ya en marcha.
- * Idempotente (ver nota de la fase más arriba): llamarlo varias veces
- * NUNCA crea un segundo setInterval, siempre devuelve el mismo id.
- * `intervalMs` es configurable (para tests con un intervalo corto); en
- * producción startApp() lo llama sin argumento, con
- * REMINDER_POLLING_INTERVAL_MS. No toca renderizado ni Scheduler: el
- * callback solo llama a reminderPollingTick(), que a su vez solo llama
- * a triggerDueReminders(). */
-function startReminderPolling(intervalMs = REMINDER_POLLING_INTERVAL_MS){
-  if(reminderPollingIntervalId !== null) return reminderPollingIntervalId;
-  reminderPollingIntervalId = setInterval(() => { reminderPollingTick(); }, intervalMs);
-  return reminderPollingIntervalId;
-}
-/** Detiene el polling si está en marcha (limpia el setInterval y libera
- * reminderPollingIntervalId). No lanza si no había ninguno activo. */
-function stopReminderPolling(){
-  if(reminderPollingIntervalId === null) return;
-  clearInterval(reminderPollingIntervalId);
-  reminderPollingIntervalId = null;
-}
-
-/* ==================================================================
-   RECORDATORIOS — integración con Web Push (Fase R-8.2-B)
-   Conecta la infraestructura de Web Push ya existente (R-8.1/R-8.2-A:
-   claves de servidor, QStash, api/push/*, ver sw.js) con el ciclo de
-   vida real de los reminders. state.reminders (IndexedDB local, vía
-   window.storage) sigue siendo la ÚNICA fuente de verdad de
-   ORGANIZATOR: todo lo de este bloque es sincronización BEST-EFFORT
-   hacia el servidor para que QStash pueda avisar aunque la app esté
-   cerrada — un fallo de red, de servidor, o que el navegador no
-   soporte Push, NUNCA impide crear/editar/cancelar el reminder local,
-   nunca lanza desde los puntos que lo llaman (Fases 1-3, más abajo) y
-   nunca solicita permiso de notificaciones por su cuenta: eso lo
-   sigue decidiendo exclusivamente requestReminderNotificationPermission()
-   (Fase 5), llamada solo tras una acción explícita del usuario — este
-   bloque solo se activa DESPUÉS de que esa función haya devuelto true.
-   Sin reconciliación todavía entre "reminder local triggered" y "push
-   ya entregado por el servidor con la app abierta a la vez": eso queda
-   explícitamente para R-8.2-C.
-   ================================================================== */
-
-/** Convierte a Uint8Array la clave pública que expone
- * /api/push/vapid-public-key (base64url, formato que espera
- * pushManager.subscribe({ applicationServerKey })). Nunca lanza: una
- * cadena inválida devuelve un Uint8Array vacío en vez de romper el
- * flujo (subscribe() fallará de forma controlada, capturado igual que
- * el resto de este bloque). */
-function urlBase64ToUint8Array(base64String){
-  try{
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-    const rawData = atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-    for(let i=0; i<rawData.length; i++) outputArray[i] = rawData.charCodeAt(i);
-    return outputArray;
-  }catch(e){
-    return new Uint8Array();
-  }
-}
-
-/** Suscribe este navegador a Web Push y registra la suscripción en el
- * servidor (POST /api/push/subscribe). Idempotente: si ya hay una
- * PushSubscription activa la reutiliza (nunca crea una segunda). NO
- * solicita permiso por su cuenta — solo debe llamarse después de que
- * requestReminderNotificationPermission() haya devuelto true (ver los
- * puntos de conexión de la Fase 5, más arriba); aquí se vuelve a
- * comprobar Notification.permission==='granted' como cinturón de
- * seguridad, sin volver a pedir permiso nunca. Nunca lanza: cualquier
- * paso que falte (contexto no seguro, API no soportada, permiso no
- * concedido, Service Worker no listo, red caída, servidor caído)
- * resuelve a { ok:false, reason } en vez de romper la UI que la
- * llama. */
-async function subscribeToPushNotifications(){
-  try{
-    if(typeof window === 'undefined' || !window.isSecureContext) return { ok:false, reason:'insecure-context' };
-    if(typeof Notification === 'undefined' || !Notification) return { ok:false, reason:'notification-unsupported' };
-    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return { ok:false, reason:'sw-unsupported' };
-    if(!('PushManager' in window)) return { ok:false, reason:'push-unsupported' };
-    if(Notification.permission !== 'granted') return { ok:false, reason:'permission-not-granted' };
-
-    let registration;
-    try{
-      registration = await navigator.serviceWorker.ready;
-    }catch(e){ return { ok:false, reason:'sw-not-ready' }; }
-    if(!registration || !registration.pushManager) return { ok:false, reason:'sw-not-ready' };
-
-    let subscription = null;
-    try{
-      subscription = await registration.pushManager.getSubscription();
-    }catch(e){ subscription = null; }
-
-    if(!subscription){
-      let publicKey;
-      try{
-        const keyRes = await fetch('/api/push/vapid-public-key', { credentials:'same-origin' });
-        if(!keyRes.ok) return { ok:false, reason:'public-key-unavailable' };
-        const keyData = await keyRes.json();
-        publicKey = keyData && keyData.publicKey;
-        if(!publicKey) return { ok:false, reason:'public-key-unavailable' };
-      }catch(e){ return { ok:false, reason:'public-key-unavailable' }; }
-
-      try{
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
-      }catch(e){ return { ok:false, reason:'subscribe-failed' }; }
-    }
-    if(!subscription) return { ok:false, reason:'subscribe-failed' };
-
-    try{
-      const subJson = subscription.toJSON ? subscription.toJSON() : subscription;
-      const res = await fetch('/api/push/subscribe', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify({ endpoint: subJson.endpoint, keys: subJson.keys }),
-      });
-      if(!res.ok) return { ok:false, reason:'subscribe-endpoint-failed' };
-    }catch(e){ return { ok:false, reason:'network-error' }; }
-
-    return { ok:true, subscription };
-  }catch(e){
-    return { ok:false, reason:'unexpected-error' };
-  }
-}
-
-/** R-8.2-E: reconciliación silenciosa de la suscripción Web Push al
- * arrancar la app. Corrige el caso detectado en el diagnóstico R-8.2 (3ª
- * prueba real): el usuario ya había concedido el permiso de
- * notificaciones y el navegador ya tenía una PushSubscription activa,
- * pero el POST /api/push/subscribe de aquel momento falló en el
- * servidor (por ejemplo, las tablas de Web Push aún no existían) y
- * nunca se reintentó — send-due.js no encontraba ninguna fila en
- * push_subscriptions y no llegaba ni a intentar web-push. Sin este
- * helper, la única forma de recuperarse era que el usuario volviera a
- * pulsar "Activar notificaciones" en Ajustes.
- *
- * NUNCA pide permiso (a diferencia de requestReminderNotificationPermission,
- * Fase 5, que solo se llama tras una acción explícita del usuario): si
- * Notification.permission sigue en 'default' o 'denied', no hace nada.
- * Reutiliza subscribeToPushNotifications() tal cual, sin reimplementar
- * su lógica — su propia idempotencia (reusa la PushSubscription del
- * navegador si ya existe, nunca crea una segunda) es la que garantiza
- * que esto nunca duplica nada, tanto a nivel de navegador como de fila
- * en `push_subscriptions` (el INSERT server-side tiene
- * ON CONFLICT (endpoint) DO UPDATE, ver sql/002_push_subscriptions.sql).
- * Estrictamente best-effort: cualquier fallo se ignora en silencio,
- * nunca lanza y nunca se muestra al usuario. startApp() la llama SIN
- * esperar su resultado (fire-and-forget), así que tampoco puede
- * retrasar el arranque. */
-async function reconcilePushSubscriptionOnStartup(){
-  try{
-    if(typeof Notification === 'undefined' || !Notification) return;
-    if(Notification.permission !== 'granted') return;
-    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-    if(typeof window === 'undefined' || !('PushManager' in window)) return;
-    if(typeof subscribeToPushNotifications !== 'function') return;
-    await subscribeToPushNotifications();
-  }catch(e){
-    // Best-effort: un fallo reconciliando la suscripción nunca debe
-    // afectar al arranque de la app ni mostrarse al usuario.
-  }
-}
-
-/** Programa (o reprograma) el equivalente server-side de un reminder
- * pending vía POST /api/push/schedule-reminder. SOLO envía
- * {reminderId, remindAt, title, body} — nunca la tarea/evento
- * completos (ver doc de ese endpoint, R-8.2-A). El body se reconstruye
- * con reminderNotificationBody() (Fase 5, sin duplicar esa lógica) a
- * partir del target actual; el title es el mismo literal fijo que ya
- * usa showReminderNotification(). Best-effort: cualquier fallo (sin
- * red, HTTP no-ok, endpoint no configurado, o que el propio helper no
- * exista en este entorno) se registra con console.warn y se resuelve a
- * { ok:false } — nunca lanza. */
-async function scheduleReminderPush(reminder){
-  if(!reminder || reminder.status !== 'pending' || !reminder.remindAt) return { ok:false, reason:'not-applicable' };
-  try{
-    const res = await fetch('/api/push/schedule-reminder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({
-        reminderId: reminder.id,
-        remindAt: reminder.remindAt,
-        title: 'ORGANIZATOR',
-        body: reminderNotificationBody(reminder),
-      }),
-    });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    return { ok:true };
-  }catch(e){
-    console.warn('No se pudo sincronizar el recordatorio con Web Push (se mantiene el recordatorio local)', e);
-    return { ok:false, reason:'network-or-server-error' };
-  }
-}
-
 /** Cancela el equivalente server-side de un reminder vía POST
- * /api/push/cancel-reminder. Best-effort e idempotente (mismo espíritu
- * que cancelReminder(), Fase 1): un fallo se registra con console.warn
- * y se resuelve a { ok:false } sin lanzar ni afectar al estado local,
- * que ya queda 'cancelled' antes de llamar a esto. */
+ * /api/push/cancel-reminder. Best-effort e idempotente: un fallo se
+ * registra con console.warn y se resuelve a { ok:false } sin lanzar. */
 async function cancelReminderPush(reminderId){
   if(!reminderId) return { ok:false, reason:'no-id' };
   try{
@@ -2222,15 +1460,13 @@ async function cancelReminderPush(reminderId){
 
 /* ==================================================================
    RECORDATORIOS APAGADOS (app de exámenes)
-   Los recordatorios y sus notificaciones están apagados: startApp() no
-   arranca el polling ni reconcilia la suscripción Web Push, y una vez por
-   cuenta y dispositivo cancela en el servidor los avisos que quedaran
+   Los recordatorios locales ya no existen. Una vez por cuenta y
+   dispositivo, startApp() cancela en el servidor los avisos que quedaran
    pendientes y da de baja este dispositivo. state.reminders no se toca
-   (si algún día se vuelven a encender, siguen ahí). El servidor tiene su
+   (los datos se siguen sincronizando y exportando). El servidor tiene su
    propio interruptor (api/push/send-due.js), que es el que garantiza que
    no llegue nada al móvil aunque haya una versión vieja de la app.
    ================================================================== */
-const REMINDERS_ENABLED = false;
 const REMINDERS_OFF_CLEANUP_KEY = 'organizator:remindersOffCleanup:v1';
 /** Limpieza de una sola vez (por cuenta y dispositivo). Si algo falla (sin
  * red), se reintenta en el siguiente arranque. Nunca lanza. */
@@ -2253,108 +1489,14 @@ async function disableRemindersOnThisDevice(){
 }
 
 /* ==================================================================
-   RECORDATORIOS — reconciliación local↔Web Push (Fase R-8.2-C)
-   Evita que un mismo reminder produzca dos avisos al usuario cuando la
-   app está abierta: uno del polling local (triggerDueReminders, Fase 4)
-   y otro del push server-side (QStash → sw.js → esta pestaña).
-   state.reminders sigue siendo la ÚNICA fuente de verdad funcional
-   (pending/triggered/cancelled, sin cambios de modelo ni de ids). Esta
-   estructura es DELIBERADAMENTE independiente
-   (state.reminderNotificationLedger, {[reminderId]: timestampMs}):
-   solo registra que YA se mostró un aviso al usuario para ese
-   reminderId, sea cual sea el canal que lo mostró primero — nunca
-   toca reminder.status ni sustituye 'triggered'. Se persiste con el
-   MISMO mecanismo que el resto de state (window.storage, ver
-   saveReminders()) en vez de inventar uno nuevo.
-   Idempotencia/carreras: markReminderNotified() es "quien llega
-   primero, gana" — la primera llamada para un reminderId crea la
-   marca: showReminderNotification()/loop de invocaciones
-   posteriores en cualquier orden ya no vuelven a mostrar nada para el
-   mismo reminderId. Esto cubre las carreras entre polling y push con
-   la app abierta en cualquier orden (polling primero, push primero, o
-   casi simultáneos) de forma determinista: gana quien registre la
-   marca antes, el otro canal se abstiene al comprobarla.
-   LÍMITE que tenía esta fase, RESUELTO en R-8.2-D (se deja documentado
-   aquí para quien lea solo este bloque): con la app COMPLETAMENTE
-   cerrada, el Service Worker nunca escribía aquí (no tenía página
-   abierta a la que avisar, y a propósito no toca
-   state.reminders/window.storage desde sw.js — ver más abajo), así que
-   si el push llegaba con la app cerrada y el usuario reabría
-   ORGANIZATOR después de que ese reminder ya venciera, el polling
-   local no tenía forma de saber que el push ya había avisado. R-8.2-D
-   añade un ledger PERSISTENTE aparte (window.SWPushLedger, IndexedDB
-   propio, ver js/sw-push-ledger.js) que el Service Worker sí puede
-   escribir sin ninguna pestaña abierta y que la página consulta (solo
-   lectura) en triggerDueReminders() antes de notificar localmente — ver
-   el bloque RECORDATORIOS — robustez de Web Push (R-8.2-D), más abajo,
-   para el detalle completo. Esta estructura (state.reminderNotificationLedger)
-   sigue exactamente igual que antes: solo cubre el caso "la app ya
-   estaba abierta cuando llegó el push".
+   RECORDATORIOS — registro de avisos entregados (solo datos)
+   state.reminderNotificationLedger ya no lo escribe nadie (los
+   recordatorios locales no existen); se sigue cargando, guardando y
+   reiniciando al importar o borrar los datos.
    ================================================================== */
-
-/** true si YA se registró una entrega (por cualquier canal) para este
- * reminderId. Nunca lanza: lee un objeto plano, nunca state.reminders. */
-function reminderAlreadyNotified(reminderId){
-  return !!(state.reminderNotificationLedger && Object.prototype.hasOwnProperty.call(state.reminderNotificationLedger, reminderId));
-}
-
-/** Registra que un reminder YA fue notificado. Idempotente: si ya
- * había una marca para ese reminderId, no la reescribe ni vuelve a
- * guardar (devuelve false); si es la primera vez, la crea y persiste
- * (devuelve true). Nunca modifica reminder.status ni state.reminders. */
-async function markReminderNotified(reminderId, when = Date.now()){
-  if(!reminderId) return false;
-  if(!state.reminderNotificationLedger) state.reminderNotificationLedger = {};
-  if(Object.prototype.hasOwnProperty.call(state.reminderNotificationLedger, reminderId)) return false;
-  state.reminderNotificationLedger[reminderId] = when;
-  await saveReminderNotificationLedger();
-  return true;
-}
-
 async function saveReminderNotificationLedger(){
   try{ await window.storage.set('reminderNotificationLedger', JSON.stringify(state.reminderNotificationLedger||{}), false); }
   catch(e){ console.error('No se pudo guardar el registro de notificaciones entregadas', e); }
-}
-
-// 24h: margen generoso para cualquier carrera real entre el polling
-// (cada ~20s con la app abierta) y la entrega de un push — esto solo
-// acota el crecimiento del registro a largo plazo; nunca debería
-// afectar a una carrera legítima entre canales.
-const REMINDER_NOTIFICATION_LEDGER_TTL_MS = 24 * 60 * 60 * 1000;
-
-/** Limpieza simple y determinista: elimina marcas con más de
- * REMINDER_NOTIFICATION_LEDGER_TTL_MS de antigüedad (recibe `now`
- * explícito para que los tests sean deterministas). Nunca borra
- * reminders funcionales ni toca state.reminders — solo esta
- * estructura aparte. Devuelve true si limpió algo (y lo persiste). */
-async function pruneReminderNotificationLedger(now = Date.now()){
-  const ledger = state.reminderNotificationLedger;
-  if(!ledger) return false;
-  let changed = false;
-  for(const id of Object.keys(ledger)){
-    if(typeof ledger[id] !== 'number' || (now - ledger[id]) > REMINDER_NOTIFICATION_LEDGER_TTL_MS){
-      delete ledger[id];
-      changed = true;
-    }
-  }
-  if(changed) await saveReminderNotificationLedger();
-  return changed;
-}
-
-/** Maneja los mensajes que el Service Worker envía a esta pestaña (ver
- * sw.js, evento 'push': self.clients.matchAll()+postMessage). Cuando
- * un push YA mostró un aviso al usuario, esta pestaña se entera aquí
- * para que el polling local no vuelva a mostrar un segundo aviso del
- * MISMO reminder. Idempotente (markReminderNotified ya lo es: dos
- * mensajes iguales tienen el mismo resultado que uno). Nunca cambia
- * reminder.status ni muestra ninguna notificación por su cuenta —
- * solo registra la entrega. */
-function handleServiceWorkerMessage(event){
-  const data = event && event.data;
-  if(!data || data.type !== 'REMINDER_PUSH_DELIVERED') return;
-  const reminderId = typeof data.reminderId === 'string' ? data.reminderId : '';
-  if(!reminderId) return;
-  markReminderNotified(reminderId).catch(e => console.error('No se pudo registrar la entrega del push', e));
 }
 
 /* ==================================================================
@@ -2939,9 +2081,7 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
   // activo) empieza abierto, para no esconder información ya guardada.
   // AI-2.3: igual criterio si el prefill del chat ya trae una hora, para
   // no esconderla dentro de la sección colapsada.
-  const initialReminderDateTime = existing ? reminderTargetDateTime(existing.dueDate||'', existing.dueTime||'') : null;
-  const initialReminderMinutes = existing ? currentReminderMinutes('task', existing.id, initialReminderDateTime) : '';
-  const taskMoreOpen = !!(existing && (existing.dueTime || (existing.priority && existing.priority !== 'media') || existing.estimatedMinutes || initialReminderMinutes)) || !!(pre && pre.time);
+  const taskMoreOpen = !!(existing && (existing.dueTime || (existing.priority && existing.priority !== 'media') || existing.estimatedMinutes)) || !!(pre && pre.time);
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} tarea</h3>
@@ -2972,9 +2112,6 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
             <input type="number" name="estimatedMinutes" min="1" step="1" value="${existing&&existing.estimatedMinutes?existing.estimatedMinutes:''}" placeholder="Ej. 45">
             <div class="duration-hint" id="duration-hint" style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;"></div>
           </div>
-        </div>
-        <div class="form-group"><label>Recordatorio</label>
-          <select name="reminderMinutes" id="task-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
         </div>
       `, taskMoreOpen)}
       <div class="modal-actions">
@@ -3013,44 +2150,6 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
   renderDurationHint();
   modalBox.querySelector('[name="title"]').addEventListener('input', renderDurationHint);
   modalBox.querySelector('[name="category"]').addEventListener('input', renderDurationHint);
-
-  // Fase 3 de recordatorios: el <select> solo puede ofrecer opciones
-  // distintas de "Sin recordatorio" si hay fecha Y hora; se recalcula al
-  // vuelo si el usuario cambia cualquiera de las dos (mismo patrón que
-  // renderDurationHint más arriba).
-  function refreshTaskReminderSelect(){
-    const selectEl = modalBox.querySelector('#task-reminder-select');
-    if(!selectEl) return;
-    const dt = reminderTargetDateTime(modalBox.querySelector('[name="dueDate"]').value, modalBox.querySelector('[name="dueTime"]').value);
-    selectEl.innerHTML = reminderOptionsHtml(!!dt, selectEl.value);
-  }
-  modalBox.querySelector('[name="dueDate"]').addEventListener('input', refreshTaskReminderSelect);
-  modalBox.querySelector('[name="dueTime"]').addEventListener('input', refreshTaskReminderSelect);
-
-  // Fase R-7.2: pide permiso de notificaciones justo cuando el usuario
-  // ACTIVA un recordatorio (elige una opción distinta de "Sin
-  // recordatorio"), nunca al cargar la app. requestReminderNotificationPermission()
-  // (Fase 5, sin duplicar su lógica) ya es idempotente: si Notification
-  // no existe o el permiso ya no es 'default' (granted/denied), no hace
-  // nada — así que es seguro llamarla en cada 'change' sin repetir el
-  // prompt nativo del navegador. Rechazar el permiso, o que Notification
-  // no exista, nunca impide guardar el recordatorio: el guardado real
-  // ocurre en el submit de este formulario (syncReminderForTarget),
-  // completamente aparte de esto.
-  const taskReminderSelect = modalBox.querySelector('#task-reminder-select');
-  if(taskReminderSelect) taskReminderSelect.addEventListener('change', ()=>{
-    // R-8.2-B: si el permiso queda concedido, encadena la suscripción a
-    // Web Push (best-effort, nunca bloquea ni rompe este formulario —
-    // ver subscribeToPushNotifications, bloque RECORDATORIOS — Web
-    // Push). Promise.resolve(...) tolera incluso un
-    // requestReminderNotificationPermission() que no devolviera una
-    // Promise real (p.ej. en un stub de test).
-    if(taskReminderSelect.value !== ''){
-      Promise.resolve(requestReminderNotificationPermission()).then(granted=>{
-        if(granted && typeof subscribeToPushNotifications === 'function') subscribeToPushNotifications();
-      }).catch(()=>{});
-    }
-  });
 
   // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
   // openEventModal, ver RECURRENCIA — UI compartida más arriba).
@@ -3110,15 +2209,7 @@ function openTaskModal({taskId=null, date=null, prefill=null}={}){
       showToast('Elige al menos un día de la semana para la recurrencia semanal');
       return;
     }
-    // Fase 3 de recordatorios: id real del target ANTES de crear (para
-    // que targetId del reminder coincida con el id real de la tarea; se
-    // apoya en que addTask() usa el id incluido en `data` si se le pasa,
-    // igual que ya hace con cualquier otro campo).
-    const taskTargetId = editing ? taskId : uid();
-    if(!editing) data.id = taskTargetId;
     if(editing) await updateTask(taskId, data); else await addTask(data);
-    const reminderDateTime = reminderTargetDateTime(data.dueDate, data.dueTime);
-    await syncReminderForTarget('task', taskTargetId, reminderDateTime, fd.get('reminderMinutes'));
     closeModal();
     showToast(editing?'Guardado':'Añadido');
     renderCurrentView();
@@ -3177,18 +2268,9 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
   // endTime/categoría/recurrencia/recordatorio conservan siempre sus
   // defaults normales, nunca se inventan a partir del chat.
   const pre = (!editing && prefill) ? prefill : null;
-  // Fase 3 de recordatorios: estado inicial del <select> de recordatorio.
-  // Un evento allDay (o sin hora de inicio) nunca tiene datetime válido
-  // en esta fase — sin regla especial todavía para allDay, simplemente
-  // no hay hora con la que calcular remindAt.
-  const initialReminderDateTime = existing ? reminderTargetDateTime(existing.date, allDay?'':(existing.startTime||'')) : null;
-  const initialReminderMinutes = existing ? currentReminderMinutes('event', existing.id, initialReminderDateTime) : '';
-  // UX-8: "Repetición" y "Recordatorio" son secciones independientes,
-  // cerradas por defecto al crear un evento; al editar uno que ya tenga
-  // recurrencia/recordatorio configurados, la sección correspondiente
-  // empieza abierta para reflejar el estado actual sin esconderlo.
+  // UX-8: "Repetición" empieza cerrada al crear un evento; al editar uno
+  // que ya tenga recurrencia, empieza abierta para no esconderla.
   const eventRepeatOpen = !!(existing && existing.recurrence);
-  const eventReminderOpen = !!initialReminderMinutes;
 
   modalBox.innerHTML = `
     <h3>${editing?'Editar':'Añadir'} evento</h3>
@@ -3220,11 +2302,6 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
         </select>
       </div>
       ${modalCollapsibleSection('event-repeat', '🔁 Repetición', recurrenceControlsHtml('event', existing ? existing.recurrence : null), eventRepeatOpen)}
-      ${modalCollapsibleSection('event-reminder', '🔔 Recordatorio', `
-        <div class="form-group"><label>Recordatorio</label>
-          <select name="reminderMinutes" id="event-reminder-select">${reminderOptionsHtml(!!initialReminderDateTime, initialReminderMinutes)}</select>
-        </div>
-      `, eventReminderOpen)}
       <div class="modal-actions">
         <div>${editing?`<button type="button" class="btn" id="event-delete-btn">Eliminar</button>`:''}</div>
         <div class="right">
@@ -3237,35 +2314,6 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
   const allDayCb = modalBox.querySelector('#event-allday');
   allDayCb.addEventListener('change', ()=>{
     document.getElementById('event-time-row').style.display = allDayCb.checked ? 'none' : '';
-  });
-
-  // Fase 3 de recordatorios: el <select> solo puede ofrecer opciones
-  // distintas de "Sin recordatorio" si el evento NO es allDay y tiene
-  // hora de inicio; se recalcula al vuelo al tocar fecha/hora/allDay.
-  function refreshEventReminderSelect(){
-    const selectEl = modalBox.querySelector('#event-reminder-select');
-    if(!selectEl) return;
-    const isAllDay = modalBox.querySelector('[name="allDay"]').checked;
-    const dt = reminderTargetDateTime(modalBox.querySelector('[name="date"]').value, isAllDay?'':modalBox.querySelector('[name="startTime"]').value);
-    selectEl.innerHTML = reminderOptionsHtml(!!dt, selectEl.value);
-  }
-  modalBox.querySelector('[name="date"]').addEventListener('input', refreshEventReminderSelect);
-  modalBox.querySelector('[name="startTime"]').addEventListener('input', refreshEventReminderSelect);
-  allDayCb.addEventListener('change', refreshEventReminderSelect);
-
-  // Fase R-7.2: mismo criterio que en openTaskModal (ver comentario allí)
-  // — pide permiso de notificaciones solo al ACTIVAR un recordatorio
-  // desde este formulario, nunca al cargar la app.
-  const eventReminderSelect = modalBox.querySelector('#event-reminder-select');
-  if(eventReminderSelect) eventReminderSelect.addEventListener('change', ()=>{
-    // R-8.2-B: mismo criterio que en openTaskModal (ver comentario
-    // allí) — encadena la suscripción a Web Push solo si el permiso
-    // queda concedido, best-effort.
-    if(eventReminderSelect.value !== ''){
-      Promise.resolve(requestReminderNotificationPermission()).then(granted=>{
-        if(granted && typeof subscribeToPushNotifications === 'function') subscribeToPushNotifications();
-      }).catch(()=>{});
-    }
   });
 
   // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
@@ -3321,13 +2369,7 @@ function openEventModal({eventId=null, date=null, prefill=null}={}){
       showToast('Elige al menos un día de la semana para la recurrencia semanal');
       return;
     }
-    // Fase 3 de recordatorios: ver comentario equivalente en el submit de
-    // openTaskModal() sobre por qué se genera el id antes de addEvent().
-    const eventTargetId = editing ? eventId : uid();
-    if(!editing) data.id = eventTargetId;
     if(editing) await updateEvent(eventId, data); else await addEvent(data);
-    const reminderDateTime = reminderTargetDateTime(data.date, data.allDay ? '' : data.startTime);
-    await syncReminderForTarget('event', eventTargetId, reminderDateTime, fd.get('reminderMinutes'));
     closeModal();
     showToast(editing?'Guardado':'Añadido');
     renderCurrentView();
@@ -4601,32 +3643,11 @@ function renderGeneralPatternsSection(){
     </section>`;
 }
 
-/* UX-7: estado a mostrar en la nueva sección "Recordatorios" de Ajustes.
-   Función de solo lectura sobre la Notification API del navegador — NO
-   duplica ni reimplementa requestReminderNotificationPermission()/
-   showReminderNotification() (bloque RECORDATORIOS — Fase 5, sin tocar);
-   solo decide qué texto mostrar y si el botón "Activar notificaciones"
-   tiene sentido, con las mismas comprobaciones (typeof Notification,
-   Notification.permission) que esas funciones ya hacen. Nunca solicita
-   permiso por su cuenta — eso solo ocurre al pulsar el botón. */
-function reminderNotificationStatusInfo(){
-  if(typeof Notification === 'undefined' || !Notification){
-    return { text: 'Tu navegador no admite notificaciones.', showButton: false };
-  }
-  if(Notification.permission === 'granted'){
-    return { text: 'Activadas — recibirás una notificación cuando llegue la hora de un recordatorio.', showButton: false };
-  }
-  if(Notification.permission === 'denied'){
-    return { text: 'Bloqueadas en el navegador. Actívalas desde los ajustes de notificaciones de tu navegador para este sitio.', showButton: false };
-  }
-  return { text: 'Todavía no las has activado.', showButton: true };
-}
-
 /* UX-7 (acordeón): qué categorías de Ajustes están abiertas/cerradas.
    Vive a nivel de módulo (mismo patrón que `cal`/`week`): es solo estado
    de UI de esta sesión, nunca se guarda ni se exporta. Persiste ENTRE
    llamadas a renderAjustes() — necesario porque un par de controles de
-   dentro de Ajustes (el toggle de IA, el botón de notificaciones) sí
+   dentro de Ajustes sí
    vuelven a renderizar toda la vista; sin esto, cualquier categoría que
    el usuario hubiera cerrado se reabriría sola al tocar esos controles.
    Todas las categorías empiezan abiertas la primera vez (mismo contenido
@@ -4662,9 +3683,6 @@ function renderAjustes(){
     .map(o=>`<option value="${o.id}" ${state.prefs.defaultHome===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
 
   const hourOptions = (selected)=> Array.from({length:24},(_,h)=>`<option value="${h}" ${Number(selected)===h?'selected':''}>${pad(h)}:00</option>`).join('');
-  // UX-7: estado de las notificaciones de recordatorios (nueva sección);
-  // no toca el bloque RECORDATORIOS (Fase 5), solo lo consulta al vuelo.
-  const reminderStatus = reminderNotificationStatusInfo();
 
   // UX-7 (acordeón): contenido de cada categoría, EXACTAMENTE el mismo
   // HTML que antes vivía dentro de cada <div class="settings-group"> —
@@ -4733,20 +3751,6 @@ function renderAjustes(){
         </div>
       </section>`;
 
-  const recordatoriosHtml = `
-      <section class="block">
-        <p class="hint" style="display:block;margin-bottom:14px;">ORGANIZATOR puede mostrarte una notificación del navegador cuando llega la hora de un recordatorio que hayas configurado en una tarea o evento.</p>
-        <div class="settings-list">
-          <div class="settings-row">
-            <div class="left stack">
-              <div>Notificaciones del navegador</div>
-              <div class="row-sub" id="reminder-notification-status">${esc(reminderStatus.text)}</div>
-            </div>
-            ${reminderStatus.showButton ? `<button type="button" class="btn" id="btn-enable-notifications">Activar notificaciones</button>` : ''}
-          </div>
-        </div>
-      </section>`;
-
   const datosHtml = `
       <section class="block">
         <div class="block-head"><h2>Copia de seguridad</h2></div>
@@ -4786,12 +3790,11 @@ function renderAjustes(){
       ${ajustesAccordionSection('datos', 'Copia de seguridad', datosHtml)}
       ${ajustesAccordionSection('informacion', 'Información', informacionHtml)}
       <!-- App de exámenes: secciones ocultas (Horarios bloqueados y el resto de
-           Organización, IA, Recordatorios y notificaciones). Se siguen
+           Organización). Se siguen
            pintando para que su código funcione igual; se quitarán en la
            limpieza final. -->
       <div class="settings-hidden-sections" hidden>
         ${ajustesAccordionSection('organizacion', 'Organización', organizacionHtml)}
-        ${ajustesAccordionSection('recordatorios', 'Recordatorios', recordatoriosHtml)}
       </div>
     </div>
   `;
@@ -4836,27 +3839,6 @@ function renderAjustes(){
   if(endSelect) endSelect.addEventListener('change', async ()=>{
     state.prefs.dayEndHour = Number(endSelect.value);
     await savePrefs();
-  });
-
-  // UX-7: el permiso SOLO se solicita al pulsar este botón (nunca al
-  // abrir Ajustes). Llama directamente a la función ya existente de la
-  // Fase 5 de recordatorios (requestReminderNotificationPermission), sin
-  // reimplementarla; tras la respuesta del navegador, se vuelve a
-  // renderizar Ajustes para reflejar el nuevo Notification.permission
-  // (mismo patrón que el toggle de IA justo arriba).
-  const enableNotifBtn = el.querySelector('#btn-enable-notifications');
-  if(enableNotifBtn) enableNotifBtn.addEventListener('click', async ()=>{
-    enableNotifBtn.disabled = true;
-    const granted = await requestReminderNotificationPermission();
-    // R-8.2-B: solo tras el permiso concedido, intenta suscribirse a
-    // Web Push (best-effort, sin romper esta pantalla si falla — ver
-    // subscribeToPushNotifications). renderAjustes() de abajo ya
-    // refleja el nuevo Notification.permission con los helpers
-    // existentes (reminderNotificationStatusInfo), sin pantalla nueva.
-    if(granted && typeof subscribeToPushNotifications === 'function'){
-      try{ await subscribeToPushNotifications(); }catch(e){}
-    }
-    renderAjustes();
   });
 
   const addSubjectBtn = el.querySelector('#btn-add-subject');
@@ -5664,16 +4646,6 @@ function initPWA(){
     location.reload();
   });
 
-  // R-8.2-C: escucha los mensajes que el Service Worker envía a esta
-  // pestaña (ver handleServiceWorkerMessage, bloque RECORDATORIOS —
-  // reconciliación local↔Web Push, y sw.js evento 'push') —
-  // independiente del registro/actualización de arriba. El `typeof`
-  // evita romper initPWA() si se extrae/ejecuta aislado (p.ej. en
-  // tests que solo cargan esta función) sin el resto del bloque de
-  // recordatorios.
-  if(typeof handleServiceWorkerMessage === 'function'){
-    navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
-  }
 }
 function showUpdateBanner(reg){
   const banner = document.getElementById('update-banner');
@@ -6240,23 +5212,9 @@ async function startApp(){
   await loadState();
   initSettingsDataIO();
   initPWA();
-  // Fase R-7.1: arranca el polling que dispara los recordatorios
-  // vencidos mientras la app está abierta (ver RECORDATORIOS — disparo
-  // automático más arriba). startReminderPolling() es idempotente, así
-  // que no pasa nada si startApp() llegara a ejecutarse más de una vez.
-  // App de exámenes: con los recordatorios apagados no se arranca nada de
-  // esto y se hace la limpieza de una vez (ver RECORDATORIOS APAGADOS).
-  if(REMINDERS_ENABLED){
-  startReminderPolling();
-  // R-8.2-E: reconcilia en segundo plano la suscripción Web Push si el
-  // usuario ya tenía el permiso concedido de una sesión anterior. SIN
-  // await a propósito (best-effort, ver reconcilePushSubscriptionOnStartup):
-  // nunca debe retrasar ni poder bloquear el arranque de la app.
-  reconcilePushSubscriptionOnStartup();
-  } else {
-    // Sin await: nunca retrasa el arranque.
-    disableRemindersOnThisDevice();
-  }
+  // Recordatorios apagados: limpieza de una vez por cuenta y dispositivo
+  // (ver RECORDATORIOS APAGADOS). Sin await: nunca retrasa el arranque.
+  disableRemindersOnThisDevice();
   showView(state.prefs.defaultHome || 'inicio');
 }
 

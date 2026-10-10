@@ -27,7 +27,7 @@ function extractBetween(source, startMarker, endMarker, label) {
   return source.slice(start, end);
 }
 const HDR = '/* ==================================================================\n   ';
-const offSrc = extractBetween(html, `${HDR}RECORDATORIOS APAGADOS (app de exámenes)`, `\n${HDR}RECORDATORIOS — reconciliación`, 'bloque RECORDATORIOS APAGADOS');
+const offSrc = extractBetween(html, `${HDR}RECORDATORIOS APAGADOS (app de exámenes)`, `\n${HDR}RECORDATORIOS — registro de avisos`, 'bloque RECORDATORIOS APAGADOS');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n}\n', 'startApp()');
 
 let pass = 0, fail = 0;
@@ -51,17 +51,18 @@ function makeSandbox({ reminders = [], failIds = [], store = {}, user = { id: 7 
     unsubscribePushForThisDevice: async () => { calls.unsubscribed++; },
   };
   vm.createContext(sb);
-  vm.runInContext(offSrc + '\nObject.assign(this, { REMINDERS_ENABLED, disableRemindersOnThisDevice });', sb);
+  vm.runInContext(offSrc + '\nObject.assign(this, { disableRemindersOnThisDevice });', sb);
   return { sb, calls, store };
 }
 
 (async () => {
   section('A) Interruptores');
   {
-    const { sb } = makeSandbox();
-    check('A1. en la app los recordatorios están apagados', sb.REMINDERS_ENABLED === false);
-    check('A2. startApp: el polling y la suscripción Web Push solo arrancan si están encendidos; si no, limpieza',
-      /if\(REMINDERS_ENABLED\)\{\s*startReminderPolling\(\);[\s\S]*reconcilePushSubscriptionOnStartup\(\);\s*\} else \{[\s\S]*disableRemindersOnThisDevice\(\);\s*\}/.test(startAppSrc));
+    check('A1. en la app ya no hay recordatorios locales (ni polling, ni aviso, ni suscripción Web Push)',
+      ['function startReminderPolling(', 'function triggerDueReminders(', 'function showReminderNotification(', 'function subscribeToPushNotifications(', 'function addReminder(']
+        .every(s => !html.includes(s)));
+    check('A2. startApp hace siempre la limpieza (sin esperarla)',
+      /\n  disableRemindersOnThisDevice\(\);\n/.test(startAppSrc) && !startAppSrc.includes('startReminderPolling'));
     check('A3. el servidor está apagado (send-due.js) y entonces cancela sin enviar', /^let PUSH_REMINDERS_ENABLED = false;$/m.test(sendDueSrc)
       && sendDueSrc.includes("if (!PUSH_REMINDERS_ENABLED) {") && sendDueSrc.includes("status: 'disabled'"));
   }

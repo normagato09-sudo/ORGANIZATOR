@@ -61,18 +61,8 @@ const dowConstsSrc = extractBetween(
   '\n\n/* ==================================================================\n   AJUSTES',
   'constantes DOW_NAMES/DOW_SHORT/DOW_FULL_MONFIRST/MONTH_NAMES'
 );
-const remindersFase1Src = extractBetween(
-  html,
-  '/* ==================================================================\n   RECORDATORIOS — estructura de datos mínima (Fase 1)',
-  '\n\n/* ==================================================================\n   CATEGORÍAS DE EVENTOS (Fase 6A-3)',
-  'bloque RECORDATORIOS (Fase 1)'
-);
-const remindersFase3Src = extractBetween(
-  html,
-  '/* ==================================================================\n   RECORDATORIOS — integración con la interfaz (Fase 3, SIN notificaciones)',
-  '\n\n/* ==================================================================\n   TOAST',
-  'bloque RECORDATORIOS (Fase 3, integración UI)'
-);
+const remindersFase1Src = ''; // recordatorios locales borrados (bloque 5)
+const remindersFase3Src = ''; // recordatorios locales borrados (bloque 5)
 const recurrenceUiSrc = extractBetween(
   html,
   '/* ==================================================================\n   RECURRENCIA — UI compartida entre tarea y evento (Fase R-5)',
@@ -191,18 +181,18 @@ function collapsibleAriaExpanded(modalHtml, id) {
   }
 
   // =====================================================================
-  section('3) Dentro de "Más opciones" aparecen sus controles (hora, prioridad, recordatorio)');
+  section('3) Dentro de "Más opciones" aparecen sus controles (hora, prioridad)');
   // =====================================================================
   {
     const html3 = renderModalHTML('task', { tasks: [], events: [], eventCategories: [], reminders: [] }, {});
     check('3. input de hora (dueTime) presente en el HTML (aunque el panel esté cerrado, el control existe en el DOM)', /<input type="time" name="dueTime"/.test(html3));
     check('3. selector de prioridad presente', /name="priority"/.test(html3) && /Media<\/option>/.test(html3));
-    check('3. selector de recordatorio presente', /id="task-reminder-select"/.test(html3));
-    // Los tres controles deben vivir DENTRO del panel de "Más opciones",
+    check('3. ya no hay selector de recordatorio (recordatorios borrados)', !/reminderMinutes/.test(html3));
+    // Los controles deben vivir DENTRO del panel de "Más opciones",
     // no sueltos en el nivel principal del formulario.
     const panelMatch = /<div class="modal-collapsible-panel" id="modal-collapsible-panel-task-more"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<div class="modal-actions">/.exec(html3);
-    check('3b. hora/prioridad/recordatorio están dentro del panel "Más opciones"',
-      !!panelMatch && /name="dueTime"/.test(panelMatch[1]) && /name="priority"/.test(panelMatch[1]) && /id="task-reminder-select"/.test(panelMatch[1]));
+    check('3b. hora y prioridad están dentro del panel "Más opciones"',
+      !!panelMatch && /name="dueTime"/.test(panelMatch[1]) && /name="priority"/.test(panelMatch[1]));
   }
 
   // =====================================================================
@@ -273,13 +263,11 @@ function collapsibleAriaExpanded(modalHtml, id) {
   }
 
   // =====================================================================
-  section('9) Recordatorio de evento disponible pero opcional (cerrado por defecto, "Sin recordatorio")');
+  section('9) El evento ya no tiene recordatorio');
   // =====================================================================
   {
     const html9 = renderModalHTML('event', { tasks: [], events: [], eventCategories: [], reminders: [] }, {});
-    check('9. la sección "Recordatorio" del evento existe', isCollapsiblePanelHidden(html9, 'event-reminder') !== null);
-    check('9. está cerrada por defecto al crear un evento nuevo (sin recordatorio)', isCollapsiblePanelHidden(html9, 'event-reminder') === true);
-    check('9. "Sin recordatorio" es la opción seleccionada', /<option value="" selected>Sin recordatorio<\/option>/.test(html9));
+    check('9. no hay sección "Recordatorio" ni selector (recordatorios borrados)', isCollapsiblePanelHidden(html9, 'event-reminder') === null && !/reminderMinutes/.test(html9));
   }
 
   // =====================================================================
@@ -307,8 +295,6 @@ function collapsibleAriaExpanded(modalHtml, id) {
     const htmlAllDay = renderModalHTML('event', stateAllDay, { eventId: 'e3' });
     check('11. el checkbox "Todo el día" queda marcado', /name="allDay" id="event-allday" checked/.test(htmlAllDay));
     check('11. la fila de horas queda oculta (display:none) cuando allDay', /id="event-time-row" style="display:none;"/.test(htmlAllDay));
-    // Fase 3 de recordatorios: allDay sin hora → sin datetime válido → solo "Sin recordatorio" ofrecido.
-    check('11. sin datetime válido (allDay), el <select> de recordatorio SOLO ofrece "Sin recordatorio"', (htmlAllDay.match(/<option value="\d+"/g) || []).length === 0);
 
     const stateTimed = { tasks: [], events: [{ id: 'e4', title: 'Reunión', date: '2026-10-12', allDay: false, startTime: '10:00', endTime: '11:00' }], eventCategories: [], reminders: [] };
     const htmlTimed = renderModalHTML('event', stateTimed, { eventId: 'e4' });
@@ -316,7 +302,7 @@ function collapsibleAriaExpanded(modalHtml, id) {
   }
 
   // =====================================================================
-  section('12) Editar un evento conserva categoría, recurrencia y recordatorio');
+  section('12) Editar un evento conserva categoría y recurrencia');
   // =====================================================================
   {
     const state12 = {
@@ -334,8 +320,6 @@ function collapsibleAriaExpanded(modalHtml, id) {
     check('12. "Cada mes" (recurrencia) queda seleccionada', /<option value="monthly" selected>Cada mes<\/option>/.test(html12));
     check('12. el intervalo de la recurrencia se precarga (3)', /id="event-repeat-interval"[^>]*value="3"/.test(html12));
     check('12. la sección "Repetición" empieza ABIERTA (ya tiene recurrencia configurada)', isCollapsiblePanelHidden(html12, 'event-repeat') === false);
-    check('12. el recordatorio de "15 minutos antes" queda preseleccionado', /<option value="15" selected>15 minutos antes<\/option>/.test(html12));
-    check('12. la sección "Recordatorio" empieza ABIERTA (ya tiene un recordatorio activo)', isCollapsiblePanelHidden(html12, 'event-reminder') === false);
   }
 
   // =====================================================================
@@ -364,8 +348,6 @@ function collapsibleAriaExpanded(modalHtml, id) {
     const html14event = renderModalHTML('event', { tasks: [], events: [], eventCategories: [], reminders: [] }, {});
     check('14. el toggle de "Repetición" (evento) es un <button type="button"> con aria-expanded',
       /<button type="button" class="modal-collapsible-toggle" data-modal-collapsible="event-repeat" aria-expanded="false"/.test(html14event));
-    check('14. el toggle de "Recordatorio" (evento) es un <button type="button"> con aria-expanded',
-      /<button type="button" class="modal-collapsible-toggle" data-modal-collapsible="event-reminder" aria-expanded="false"/.test(html14event));
   }
 
   // =====================================================================

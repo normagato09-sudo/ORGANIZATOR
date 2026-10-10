@@ -266,8 +266,9 @@ function contrast(a, b) {
     const hidden = src.slice(src.indexOf('<div class="settings-hidden-sections" hidden>'));
     check('I1. visibles, en este orden: Asignaturas, Cuenta, Copia de seguridad, Información', ["'asignaturas'", "'cuenta'", "'datos', 'Copia de seguridad'", "'informacion'"]
       .map(k => visible.indexOf(k)).every((i, n, arr) => i !== -1 && (n === 0 || i > arr[n - 1])));
-    check('I2. ocultas (pero se siguen pintando): Organización (Horarios bloqueados) y Recordatorios; la sección de IA ya no existe', ["'organizacion'", "'recordatorios'"].every(k => hidden.includes(k) && !visible.includes(k))
-      && !src.includes("ajustesAccordionSection('ia'") && !src.includes('id="toggle-ia"'));
+    check('I2. oculta (pero se sigue pintando): Organización (Horarios bloqueados); las secciones de IA y Recordatorios ya no existen', hidden.includes("'organizacion'") && !visible.includes("'organizacion'")
+      && !src.includes("ajustesAccordionSection('ia'") && !src.includes('id="toggle-ia"')
+      && !src.includes("ajustesAccordionSection('recordatorios'") && !src.includes('id="btn-enable-notifications"'));
     check('I3. estadísticas de duración ocultas; la versión sigue a la vista', /<div hidden>\s*\$\{renderDurationStatsSection\(\)\}\s*\$\{renderGeneralPatternsSection\(\)\}\s*<\/div>/.test(src) && src.includes('versión ${APP_VERSION}'));
     check('I4. Copia de seguridad: Exportar e Importar; "Borrar todos los datos" oculto (su código sigue)', src.includes('id="btn-export-data">⬇️ Exportar copia') && src.includes('id="btn-import-data">⬆️ Importar copia')
       && src.includes('id="btn-delete-data" hidden>') && html.includes('async function deleteAllData(){'));
