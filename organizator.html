@@ -660,17 +660,6 @@
      cargar, window.SWPushLedger no existe y esas llamadas no hacen nada. -->
 <script src="/js/sw-push-ledger.js"></script>
 
-<!-- Duration Learning (aprendizaje de duración real de tareas): debe
-     cargarse antes que scheduler.js para que Scheduler.estimateDuration()
-     ya encuentre window.DurationLearning disponible como segunda fuente
-     de estimación (tras estimatedMinutes y antes del fallback por
-     prioridad). Si esta línea faltara o el script fallara al cargar,
-     Scheduler sigue funcionando igual que antes (detecta su ausencia). -->
-<script src="/js/duration-learning.js"></script>
-
-<!-- Scheduler (algoritmo de huecos libres). -->
-<script src="/js/scheduler.js"></script>
-
 <script>
 /* ==================================================================
    CONFIGURACIÓN
@@ -685,7 +674,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.23';
+const APP_VERSION = '2.3.24';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -2287,124 +2276,6 @@ function renderScheduleRows(){
 }
 
 
-/* Paso 4D: filas de duración por categoría, usando SOLO categorías reales
-   que ya existen en las tareas (nunca se inventa una lista de categorías).
-   Cada fila usa DurationLearning.getStatsForCategory, y una categoría se
-   omite por completo si no llega a minSamples — nunca se muestra una
-   estadística poco fiable ni una categoría vacía. */
-function renderCategoryDurationRows(minSamples){
-  const categories = Array.from(new Set(
-    state.tasks
-      .map(t => (t && t.category) ? String(t.category).trim() : '')
-      .filter(c => c.length > 0)
-  )).sort((a, b) => a.localeCompare(b));
-
-  return categories
-    .map(cat => {
-      const stats = DurationLearning.getStatsForCategory(cat, state.tasks);
-      if(stats.count < minSamples) return null;
-      return `<div class="settings-row"><div class="left stack"><div>${esc(cat)}</div><div class="row-sub">${stats.count} muestras</div></div><div>Media ${stats.mean} min · Mediana ${stats.median} min</div></div>`;
-    })
-    .filter(Boolean)
-    .join('');
-}
-
-/* Paso 4C: sección de solo lectura con las estadísticas reales que
-   DurationLearning calcula a partir de las tareas completadas con
-   actualMinutes. No modifica ninguna tarea, no cambia el Scheduler y no
-   inventa datos: si no hay muestras suficientes, muestra un mensaje claro
-   en vez de una estadística poco fiable. */
-function renderDurationStatsSection(){
-  if(!window.DurationLearning || !Array.isArray(state.tasks)){
-    return `
-    <section class="block">
-      <div class="block-head"><h2>Estadísticas de duración</h2></div>
-      <p class="hint" style="display:block;">No hay datos de duración disponibles todavía.</p>
-    </section>`;
-  }
-  const minSamples = (DurationLearning.DEFAULTS && DurationLearning.DEFAULTS.minSamples) || 3;
-  const stats = DurationLearning.getStats(state.tasks, () => true);
-  if(stats.count < minSamples){
-    return `
-    <section class="block">
-      <div class="block-head"><h2>Estadísticas de duración</h2><span class="hint">Basadas en tareas completadas con tiempo real registrado</span></div>
-      <p class="hint" style="display:block;">Aún no hay tareas suficientes con tiempo real registrado para calcular estadísticas fiables (mínimo ${minSamples}, llevas ${stats.count}).</p>
-    </section>`;
-  }
-  const trendLabel = {
-    up: 'Al alza — últimamente tardas más',
-    down: 'A la baja — últimamente tardas menos',
-    stable: 'Estable',
-  }[stats.trend] || 'Sin datos suficientes todavía';
-  const categoryRows = renderCategoryDurationRows(minSamples);
-  const categoryBlock = categoryRows
-    ? `
-      <div class="block-head" style="margin-top:16px;"><h3 style="margin:0;font-size:14px;">Por categoría</h3></div>
-      <div class="settings-list">
-        ${categoryRows}
-      </div>`
-    : '';
-  return `
-    <section class="block">
-      <div class="block-head"><h2>Estadísticas de duración</h2><span class="hint">Basadas en tareas completadas con tiempo real registrado</span></div>
-      <div class="settings-list">
-        <div class="settings-row"><div class="left">⏱️ Tiempo real medio</div><div>${stats.mean} min</div></div>
-        <div class="settings-row"><div class="left">📊 Mediana</div><div>${stats.median} min</div></div>
-        <div class="settings-row"><div class="left">🔢 Número de muestras</div><div>${stats.count}</div></div>
-        <div class="settings-row"><div class="left">📈 Tendencia reciente</div><div>${trendLabel}</div></div>
-      </div>
-      ${categoryBlock}
-    </section>`;
-}
-
-/* Paso 4E: patrones generales calculados por DurationLearning a partir de
-   datos reales (scheduledDate/scheduledStart de tareas completadas,
-   category, y comparación estimatedMinutes vs actualMinutes). Cada
-   patrón se calcula y se muestra de forma INDEPENDIENTE: si uno no tiene
-   muestras suficientes, esa línea concreta simplemente no aparece (nunca
-   se inventa ni se rellena con datos aproximados). Si ningún patrón tiene
-   datos todavía, no se añade ninguna sección vacía. No modifica ninguna
-   tarea ni estimación, y no toca el Scheduler. */
-function renderGeneralPatternsSection(){
-  if(!window.DurationLearning || !Array.isArray(state.tasks)) return '';
-
-  const rows = [];
-
-  const busiestDays = DurationLearning.getBusiestDaysOfWeek(state.tasks);
-  if(busiestDays && busiestDays.length){
-    const top = busiestDays.slice(0, 3).map(d => `${esc(d.day)} (${d.count})`).join(', ');
-    rows.push(`<div class="settings-row"><div class="left">📅 Días con más tareas completadas</div><div>${top}</div></div>`);
-  }
-
-  const busyHours = DurationLearning.getBusyHourSlots(state.tasks);
-  if(busyHours && busyHours.length){
-    const top = busyHours.slice(0, 3).map(h => `${esc(h.slot)} (${h.count})`).join(', ');
-    rows.push(`<div class="settings-row"><div class="left">🕐 Franjas horarias habituales</div><div>${top}</div></div>`);
-  }
-
-  const slowestCategories = DurationLearning.getCategoryDurationRanking(state.tasks);
-  if(slowestCategories && slowestCategories.length){
-    const top = slowestCategories.slice(0, 3).map(c => `${esc(c.category)} (${c.mean} min)`).join(', ');
-    rows.push(`<div class="settings-row"><div class="left">📚 Categorías que suelen tardar más</div><div>${top}</div></div>`);
-  }
-
-  const overEstimate = DurationLearning.getTasksOverEstimate(state.tasks);
-  if(overEstimate && overEstimate.length){
-    const top = overEstimate.slice(0, 5).map(t => `${esc(t.title)} (+${t.overrunMinutes} min)`).join(', ');
-    rows.push(`<div class="settings-row"><div class="left">⚠️ Tareas que suelen tardar más de lo estimado</div><div>${top}</div></div>`);
-  }
-
-  if(!rows.length) return '';
-
-  return `
-    <section class="block">
-      <div class="block-head"><h2>Patrones generales</h2><span class="hint">Solo se muestran cuando hay suficientes datos reales</span></div>
-      <div class="settings-list">
-        ${rows.join('')}
-      </div>
-    </section>`;
-}
-
 /* UX-7 (acordeón): qué categorías de Ajustes están abiertas/cerradas.
    Vive a nivel de módulo (mismo patrón que `cal`/`week`): es solo estado
    de UI de esta sesión, nunca se guarda ni se exporta. Persiste ENTRE
@@ -2511,12 +2382,7 @@ function renderAjustes(){
         <p class="hint" style="display:block;margin-top:8px;font-size:12px;color:var(--ink-soft);">Exportar descarga una copia de seguridad (archivo JSON) con los datos de tu cuenta. Importar sustituye los datos de tu cuenta en todos tus dispositivos y pide confirmación antes de aplicarse.</p>
       </section>`;
 
-  // App de exámenes: las estadísticas de duración se ocultan (su código sigue).
   const informacionHtml = `
-      <div hidden>
-      ${renderDurationStatsSection()}
-      ${renderGeneralPatternsSection()}
-      </div>
       <section class="block">
         <div class="block-head"><h2>Información de la aplicación</h2></div>
         <div class="app-info-box">

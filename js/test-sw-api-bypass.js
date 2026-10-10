@@ -126,9 +126,9 @@ async function dispatch(onFetch, { url, method = 'GET', mode = 'cors', destinati
     check('navegación: se intercepta y responde con la red', nav.intercepted && nav.response && nav.response.body === `network:${ORIGIN}/`);
     check('navegación: guarda copia de /organizator.html en caché', sw.caches.log.put.includes(`${ORIGIN}/organizator.html`));
 
-    sw.caches.store.set(`${ORIGIN}/js/scheduler.js`, makeResponse('scheduler-cacheado'));
-    const js = await dispatch(sw.onFetch, { url: '/js/scheduler.js' });
-    check('recurso propio cacheado: se sirve desde la caché (caché primero)', js.intercepted && js.response.body === 'scheduler-cacheado');
+    sw.caches.store.set(`${ORIGIN}/js/sync-merge.js`, makeResponse('sync-merge-cacheado'));
+    const js = await dispatch(sw.onFetch, { url: '/js/sync-merge.js' });
+    check('recurso propio cacheado: se sirve desde la caché (caché primero)', js.intercepted && js.response.body === 'sync-merge-cacheado');
 
     const fresh = await dispatch(sw.onFetch, { url: '/manifest.json' });
     await new Promise(r => setImmediate(r));

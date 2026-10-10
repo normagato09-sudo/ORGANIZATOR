@@ -269,7 +269,7 @@ function contrast(a, b) {
     check('I2. oculta (pero se sigue pintando): Organización (Horarios bloqueados); las secciones de IA y Recordatorios ya no existen', hidden.includes("'organizacion'") && !visible.includes("'organizacion'")
       && !src.includes("ajustesAccordionSection('ia'") && !src.includes('id="toggle-ia"')
       && !src.includes("ajustesAccordionSection('recordatorios'") && !src.includes('id="btn-enable-notifications"'));
-    check('I3. estadísticas de duración ocultas; la versión sigue a la vista', /<div hidden>\s*\$\{renderDurationStatsSection\(\)\}\s*\$\{renderGeneralPatternsSection\(\)\}\s*<\/div>/.test(src) && src.includes('versión ${APP_VERSION}'));
+    check('I3. estadísticas de duración borradas (bloque 5); la versión sigue a la vista', !html.includes('renderDurationStatsSection') && !html.includes('renderGeneralPatternsSection') && src.includes('versión ${APP_VERSION}'));
     check('I4. Copia de seguridad: Exportar e Importar; "Borrar todos los datos" oculto (su código sigue)', src.includes('id="btn-export-data">⬇️ Exportar copia') && src.includes('id="btn-import-data">⬆️ Importar copia')
       && src.includes('id="btn-delete-data" hidden>') && html.includes('async function deleteAllData(){'));
     check('I5. Cuenta: cerrar sesión y estado de sincronización', src.includes('id="btn-logout"') && src.includes('id="sync-status-text"'));
