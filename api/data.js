@@ -12,7 +12,7 @@
  *          con lo que hay ahora en el servidor (las demás sí se guardaron)
  *   → 400/401/405/413/500 { error: string }
  *
- * Autenticado con la MISMA cookie de sesión que api/auth/* y api/push/*
+ * Autenticado con la MISMA cookie de sesión que api/auth/*
  * (lib/auth.js). El usuario SIEMPRE sale de la sesión — nunca del body ni
  * de la URL —, así que nadie puede leer ni escribir los datos de otra
  * cuenta. Solo se aceptan las claves de la lista blanca de

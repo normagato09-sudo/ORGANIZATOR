@@ -652,14 +652,6 @@
 <script src="/js/sync-merge.js"></script>
 <script src="/js/sync-storage.js"></script>
 
-<!-- R-8.2-D: ledger persistente (IndexedDB propio, independiente de
-     window.storage) de qué reminderId ya mostró un push el Service
-     Worker — el MISMO archivo que carga sw.js vía importScripts, para
-     que ambos realms compartan una única implementación. La página solo
-     lo vacía (al importar, borrar los datos o cerrar sesión); si falla al
-     cargar, window.SWPushLedger no existe y esas llamadas no hacen nada. -->
-<script src="/js/sw-push-ledger.js"></script>
-
 <script>
 /* ==================================================================
    CONFIGURACIÓN
@@ -699,12 +691,7 @@ let state = {
   tasks: [], events: [],
   customSchedules: [],
   eventCategories: [], // Fase 6A-3: categorías configurables para eventos (color + blocksSchedule)
-  reminders: [], // recordatorios de tareas/eventos — estructura de datos mínima (Fase 1, sin notificaciones todavía)
-  // R-8.2-C: registro de reconciliación local↔Web Push, SEPARADO del
-  // modelo funcional de reminders — {[reminderId]: timestampMs}. Nunca
-  // sustituye reminder.status ni forma parte de su modelo (ver bloque
-  // RECORDATORIOS — reconciliación local↔Web Push más abajo).
-  reminderNotificationLedger: {},
+  reminders: [], // recordatorios antiguos: ya no se usan, solo se conservan los datos
   // App de exámenes (paso 1, solo modelo de datos): asignaturas, exámenes/
   // entregas y sesiones del plan de estudio. Ver STUDY_KEYS en ALMACENAMIENTO.
   subjects: [], exams: [], studySessions: [],
@@ -817,10 +804,6 @@ async function loadState(){
     const r = await window.storage.get('reminders', false);
     state.reminders = r ? JSON.parse(r.value) : [];
   }catch(e){ state.reminders = []; }
-  try{
-    const rnl = await window.storage.get('reminderNotificationLedger', false);
-    state.reminderNotificationLedger = rnl ? JSON.parse(rnl.value) : {};
-  }catch(e){ state.reminderNotificationLedger = {}; }
   for(const key of STUDY_KEYS){
     try{
       const s = await window.storage.get(key, false);
@@ -1001,73 +984,6 @@ function examStudyDays(exam, prefs){
   const valid = n => Number.isInteger(n) && n >= 1;
   if(valid(exam.studyDaysBefore)) return exam.studyDaysBefore;
   return valid(prefs && prefs.studyDaysBefore) ? prefs.studyDaysBefore : 10;
-}
-
-/* ==================================================================
-   RECORDATORIOS — cancelar en el servidor (Web Push)
-   Los recordatorios locales ya no existen (app de exámenes). Esto queda
-   solo para la limpieza de abajo (RECORDATORIOS APAGADOS), que cancela en
-   el servidor los avisos que quedaran pendientes de versiones anteriores.
-   ================================================================== */
-/** Cancela el equivalente server-side de un reminder vía POST
- * /api/push/cancel-reminder. Best-effort e idempotente: un fallo se
- * registra con console.warn y se resuelve a { ok:false } sin lanzar. */
-async function cancelReminderPush(reminderId){
-  if(!reminderId) return { ok:false, reason:'no-id' };
-  try{
-    const res = await fetch('/api/push/cancel-reminder', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify({ reminderId }),
-    });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    return { ok:true };
-  }catch(e){
-    console.warn('No se pudo cancelar el recordatorio en Web Push (el recordatorio local sigue cancelado)', e);
-    return { ok:false, reason:'network-or-server-error' };
-  }
-}
-
-/* ==================================================================
-   RECORDATORIOS APAGADOS (app de exámenes)
-   Los recordatorios locales ya no existen. Una vez por cuenta y
-   dispositivo, startApp() cancela en el servidor los avisos que quedaran
-   pendientes y da de baja este dispositivo. state.reminders no se toca
-   (los datos se siguen sincronizando y exportando). El servidor tiene su
-   propio interruptor (api/push/send-due.js), que es el que garantiza que
-   no llegue nada al móvil aunque haya una versión vieja de la app.
-   ================================================================== */
-const REMINDERS_OFF_CLEANUP_KEY = 'organizator:remindersOffCleanup:v1';
-/** Limpieza de una sola vez (por cuenta y dispositivo). Si algo falla (sin
- * red), se reintenta en el siguiente arranque. Nunca lanza. */
-async function disableRemindersOnThisDevice(){
-  try{
-    const key = `${REMINDERS_OFF_CLEANUP_KEY}:${currentUser && currentUser.id != null ? currentUser.id : 'anon'}`;
-    try{ if(localStorage.getItem(key)) return { ok:true, skipped:true }; }catch(e){}
-    const pending = (state.reminders || []).filter(r => r && r.status === 'pending');
-    let failed = 0;
-    for(const r of pending){
-      const res = await cancelReminderPush(r.id);
-      if(!res || !res.ok) failed++;
-    }
-    await unsubscribePushForThisDevice();
-    if(failed === 0){ try{ localStorage.setItem(key, String(Date.now())); }catch(e){} }
-    return { ok: failed === 0, cancelled: pending.length - failed };
-  }catch(e){
-    return { ok:false };
-  }
-}
-
-/* ==================================================================
-   RECORDATORIOS — registro de avisos entregados (solo datos)
-   state.reminderNotificationLedger ya no lo escribe nadie (los
-   recordatorios locales no existen); se sigue cargando, guardando y
-   reiniciando al importar o borrar los datos.
-   ================================================================== */
-async function saveReminderNotificationLedger(){
-  try{ await window.storage.set('reminderNotificationLedger', JSON.stringify(state.reminderNotificationLedger||{}), false); }
-  catch(e){ console.error('No se pudo guardar el registro de notificaciones entregadas', e); }
 }
 
 /* ==================================================================
@@ -2601,26 +2517,8 @@ function initSettingsDataIO(){
     const sanitizedSubjects = sanitizeImportedSubjects(state.subjects);
     state.subjects = sanitizedSubjects.kept;
     sanitizedStudy.subjects.discarded += sanitizedSubjects.discarded;
-    // R-8.2-C: el registro de reconciliación es puramente interno (no
-    // forma parte del formato exportado/importado, ver exportData()) —
-    // se reinicia al importar, porque cualquier marca antigua ya no
-    // tiene sentido para el conjunto de reminders que se acaba de
-    // reemplazar por completo.
-    state.reminderNotificationLedger = {};
     state.prefs = { ...defaultPrefs(), ...(data.prefs||{}) };
     state.ia = { ...defaultIA(), ...(data.ia||{}) };
-
-    // R-8.2-D: mismo criterio que el registro de arriba, aplicado al
-    // ledger PERSISTENTE del Service Worker (window.SWPushLedger) —
-    // igualmente interno, ajeno al formato importado/exportado. Sin
-    // esto, una marca de "reminderId X ya avisó" de un conjunto de
-    // reminders anterior podría "contaminar" un reminderId nuevo que
-    // coincidiera tras el import (ids reutilizados, datos de otra
-    // exportación...). Best-effort: un fallo aquí no debe impedir
-    // completar el resto del import.
-    if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
-      try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push tras importar', e); }
-    }
 
     // Paso 2b: una clase cuya asignatura no viene en la copia se queda como bloque normal.
     state.customSchedules = state.customSchedules.map(s =>
@@ -2631,7 +2529,7 @@ function initSettingsDataIO(){
       await Promise.all([
         saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
         saveSubjects(), saveExams(), saveStudySessions(),
-        saveReminderNotificationLedger(), savePrefs(), saveIA(),
+        savePrefs(), saveIA(),
       ]);
       const discardedParts = [];
       if(sanitizedStudy.subjects.discarded) discardedParts.push(`${sanitizedStudy.subjects.discarded} asignatura(s)`);
@@ -2666,22 +2564,14 @@ async function deleteAllData(){
   state.subjects = [];
   state.exams = [];
   state.studySessions = [];
-  state.reminderNotificationLedger = {}; // R-8.2-C: interno, se borra junto con los reminders
   state.prefs = defaultPrefs();
   state.ia = defaultIA();
-
-  // R-8.2-D: mismo criterio, aplicado al ledger PERSISTENTE del Service
-  // Worker — ver el mismo razonamiento en importData(), más arriba.
-  // Best-effort: un fallo aquí no debe impedir borrar el resto de datos.
-  if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
-    try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push al borrar los datos', e); }
-  }
 
   try{
     await Promise.all([
       saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
       saveSubjects(), saveExams(), saveStudySessions(),
-      saveReminderNotificationLedger(), savePrefs(), saveIA(),
+      savePrefs(), saveIA(),
     ]);
     // SYNC: mismo criterio que al importar (ver initSettingsDataIO).
     const uploaded = (typeof flushAccountChanges === 'function') ? await flushAccountChanges() : true;
@@ -3197,11 +3087,6 @@ async function maybeMigrateLegacyData(){
       for(const key of Object.keys(values)){
         await store.storage.set(key, JSON.stringify(values[key]));
       }
-      // El registro local de avisos (solo de este dispositivo) también pasa
-      // a la caché de la cuenta, si todavía no tenía uno.
-      if(legacyData.values.reminderNotificationLedger && !(await store.storage.get('reminderNotificationLedger'))){
-        await store.storage.set('reminderNotificationLedger', JSON.stringify(legacyData.values.reminderNotificationLedger));
-      }
     }
     await finishLegacyMigrationIfUploaded(store, true, choice);
   }catch(err){
@@ -3209,36 +3094,8 @@ async function maybeMigrateLegacyData(){
   }
 }
 
-/** Da de baja las notificaciones push de ESTE dispositivo para la cuenta
- * actual. Sin esto, la suscripción seguiría a nombre de esta cuenta y
- * otra persona que entrara después en el mismo dispositivo recibiría sus
- * recordatorios. Primero en el servidor (necesita la sesión, así que va
- * antes de /api/auth/logout) y después en el navegador: aunque el
- * servidor no responda, una suscripción dada de baja en el navegador deja
- * de ser válida y el servidor la elimina en el siguiente envío (404/410,
- * ver api/push/send-due.js). Nunca lanza. */
-async function unsubscribePushForThisDevice(){
-  try{
-    if(typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-    const registration = await navigator.serviceWorker.getRegistration();
-    if(!registration || !registration.pushManager) return;
-    const subscription = await registration.pushManager.getSubscription();
-    if(!subscription) return;
-    try{
-      await fetch('/api/push/unsubscribe', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        credentials:'same-origin',
-        body: JSON.stringify({ endpoint: subscription.endpoint }),
-      });
-    }catch(e){ /* sin red: basta con la baja del navegador, ver arriba */ }
-    try{ await subscription.unsubscribe(); }catch(e){}
-  }catch(e){ /* best-effort: nunca impide cerrar sesión */ }
-}
-
-/** Cerrar sesión: sube lo pendiente (o avisa si no se puede), da de baja
- * el push de este dispositivo, borra la caché local de ESTA cuenta y
- * cierra la sesión en el servidor. Al volver a entrar con otra cuenta no
+/** Cerrar sesión: sube lo pendiente (o avisa si no se puede), borra la
+ * caché local de ESTA cuenta y cierra la sesión en el servidor. Al volver a entrar con otra cuenta no
  * queda nada de esta en el dispositivo. */
 async function logout(){
   const store = (typeof SyncStorage !== 'undefined' && SyncStorage) ? SyncStorage.current() : null;
@@ -3257,12 +3114,6 @@ async function logout(){
         writeLegacyMigrationMarker(marker);
       }
     }
-  }
-  await unsubscribePushForThisDevice();
-  // Mismo criterio que importar/borrar datos: el registro de avisos push
-  // de este dispositivo no debe pasar a la siguiente cuenta.
-  if(typeof self !== 'undefined' && self.SWPushLedger && typeof self.SWPushLedger.clearAll === 'function'){
-    try{ await self.SWPushLedger.clearAll(); }catch(e){ console.error('No se pudo reiniciar el ledger persistente de push al cerrar sesión', e); }
   }
   if(store){
     try{ await SyncStorage.deactivate(); }catch(e){}
@@ -3294,9 +3145,6 @@ async function startApp(){
   await loadState();
   initSettingsDataIO();
   initPWA();
-  // Recordatorios apagados: limpieza de una vez por cuenta y dispositivo
-  // (ver RECORDATORIOS APAGADOS). Sin await: nunca retrasa el arranque.
-  disableRemindersOnThisDevice();
   showView(state.prefs.defaultHome || 'inicio');
 }
 

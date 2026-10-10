@@ -28,7 +28,7 @@ function extractBetween(source, startMarker, endMarker, label) {
 }
 
 const HDR = '/* ==================================================================\n   ';
-const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: modelo de datos (paso 1)', `\n\n${HDR}RECORDATORIOS — cancelar en el servidor`, 'constantes STUDY_*');
+const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: modelo de datos (paso 1)', `\n\n${HDR}TOAST`, 'constantes STUDY_*');
 const examsSrc = extractBetween(html, `${HDR}EXÁMENES Y ENTREGAS (app de exámenes)`, `\n${HDR}RENDER: AJUSTES`, 'bloque EXÁMENES Y ENTREGAS');
 const ymdSrc = extractBetween(html, 'const IMPORT_DATE_YMD_RE', '\n}\n', 'isValidYMDDate()') + '\n}\n';
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';

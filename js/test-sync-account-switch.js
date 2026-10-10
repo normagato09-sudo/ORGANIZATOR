@@ -7,8 +7,8 @@
  * en el navegador) junto con js/sync-merge.js y js/sync-storage.js reales.
  * Lo que persiste entre cargas es el "dispositivo": su IndexedDB (falso),
  * su localStorage (falso) y su cookie de sesión. El servidor es el handler
- * real de api/data.js sobre un Postgres falso; /api/auth/* y
- * /api/push/unsubscribe se simulan con lo mínimo (cookie por dispositivo).
+ * real de api/data.js sobre un Postgres falso; /api/auth/* se simula con
+ * lo mínimo (cookie por dispositivo).
  *
  * Escenario principal: dos hermanos comparten un móvil.
  *
@@ -36,8 +36,7 @@ function extractBetween(source, startMarker, endMarker, label) {
 }
 const HDR = '/* ==================================================================\n   ';
 const defaultsSrc = extractBetween(html, 'function defaultPrefs(){', `\n\n${HDR}ESTADO`, 'defaultPrefs/defaultIA');
-const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}RECORDATORIOS — cancelar en el servidor`, 'bloque ALMACENAMIENTO');
-const ledgerSaveSrc = extractBetween(html, 'async function saveReminderNotificationLedger(){', '\n\n', 'saveReminderNotificationLedger');
+const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}TOAST`, 'bloque ALMACENAMIENTO');
 const authBlockSrc = extractBetween(html, `${HDR}AUTENTICACIÓN`, '\n</script>', 'bloque AUTENTICACIÓN + INICIALIZACIÓN');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n(async function init(){', 'startApp()');
 // Paso 8: bloque real de Exportar / Importar / Borrar datos (incluye el saneamiento de importación).
@@ -162,8 +161,6 @@ function makeDevice() {
     cookieUserId: null,       // de quién es la cookie de sesión de este navegador
     online: true,
     log: [],                  // peticiones: 'GET /api/data', 'POST /api/auth/logout'...
-    pushSubscription: null,   // { endpoint, unsubscribed }
-    ledgerClears: 0,
   };
   device.fetch = async (url, init = {}) => {
     const method = (init.method || 'GET').toUpperCase();
@@ -182,10 +179,6 @@ function makeDevice() {
       return json(200, { user: { id: u.id, email: u.email, name: u.name } });
     }
     if (url === '/api/auth/logout') { device.cookieUserId = null; return json(200, { ok: true }); }
-    if (url === '/api/push/unsubscribe') {
-      device.unsubscribeRequest = { endpoint: JSON.parse(init.body).endpoint, withSessionOf: device.cookieUserId };
-      return json(200, { ok: true });
-    }
     if (url === '/api/data') {
       const req = { method, headers: device.cookieUserId ? { cookie: `${session.SESSION_COOKIE}=${encodeURIComponent(session.signSession({ sub: device.cookieUserId }, process.env.JWT_SECRET))}` } : {}, body: init.body, query: {} };
       const res = { _s: 200, _j: null, status(c) { this._s = c; return this; }, json(o) { this._j = o; return this; }, setHeader() {} };
@@ -232,18 +225,6 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     },
     location: { reload: () => { page.reloads++; } },
     confirm: (msg) => { page.confirms.push(msg); return confirmAnswer; },
-    navigator: {
-      serviceWorker: {
-        getRegistration: async () => ({
-          pushManager: {
-            getSubscription: async () => (device.pushSubscription && !device.pushSubscription.unsubscribed
-              ? { endpoint: device.pushSubscription.endpoint, unsubscribe: async () => { device.pushSubscription.unsubscribed = true; return true; } }
-              : null),
-          },
-        }),
-      },
-    },
-    SWPushLedger: { clearAll: async () => { device.ledgerClears++; } },
     addEventListener() {}, removeEventListener() {},
     document: {
       getElementById: el, visibilityState: 'visible', addEventListener() {}, removeEventListener() {},
@@ -256,7 +237,7 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
   if (legacyStorage) sb.storage = legacyStorage;
   vm.createContext(sb);
   vm.runInContext(`
-    let state = { tasks: [], events: [], customSchedules: [], eventCategories: [], reminders: [], reminderNotificationLedger: {}, prefs: {}, ia: {} };
+    let state = { tasks: [], events: [], customSchedules: [], eventCategories: [], reminders: [], prefs: {}, ia: {} };
     const cal = {};
     const APP_NAME = 'ORGANIZATOR';
     const APP_VERSION = 'test';
@@ -265,10 +246,6 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     function showToast(m){ __page.toasts.push(m); }
     function renderCurrentView(){ __page.calls.push('render'); }
     function initPWA(){ __page.calls.push('initPWA'); }
-    function startReminderPolling(){}
-    function reconcilePushSubscriptionOnStartup(){ __page.calls.push('reconcilePush'); }
-    const REMINDERS_ENABLED = false;
-    function disableRemindersOnThisDevice(){ __page.calls.push('disableReminders'); }
     function showView(v){ __page.calls.push('showView:' + v); }
   `, sb, { filename: 'stubs' });
   vm.runInContext(defaultsSrc, sb, { filename: 'organizator.html (defaultPrefs/defaultIA)' });
@@ -276,13 +253,13 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
     vm.runInContext(syncMergeSrc, sb, { filename: 'js/sync-merge.js' });
     vm.runInContext(syncStorageSrc, sb, { filename: 'js/sync-storage.js' });
   }
-  vm.runInContext(storageBlockSrc + '\n' + ledgerSaveSrc, sb, { filename: 'organizator.html (ALMACENAMIENTO)' });
+  vm.runInContext(storageBlockSrc, sb, { filename: 'organizator.html (ALMACENAMIENTO)' });
   vm.runInContext(dataIOSrc, sb, { filename: 'organizator.html (Exportar/Importar/Borrar)' });
   vm.runInContext(authBlockSrc + `
     this.__app = {
       get state(){ return state; },
       get currentUser(){ return currentUser; },
-      saveTasks, saveEvents, saveReminderNotificationLedger, logout, handleRemoteDataChange,
+      saveTasks, saveEvents, logout, handleRemoteDataChange,
       exportData, deleteAllData, syncStatusText, syncNow,
     };`, sb, { filename: 'organizator.html (AUTENTICACIÓN + INICIALIZACIÓN)' });
   await settle();
@@ -311,7 +288,6 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
 
 (async () => {
   const phone = makeDevice();
-  phone.pushSubscription = { endpoint: 'https://push.example/phone-1', unsubscribed: false };
 
   // =====================================================================
   section('A) Primer uso: la hermana inicia sesión y crea tareas');
@@ -324,7 +300,6 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   check('A4. se guarda el último usuario (sin token)', JSON.parse(phone.localStorage.get('organizator:lastUser')).id === SIS.id && !/token|password/i.test(phone.localStorage.get('organizator:lastUser')));
   await page.addTask('s1', 'Examen de mates');
   await page.addTask('s2', 'Tarea de física');
-  await page.app.saveReminderNotificationLedger();
   await page.store().flush();
   check('A5. sus tareas llegan a SU cuenta en el servidor', JSON.stringify(fakeDb.valueOf(SIS.id, 'tasks').map(t => t.id)) === '["s1","s2"]');
   check('A6. startApp activa el almacén de la cuenta ANTES de leer ningún dato',
@@ -338,10 +313,7 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   await settle();
   const logoutLog = phone.log.slice(logBefore);
   check('B1. no pregunta nada (no había cambios sin subir)', page.confirms.length === 0);
-  check('B2. da de baja el push de este móvil EN SU cuenta (antes de cerrar la sesión)', phone.unsubscribeRequest && phone.unsubscribeRequest.endpoint === 'https://push.example/phone-1' && phone.unsubscribeRequest.withSessionOf === SIS.id);
-  check('B3. y también en el navegador', phone.pushSubscription.unsubscribed === true);
-  check('B4. /api/push/unsubscribe va antes que /api/auth/logout', logoutLog.indexOf('POST /api/push/unsubscribe') < logoutLog.indexOf('POST /api/auth/logout'));
-  check('B5. se reinicia el registro de avisos push del Service Worker', phone.ledgerClears === 1);
+  check('B2. ya no llama a /api/push (push borrado en el bloque 6)', !logoutLog.some(l => l.includes('/api/push')) && logoutLog.includes('POST /api/auth/logout'));
   check('B6. se borra la caché local de SU cuenta', !phone.idb.databases.has('organizator-data-u1'));
   check('B7. se olvida el último usuario', !phone.localStorage.has('organizator:lastUser'));
   check('B8. se cierra la sesión en el servidor y se recarga la página', phone.cookieUserId === null && page.reloads === 1);

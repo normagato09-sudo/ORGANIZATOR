@@ -110,8 +110,8 @@ async function dispatch(onFetch, { url, method = 'GET', mode = 'cors', destinati
     const withQuery = await dispatch(sw.onFetch, { url: '/api/data?since=3' });
     check('GET /api/data?since=3 (con query) no se intercepta', withQuery.intercepted === false);
 
-    const key = await dispatch(sw.onFetch, { url: '/api/push/vapid-public-key' });
-    check('GET /api/push/vapid-public-key no se intercepta', key.intercepted === false);
+    const key = await dispatch(sw.onFetch, { url: '/api/auth/logout' });
+    check('/api/auth/logout no se intercepta', key.intercepted === false);
 
     const apiLog = [...sw.caches.log.match, ...sw.caches.log.put].filter(u => new URL(u).pathname.startsWith('/api/'));
     check('ninguna URL /api/* se leyó ni se escribió en la caché', apiLog.length === 0);

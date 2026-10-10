@@ -38,7 +38,7 @@ function extractBetween(source, startMarker, endMarker, label) {
 }
 const HDR = '/* ==================================================================\n   ';
 const defaultsSrc = extractBetween(html, 'function defaultPrefs(){', `\n\n${HDR}ESTADO`, 'defaultPrefs/defaultIA');
-const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}RECORDATORIOS — cancelar en el servidor`, 'bloque ALMACENAMIENTO');
+const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}TOAST`, 'bloque ALMACENAMIENTO');
 const authBlockSrc = extractBetween(html, `${HDR}AUTENTICACIÓN`, '\n</script>', 'bloque AUTENTICACIÓN + INICIALIZACIÓN');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n(async function init(){', 'startApp()');
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';
@@ -190,7 +190,6 @@ function makeDevice() {
     const me = () => device.users.get(device.cookieUserId);
     if (url === '/api/auth/me') return me() ? json(200, { user: { id: me().id, email: me().email, name: me().name } }) : json(401, { error: 'No has iniciado sesión.' });
     if (url === '/api/auth/logout') { device.cookieUserId = null; return json(200, { ok: true }); }
-    if (url === '/api/push/unsubscribe') return json(200, { ok: true });
     if (url === '/api/data') {
       const req = { method, headers: device.cookieUserId ? { cookie: `${session.SESSION_COOKIE}=${encodeURIComponent(session.signSession({ sub: device.cookieUserId }, process.env.JWT_SECRET))}` } : {}, body: init.body, query: {} };
       const res = { _s: 200, _j: null, status(c) { this._s = c; return this; }, json(o) { this._j = o; return this; }, setHeader() {} };
@@ -382,7 +381,7 @@ const ids = (list) => (list || []).map(x => x.id).sort();
     const backup = JSON.parse(await page.downloads[0].blob.text());
     check('B9. la copia tiene el formato de "Exportar" (se puede reimportar)', backup.app === 'ORGANIZATOR' && ids(backup.data.tasks).join() === 't1,t2,t3' && backup.data.prefs.defaultHome === 'calendario');
     check('B10. los datos llegan a SU cuenta', ids(fakeDb.valueOf(sis.id, 'tasks')).join() === 't1,t2,t3' && ids(fakeDb.valueOf(sis.id, 'events')).join() === 'e1' && fakeDb.valueOf(sis.id, 'settingsPrefs').defaultHome === 'calendario');
-    check('B11. el registro local de avisos NO se sube, pero pasa a su caché', fakeDb.valueOf(sis.id, 'reminderNotificationLedger') === undefined);
+    check('B11. el registro local de avisos antiguo NO se sube', fakeDb.valueOf(sis.id, 'reminderNotificationLedger') === undefined);
     check('B12. con la subida confirmada se borra la base antigua', !hasLegacy(phone));
     check('B13. y la marca de migración queda limpia', !phone.localStorage.has('organizator:legacyMigration'));
     check('B14. la app arranca mostrando esos datos', page.appStarted() && ids(page.app.state.tasks).join() === 't1,t2,t3');

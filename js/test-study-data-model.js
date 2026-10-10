@@ -33,11 +33,11 @@ function extractBetween(source, startMarker, endMarker, label) {
   return source.slice(start, end);
 }
 
-const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: modelo de datos (paso 1)', '\n\n/* ==================================================================\n   RECORDATORIOS — cancelar en el servidor', 'constantes STUDY_*');
+const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: modelo de datos (paso 1)', '\n\n/* ==================================================================\n   TOAST', 'constantes STUDY_*');
 const loadStateSrc = extractBetween(html, 'async function loadState(){', '\nasync function saveTasks(){', 'función loadState()');
 const saveStudySrc = extractBetween(html, 'async function saveSubjects(){', '\nasync function savePrefs(){', 'saveSubjects/saveExams/saveStudySessions');
 const sanitizeSrc = extractBetween(html, '/** Valida una lista importada de asignaturas', '\nfunction initSettingsDataIO(){', 'sanitizeImportedStudyItems()');
-const importBlockSrc = extractBetween(html, '    const sanitizedStudy = {};', '    // R-8.2-C: el registro', 'bloque de import de STUDY_KEYS');
+const importBlockSrc = extractBetween(html, '    const sanitizedStudy = {};', '    state.prefs = { ...defaultPrefs()', 'bloque de import de STUDY_KEYS');
 const subjectsBlockSrc = extractBetween(html, '/* ==================================================================\n   ASIGNATURAS (app de exámenes, paso 2)', '\n/* ==================================================================\n   RENDER: AJUSTES', 'bloque ASIGNATURAS');
 const exportDataSrc = extractBetween(html, 'function exportData(){', '\n  try{', 'función exportData()');
 const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'función initSettingsDataIO()');
