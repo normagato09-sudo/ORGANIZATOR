@@ -38,7 +38,7 @@ function extractBetween(source, startMarker, endMarker, label) {
 }
 const HDR = '/* ==================================================================\n   ';
 const defaultsSrc = extractBetween(html, 'function defaultPrefs(){', `\n\n${HDR}ESTADO`, 'defaultPrefs/defaultIA');
-const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}CRUD`, 'bloque ALMACENAMIENTO');
+const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}RECORDATORIOS — cancelar en el servidor`, 'bloque ALMACENAMIENTO');
 const authBlockSrc = extractBetween(html, `${HDR}AUTENTICACIÓN`, '\n</script>', 'bloque AUTENTICACIÓN + INICIALIZACIÓN');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n(async function init(){', 'startApp()');
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';

@@ -29,7 +29,7 @@ function extractBetween(source, startMarker, endMarker, label) {
 }
 
 const HDR = '/* ==================================================================\n   ';
-const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: modelo de datos (paso 1)', `\n\n${HDR}CRUD`, 'constantes STUDY_*');
+const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: modelo de datos (paso 1)', `\n\n${HDR}RECORDATORIOS — cancelar en el servidor`, 'constantes STUDY_*');
 const subjectsSrc = extractBetween(html, `${HDR}ASIGNATURAS (app de exámenes, paso 2)`, `\n${HDR}EXÁMENES Y ENTREGAS (app de exámenes)`, 'bloque ASIGNATURAS');
 const importSanitizerSrc = extractBetween(html, '/** Valida las asignaturas de una copia importada', '\nfunction initSettingsDataIO(){', 'sanitizeImportedSubjects()');
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';

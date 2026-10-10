@@ -23,10 +23,8 @@
     --line:#E3E1DB;
     --radius:14px;
 
-    --task:#3E7CB1;      --task-bg:#E7F0F8;
-    --event:#8355D9;      --event-bg:#EFE9FB;
 
-    --alta:#C0453B; --media:#C98A22; --baja:#8B8F94;
+    --alta:#C0453B; --media:#C98A22;
   }
 
   *{box-sizing:border-box;}
@@ -48,10 +46,9 @@
 
   .app{
     display:grid;
-    grid-template-columns:76px minmax(0,1fr) 300px;
+    grid-template-columns:76px minmax(0,1fr);
     min-height:100vh;
   }
-  .app.no-aside{grid-template-columns:76px minmax(0,1fr);}
 
   /* ---------- Rail de navegación ---------- */
   nav.rail{
@@ -165,18 +162,6 @@
   .empty-state strong{color:var(--ink);font-weight:600;}
   .empty-state.small{padding:16px 18px;font-size:12.5px;}
 
-  #today-timeline{margin-bottom:16px;}
-
-  /* Timeline "Hoy" */
-  .timeline{display:flex;flex-direction:column;gap:0;}
-  .tl-item{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--line);}
-  .tl-item:last-child{border-bottom:none;}
-  .tl-time{width:56px;flex:none;font-size:12px;color:var(--ink-soft);font-weight:500;padding-top:2px;}
-  .tl-bar{width:3px;border-radius:3px;flex:none;}
-  .tl-body{flex:1;display:flex;flex-direction:column;gap:2px;}
-  .tl-title{font-size:13.5px;font-weight:600;}
-  .tl-tag{font-size:11px;color:var(--ink-soft);}
-
   /* ---------- Cabecera de sección ---------- */
   .area-head{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:30px;}
   .area-head-l{display:flex;align-items:center;gap:14px;}
@@ -196,23 +181,15 @@
   .btn-ghost:hover{color:var(--ink);}
   .btn-sm{padding:5px 9px;font-size:11.5px;border-radius:7px;}
 
-  /* Listas de tareas y eventos */
+  /* Listas (filas de examen) */
   .item-list{display:flex;flex-direction:column;gap:8px;}
-  .task-row, .event-row{
+  .event-row{
     background:var(--surface);border:1px solid var(--line);border-radius:12px;
     padding:12px 14px;display:flex;align-items:flex-start;gap:12px;
   }
-  .task-row.done{opacity:.55;}
-  .task-row.done .task-title{text-decoration:line-through;}
-  .checkbox{
-    width:19px;height:19px;border-radius:6px;border:1.5px solid var(--line);
-    flex:none;margin-top:1px;cursor:pointer;display:flex;align-items:center;justify-content:center;
-    background:var(--surface);font-size:12px;color:var(--surface);
-  }
-  .checkbox.checked{background:var(--ink);border-color:var(--ink);color:var(--paper);}
   .row-body{flex:1;min-width:0;}
   .row-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .task-title, .event-title{font-size:13.5px;font-weight:600;}
+  .event-title{font-size:13.5px;font-weight:600;}
   .row-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;font-size:11.5px;color:var(--ink-soft);}
   .priority-dot{width:8px;height:8px;border-radius:50%;flex:none;}
   .row-notes{font-size:12px;color:var(--ink-soft);margin-top:5px;line-height:1.4;}
@@ -325,13 +302,6 @@
   .cal-nav button:hover{border-color:var(--ink-soft);}
   .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:26px;}
 
-  /* ---------- 6A-4.2: eventos all-day "contexto" (blocksSchedule:false) ----------
-     Se pintan fuera de la secuencia temporal de bloques (no son una fila
-     .ia-ag-row más: no tienen hora, no ocupan tiempo). La señal es el
-     icono 📌 + el propio texto, no solo el color, para que funcione igual
-     en móvil o con dificultad para distinguir colores. */
-  .semana-day-context{display:flex;flex-direction:column;gap:3px;}
-  .semana-context-badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;line-height:1.3;color:var(--event);background:var(--event-bg);border-radius:6px;padding:3px 6px;overflow-wrap:anywhere;}
   .cal-dow{font-size:10.5px;color:var(--ink-soft);text-align:center;font-weight:600;padding-bottom:4px;}
   .cal-cell{
     background:var(--surface);border:1px solid var(--line);border-radius:10px;
@@ -343,11 +313,6 @@
   .cal-cell.today{border-color:var(--ink);border-width:1.5px;}
   .cal-cell.selected{background:var(--paper);}
   .cal-daynum{font-size:12px;font-weight:600;}
-  .cal-dots{display:flex;flex-wrap:wrap;gap:3px;}
-  .cal-dot{width:6px;height:6px;border-radius:50%;}
-  /* 6A-4.2: punto hueco (anillo) para días con solo eventos "contexto" —
-     distinción por FORMA, no solo por color, misma var(--event). */
-  .cal-dot-context{width:6px;height:6px;border-radius:50%;background:transparent;border:1.5px solid var(--event);box-sizing:border-box;}
   .cal-more{font-size:9.5px;color:var(--ink-soft);}
   /* App de exámenes: exámenes y entregas en su día, con el color de su asignatura. */
   .cal-cell{min-width:0;}
@@ -453,41 +418,11 @@
   }
   .form-group input:focus, .form-group select:focus, .form-group textarea:focus{outline:2px solid var(--ink);outline-offset:1px;}
   .form-row-2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;}
-  .form-check{display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:14px;}
-  .form-check input{width:auto;}
   .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;gap:10px;}
   .modal-actions .right{display:flex;gap:8px;}
   /* SYNC: aviso de datos antiguos — botones apilados, cómodos en el móvil */
   .migration-actions{display:flex;flex-direction:column;gap:8px;margin-top:18px;}
   .migration-actions .btn{width:100%;text-align:center;padding:10px 14px;}
-
-  /* UX-8: secciones desplegables dentro de los modales de tarea/evento
-     (⚙️ Más opciones / 🔁 Repetición / 🔔 Recordatorio). Mismo lenguaje
-     visual que .settings-accordion-* (Ajustes, UX-7), a escala de modal. */
-  .modal-collapsible{border:1px solid var(--line);border-radius:10px;margin-bottom:14px;overflow:hidden;}
-  .modal-collapsible-toggle{
-    width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
-    padding:11px 13px;background:none;border:none;cursor:pointer;font-family:inherit;
-    font-size:12.5px;font-weight:600;color:var(--ink);text-align:left;
-  }
-  .modal-collapsible-toggle:hover{background:var(--paper);}
-  .modal-collapsible-toggle:focus-visible{outline:2px solid var(--ink);outline-offset:-2px;}
-  .modal-collapsible-chevron{font-size:11px;color:var(--ink-soft);transition:transform .18s ease;flex:none;}
-  .modal-collapsible-toggle[aria-expanded="true"] .modal-collapsible-chevron{transform:rotate(180deg);}
-  .modal-collapsible-panel{padding:10px 13px 13px;}
-  .modal-collapsible-panel[hidden]{display:none;}
-  .modal-collapsible-panel .form-group:last-child{margin-bottom:0;}
-
-  /* ---------- Columna derecha ---------- */
-  aside{border-left:1px solid var(--line);padding:40px 26px;display:flex;flex-direction:column;gap:30px;}
-  aside h3{font-size:12px;font-weight:600;margin:0 0 12px;color:var(--ink-soft);}
-  .side-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px;}
-  .side-empty{font-size:12.5px;color:var(--ink-soft);line-height:1.5;}
-  .side-item{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:6px 0;}
-  .side-item:not(:last-child){border-bottom:1px solid var(--line);}
-  .side-dot{width:7px;height:7px;border-radius:50%;flex:none;}
-  .side-item .sd-title{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .side-item .sd-when{color:var(--ink-soft);font-size:11px;flex:none;}
 
   .toast{
     position:fixed;bottom:22px;left:50%;transform:translateX(-50%);
@@ -507,14 +442,8 @@
   .update-banner button{background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.24);color:var(--paper);font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;}
   .update-banner button:hover{background:rgba(255,255,255,0.22);}
 
-  /* Insignias 📌 de eventos de contexto (renderEventContextBadges) más compactas en tablet. */
-  @media (min-width:921px) and (max-width:1180px){
-    .semana-context-badge{font-size:9.5px;padding:3px 5px;}
-  }
-
   @media (max-width:920px){
-    .app, .app.no-aside{grid-template-columns:minmax(0,1fr);}
-    aside{display:none;}
+    .app{grid-template-columns:minmax(0,1fr);}
     main{padding:70px 18px 50px;}
     .form-row-2{grid-template-columns:1fr;}
 
@@ -649,15 +578,6 @@
         <div id="upcoming-exams"></div>
       </section>
 
-      <!-- "Hoy" y el asistente (IA) ocultos en Inicio (app de exámenes); su código se conserva. -->
-      <section class="block" hidden>
-        <div class="block-head">
-          <h2>Hoy</h2>
-          <span class="hint">Lo que ya tienes programado para hoy</span>
-        </div>
-        <div id="today-timeline"></div>
-      </section>
-
     </div>
 
     <!-- ===================== CALENDARIO ===================== -->
@@ -685,9 +605,6 @@
           <h2 id="day-panel-title">Selecciona un día</h2>
           <div class="day-panel-actions">
             <button class="btn btn-sm btn-dark" id="day-add-exam">+ Examen</button>
-            <!-- "+ Tarea" y "+ Evento" ocultos (app de exámenes); su código se conserva. -->
-            <button class="btn btn-sm" id="day-add-task" hidden>+ Tarea</button>
-            <button class="btn btn-sm" id="day-add-event" hidden>+ Evento</button>
           </div>
         </div>
         <div id="day-panel-content"></div>
@@ -708,20 +625,6 @@
 
   </main>
 
-  <aside id="sidebar">
-    <div>
-      <h3>Ahora / Siguiente</h3>
-      <div class="side-card" id="side-now"></div>
-    </div>
-    <div>
-      <h3>Próximos eventos</h3>
-      <div class="side-card" id="side-upcoming"></div>
-    </div>
-    <div>
-      <h3>Tareas pendientes</h3>
-      <div class="side-card" id="side-tasks"></div>
-    </div>
-  </aside>
 
 </div>
 
@@ -772,11 +675,6 @@
 /* ==================================================================
    CONFIGURACIÓN
    ================================================================== */
-const PRIORITIES = {
-  alta:  { label:'Alta',  color:'var(--alta)'  },
-  media: { label:'Media', color:'var(--media)' },
-  baja:  { label:'Baja',  color:'var(--baja)'  },
-};
 const DOW_NAMES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const DOW_SHORT = ['L','M','X','J','V','S','D'];
 // Nombres completos en el mismo orden que DOW_SHORT (0=Lunes...6=Domingo), usados para el contexto de la IA
@@ -1117,322 +1015,6 @@ function examStudyDays(exam, prefs){
 }
 
 /* ==================================================================
-   CRUD
-   ================================================================== */
-async function addTask(data){
-  // Fase R-1 de recurrencia: `recurrence` siempre se guarda saneado
-  // (null si no es una recurrencia válida), nunca tal cual venga en data.
-  state.tasks.push({ id:uid(), done:false, createdAt:Date.now(), ...data, recurrence: sanitizeRecurrence(data.recurrence) });
-  await saveTasks();
-}
-async function updateTask(id, data){
-  const t = state.tasks.find(x=>x.id===id);
-  if(t){
-    Object.assign(t, data);
-    // Solo se toca `recurrence` si `data` la incluye explícitamente, para
-    // no borrar la recurrencia existente en actualizaciones parciales
-    // (p.ej. openActualMinutesModal actualiza solo actualMinutes).
-    if(Object.prototype.hasOwnProperty.call(data, 'recurrence')){
-      t.recurrence = sanitizeRecurrence(data.recurrence);
-    }
-  }
-  await saveTasks();
-}
-async function deleteTask(id){
-  state.tasks = state.tasks.filter(x=>x.id!==id);
-  await saveTasks();
-}
-async function toggleTask(id){
-  const t = state.tasks.find(x=>x.id===id);
-  if(!t) return;
-  const justCompleted = !t.done;
-  t.done = !t.done;
-  await saveTasks();
-  renderCurrentView();
-  if(justCompleted) openActualMinutesModal(id);
-}
-/* ==================================================================
-   RECURRENCIA — completar/deshacer ocurrencias de TAREAS (Fase R-3)
-   Distinguen tarea base de ocurrencia concreta: completar/deshacer una
-   fecha de una tarea recurrente NUNCA toca `done` de la tarea base (eso
-   seguiría marcando "toda la serie" como hecha) ni afecta a otras
-   fechas. Cada función es idempotente: completar dos veces la misma
-   ocurrencia deja completedOccurrences igual que completarla una vez;
-   deshacer una ocurrencia ya pendiente tampoco cambia nada. Ninguna de
-   las dos abre el modal de minutos reales ni llama a renderCurrentView:
-   a diferencia de toggleTask, esta fase no toca UI (queda para una fase
-   posterior conectar esto con la interfaz).
-   Tarea no recurrente: se comporta como toggleTask siempre ha hecho,
-   usando `done` (ver requisito de R-3: "una tarea no recurrente debe
-   seguir usando done como hasta ahora").
-   ================================================================== */
-async function completeTaskOccurrence(taskId, occurrenceDate){
-  const t = state.tasks.find(x=>x.id===taskId);
-  if(!t) return;
-  if(!t.recurrence){
-    t.done = true;
-    await saveTasks();
-    return;
-  }
-  const completed = Array.isArray(t.completedOccurrences) ? t.completedOccurrences : [];
-  if(!completed.includes(occurrenceDate)){
-    t.completedOccurrences = [...completed, occurrenceDate];
-    await saveTasks();
-  }
-}
-async function uncompleteTaskOccurrence(taskId, occurrenceDate){
-  const t = state.tasks.find(x=>x.id===taskId);
-  if(!t) return;
-  if(!t.recurrence){
-    t.done = false;
-    await saveTasks();
-    return;
-  }
-  const completed = Array.isArray(t.completedOccurrences) ? t.completedOccurrences : [];
-  if(completed.includes(occurrenceDate)){
-    t.completedOccurrences = completed.filter(d => d !== occurrenceDate);
-    await saveTasks();
-  }
-}
-async function addEvent(data){
-  // Fase R-1 de recurrencia: mismo criterio que addTask (ver comentario allí).
-  state.events.push({ id:uid(), createdAt:Date.now(), ...data, recurrence: sanitizeRecurrence(data.recurrence) });
-  await saveEvents();
-}
-async function updateEvent(id, data){
-  const e = state.events.find(x=>x.id===id);
-  if(e){
-    Object.assign(e, data);
-    // Mismo criterio que updateTask (ver comentario allí).
-    if(Object.prototype.hasOwnProperty.call(data, 'recurrence')){
-      e.recurrence = sanitizeRecurrence(data.recurrence);
-    }
-  }
-  await saveEvents();
-}
-async function deleteEvent(id){
-  state.events = state.events.filter(x=>x.id!==id);
-  await saveEvents();
-}
-
-/* ==================================================================
-   CATEGORÍAS DE EVENTOS (Fase 6A-3)
-   Cada categoría: { id, name, color, icon?, blocksSchedule }.
-   blocksSchedule por defecto true (mismo comportamiento que un evento
-   sin categoría). Eliminar una categoría NUNCA borra eventos: los que
-   queden con categoryId huérfano se resuelven con el comportamiento y
-   color por defecto mediante resolveEventCategory/resolveEventBlocksSchedule.
-   ================================================================== */
-async function addEventCategory(data){
-  const cat = {
-    id: uid(),
-    name: (data.name||'').trim(),
-    color: data.color || '#1B1F23',
-    icon: data.icon ? data.icon.trim() : '',
-    blocksSchedule: data.blocksSchedule !== false,
-    createdAt: Date.now(),
-  };
-  state.eventCategories.push(cat);
-  await saveEventCategories();
-  return cat;
-}
-async function updateEventCategory(id, data){
-  const c = state.eventCategories.find(x=>x.id===id);
-  if(!c) return;
-  if(data.name!=null) c.name = data.name.trim();
-  if(data.color!=null) c.color = data.color;
-  if(data.icon!=null) c.icon = data.icon.trim();
-  if(data.blocksSchedule!=null) c.blocksSchedule = data.blocksSchedule !== false;
-  await saveEventCategories();
-}
-async function deleteEventCategory(id){
-  state.eventCategories = state.eventCategories.filter(x=>x.id!==id);
-  await saveEventCategories();
-}
-/** Devuelve la categoría de un evento, o null si no tiene categoryId,
- * o si el categoryId ya no existe (huérfano) — nunca lanza. */
-function resolveEventCategory(categoryId){
-  if(!categoryId) return null;
-  return (state.eventCategories||[]).find(c=>c.id===categoryId) || null;
-}
-/** Regla de la fase: categoría existente → su blocksSchedule; categoría
- * inexistente/ausente → true (mismo comportamiento que hoy). */
-function resolveEventBlocksSchedule(categoryId){
-  const cat = resolveEventCategory(categoryId);
-  if(!cat) return true;
-  return cat.blocksSchedule !== false;
-}
-/** Color de categoría para pintar el evento, o null si no tiene
- * categoría (=> el llamador debe usar el color por defecto actual). */
-function resolveEventColor(categoryId){
-  const cat = resolveEventCategory(categoryId);
-  return (cat && cat.color) ? cat.color : null;
-}
-/** Copia de state.events con blocksSchedule YA resuelto a partir de
- * categoryId, lista para pasar a Scheduler. Scheduler.js no conoce
- * eventCategories ni categoryId: solo lee este booleano ya calculado,
- * igual que ya lee allDay/startTime/endTime.
- * Los eventos recurrentes se expanden en sus ocurrencias dentro de
- * [fromDate, toDate] (mismo cálculo que la vista Semana, ver
- * eventsForSchedulerInRange); sin rango, desde hoy hasta
- * SCHEDULER_EVENTS_HORIZON_DAYS días vista, que cubre cualquier búsqueda
- * de hueco de Scheduler (horizonte de 21 días o la fecha límite). Antes
- * no se expandían: una clase semanal solo ocupaba su primera fecha y la
- * IA podía proponer cosas encima del resto de repeticiones. */
-const SCHEDULER_EVENTS_HORIZON_DAYS = 366;
-function eventsForScheduler(fromDate, toDate){
-  const from = fromDate || todayStr();
-  const to = toDate || addDays(from, SCHEDULER_EVENTS_HORIZON_DAYS);
-  return eventsForSchedulerInRange(from, to);
-}
-
-/* ==================================================================
-   RECURRENCIA — integración con vistas (Fase R-6)
-   Las vistas (Inicio, Calendario, Semana) ya no filtran state.tasks/
-   state.events directamente por fecha: piden sus ocurrencias dentro del
-   rango visible EXACTO de esa vista (getTaskOccurrences/
-   getEventOccurrences, R-3/R-4) y pintan esas ocurrencias derivadas. No
-   se genera ninguna ocurrencia fuera del rango pedido (nada de "desde
-   2020 hasta 2030"), y state.tasks/state.events nunca se modifican
-   aquí: son solo lecturas + derivaciones, mismo contrato de solo
-   lectura que ya tienen getTaskOccurrences/getEventOccurrences. No se
-   reimplementa nada de daily/weekly/monthly: todo el cálculo de fechas
-   sigue siendo el de R-2 a través de esos dos helpers.
-   ================================================================== */
-
-/** Todas las ocurrencias de `tasks` dentro de [fromDate, toDate], listas
- * para pintar. Una tarea no recurrente ya devuelve, como mucho, su
- * única ocurrencia (ver getTaskOccurrences, R-3) en el mismo campo
- * (scheduledDate||dueDate) que usaba directamente el resto de la app
- * antes de R-6 — mismo comportamiento exacto, solo que ahora unificado
- * con el camino de las tareas recurrentes en vez de tener dos rutas
- * distintas. */
-function taskOccurrencesInRange(tasks, fromDate, toDate){
-  return tasks.flatMap(t => getTaskOccurrences(t, fromDate, toDate));
-}
-
-/** Ocurrencias YA expandidas (R-4) de los eventos recurrentes de
- * `events`, calculadas UNA sola vez para todo [fromDate, toDate] (no se
- * repite el cálculo día a día dentro de un bucle de vista — ver
- * eventsOnDate). Los eventos no recurrentes quedan fuera a propósito:
- * ver eventsOnDate para por qué se comprueban aparte. */
-function expandEventOccurrencesInRange(events, fromDate, toDate){
-  return events.filter(e => !!e.recurrence).flatMap(e => getEventOccurrences(e, fromDate, toDate));
-}
-
-/** Eventos "activos" en `dateStr`: combina los eventos NO recurrentes
- * (comprobados tal cual contra su date/endDate reales, exactamente el
- * mismo criterio — isDateInRange — que usaba el resto de la app antes
- * de R-6, SIN pasar por getEventOccurrences) con las ocurrencias
- * recurrentes ya expandidas que se le pasen en `recurringOccurrences`
- * (ver expandEventOccurrencesInRange). Que los no-recurrentes no pasen
- * por getEventOccurrences es deliberado: así un evento de varios días
- * que ya estuviera en curso al empezar el rango visible sigue
- * apareciendo igual que siempre (getEventOccurrences solo encuentra
- * ocurrencias cuya fecha de INICIO cae dentro del rango pedido, ver
- * R-4) — "evento no recurrente se comporta exactamente como antes" se
- * cumple así de forma literal, sin ningún caso especial nuevo. */
-function eventsOnDate(events, recurringOccurrences, dateStr){
-  const plain = events.filter(e => !e.recurrence && isDateInRange(dateStr, e.date, e.endDate));
-  const fromOccurrences = recurringOccurrences.filter(occ => isDateInRange(dateStr, occ.date, occ.endDate));
-  return plain.concat(fromOccurrences);
-}
-
-/** Mismo criterio que eventsForScheduler() (resuelve blocksSchedule vía
- * categoryId; Scheduler.js sigue sin conocer categorías) pero con los
- * eventos recurrentes ya expandidos en sus ocurrencias dentro de
- * [fromDate, toDate]. La usan la vista Semana y, a través de
- * eventsForScheduler(), los flujos de IA. Scheduler.js no
- * recibe ningún cambio: solo se le pasa una lista de eventos ya
- * expandida, con la misma forma (date/endDate/allDay/startTime/
- * endTime/blocksSchedule/title/id) que ya esperaba antes de R-6, así
- * que su propio filtrado por fecha (dateStr < start || dateStr > end)
- * coloca cada ocurrencia en el día correcto sin que Scheduler sepa que
- * existe la recurrencia. */
-function eventsForSchedulerInRange(fromDate, toDate){
-  const plain = state.events.filter(e => !e.recurrence);
-  const recurringOccurrences = expandEventOccurrencesInRange(state.events, fromDate, toDate);
-  return plain.concat(recurringOccurrences)
-    .map(e => Object.assign({}, e, { blocksSchedule: resolveEventBlocksSchedule(e.categoryId) }));
-}
-
-/** Tareas tal como las necesita Scheduler para [fromDate, toDate]. Las
- * no recurrentes van tal cual, salvo las que tienen hora fija (dueTime)
- * en el rango y ninguna franja planificada: ocupan esa hora en su fecha
- * (misma duración que abajo). Cada repetición de una
- * tarea recurrente que tenga franja ese día ocupa su bloque, con id
- * "taskId::fecha": la que se planificó al aceptar una propuesta
- * (scheduledOccurrences) o, si no, la de su hora fija (dueTime +
- * estimatedMinutes, 60 min si no hay). La tarea base recurrente no se
- * pasa: su scheduledDate no es de ninguna repetición concreta. */
-function tasksForScheduler(fromDate, toDate){
-  // Tarea normal con hora fija y sin franja planificada: ocupa su bloque
-  // el día de su fecha (copia; state.tasks no se toca).
-  const plain = state.tasks.filter(t => !t.recurrence).map(t => {
-    if(t.scheduledDate && t.scheduledStart && t.scheduledEnd) return t;
-    if(!t.dueDate || t.dueDate < fromDate || t.dueDate > toDate) return t;
-    const slot = fixedTimeSlot(t);
-    return slot ? Object.assign({}, t, { scheduledDate: t.dueDate, scheduledStart: slot.start, scheduledEnd: slot.end }) : t;
-  });
-  const occurrenceBlocks = [];
-  state.tasks.filter(t => !!t.recurrence).forEach(t => {
-    getTaskOccurrences(t, fromDate, toDate).forEach(occ => {
-      const slot = taskOccurrenceSlot(t, occ.occurrenceDate);
-      if(!slot) return;
-      occurrenceBlocks.push({ id: occ.id, taskId: t.id, title: t.title, scheduledDate: occ.occurrenceDate, scheduledStart: slot.start, scheduledEnd: slot.end });
-    });
-  });
-  return plain.concat(occurrenceBlocks);
-}
-/** Franja { start, end } de la repetición `dateStr` de una tarea
- * recurrente, o null si no tiene ninguna (ver tasksForScheduler). */
-function taskOccurrenceSlot(task, dateStr){
-  const planned = task.scheduledOccurrences && task.scheduledOccurrences[dateStr];
-  if(planned && planned.start && planned.end) return { start: planned.start, end: planned.end };
-  if(task.scheduledDate === dateStr && task.scheduledStart && task.scheduledEnd) return { start: task.scheduledStart, end: task.scheduledEnd };
-  return fixedTimeSlot(task);
-}
-/** Franja { start, end } de la hora fija (dueTime) de una tarea: de
- * dueTime a dueTime + estimatedMinutes (60 min si no tiene), o null si
- * no tiene una hora válida. */
-function fixedTimeSlot(task){
-  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-  if(!task.dueTime || !HHMM.test(task.dueTime)) return null;
-  const [h, m] = task.dueTime.split(':').map(Number);
-  const startMin = h * 60 + m;
-  const endMin = Math.min(startMin + (task.estimatedMinutes > 0 ? task.estimatedMinutes : 60), 24 * 60 - 1);
-  if(endMin <= startMin) return null;
-  return { start: task.dueTime, end: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}` };
-}
-
-/** Wrapper de UI para el checkbox de "completada" en las vistas: decide
- * entre el camino de siempre (toggleTask, tarea no recurrente — incluye
- * su modal de minutos reales, sin cambios) y el camino de ocurrencia
- * (R-3: completeTaskOccurrence/uncompleteTaskOccurrence, tarea
- * recurrente — afecta solo a esa fecha). No inventa lógica de
- * completado nueva: usa exactamente los helpers ya existentes.
- * NOTA (minutos reales, R-6 punto 6): completar una ocurrencia
- * recurrente NO abre el modal de "¿cuántos minutos te ha llevado?"
- * (openActualMinutesModal). Ese modal guarda `actualMinutes` en la
- * tarea BASE, un único campo compartido por todas sus ocurrencias:
- * asociarlo correctamente a una ocurrencia concreta necesitaría un
- * cambio de modelo mayor (minutos reales por fecha, con una estructura
- * similar a completedOccurrences), que R-6 deja explícitamente para una
- * fase posterior en vez de improvisarlo aquí. Por ahora, completar una
- * ocurrencia recurrente solo actualiza completedOccurrences. */
-async function toggleTaskOccurrenceFromView(taskId, occurrenceDate){
-  const t = state.tasks.find(x => x.id === taskId);
-  if(!t) return;
-  if(!t.recurrence){
-    await toggleTask(taskId);
-    return;
-  }
-  if(isTaskOccurrenceCompleted(t, occurrenceDate)) await uncompleteTaskOccurrence(taskId, occurrenceDate);
-  else await completeTaskOccurrence(taskId, occurrenceDate);
-  renderCurrentView();
-}
-
-/* ==================================================================
    RECORDATORIOS — cancelar en el servidor (Web Push)
    Los recordatorios locales ya no existen (app de exámenes). Esto queda
    solo para la limpieza de abajo (RECORDATORIOS APAGADOS), que cancela en
@@ -1514,18 +1096,10 @@ function showToast(msg){
 /* ==================================================================
    NAVEGACIÓN
    ================================================================== */
-const app = document.getElementById('app');
-const sidebar = document.getElementById('sidebar');
-
 function showView(name){
   currentView = name;
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   document.querySelectorAll('.rail-item').forEach(r => r.classList.toggle('active', r.dataset.view === name));
-  // App de exámenes: la barra lateral (Ahora/Siguiente, eventos y tareas)
-  // ya no sale en ninguna vista; su código se conserva.
-  const showAside = false;
-  app.classList.toggle('no-aside', !showAside);
-  sidebar.style.display = showAside ? '' : 'none';
   window.scrollTo(0,0);
   renderCurrentView();
 }
@@ -1557,54 +1131,6 @@ if(menuToggleBtn) menuToggleBtn.addEventListener('click', toggleMobileMenu);
 if(menuBackdropEl) menuBackdropEl.addEventListener('click', closeMobileMenu);
 
 /* ==================================================================
-   BARRA LATERAL (Ahora/Siguiente, próximos eventos, tareas pendientes)
-   ================================================================== */
-function updateSidebar(){
-  const today = todayStr();
-  const now = nowTimeStr();
-
-  const todayEvents = state.events
-    .filter(e=>!e.allDay && e.date===today && e.startTime)
-    .sort((a,b)=>a.startTime.localeCompare(b.startTime));
-  const current = todayEvents.find(e => e.startTime<=now && (!e.endTime || e.endTime>=now));
-  const next = todayEvents.find(e => e.startTime>now);
-  const nowEl = document.getElementById('side-now');
-  if(current){
-    nowEl.innerHTML = `<p class="side-empty"><strong style="color:var(--ink);">Ahora:</strong> ${esc(current.title)}</p>` +
-      (next?`<p class="side-empty" style="margin-top:8px;"><strong style="color:var(--ink);">Siguiente:</strong> ${esc(next.title)} · ${next.startTime}</p>`:'');
-  } else if(next){
-    nowEl.innerHTML = `<p class="side-empty"><strong style="color:var(--ink);">Siguiente:</strong> ${esc(next.title)} · ${next.startTime}</p>`;
-  } else {
-    nowEl.innerHTML = `<p class="side-empty">Cuando añadas eventos con hora, aquí verás lo que toca ahora y lo siguiente en tu agenda.</p>`;
-  }
-
-  const upcoming = state.events
-    .filter(e => (e.endDate ? e.endDate>=today : e.date>=today))
-    .sort((a,b)=> a.date.localeCompare(b.date) || (a.startTime||'').localeCompare(b.startTime||''))
-    .slice(0,5);
-  const upEl = document.getElementById('side-upcoming');
-  upEl.innerHTML = upcoming.length ? upcoming.map(e=>`
-    <div class="side-item">
-      <div class="side-dot" style="background:var(--event);"></div>
-      <div class="sd-title">${esc(e.title)}</div>
-      <div class="sd-when">${humanDate(e.date)}</div>
-    </div>`).join('') : `<p class="side-empty">Tus próximas citas, exámenes y reuniones aparecerán aquí ordenados por fecha.</p>`;
-
-  const pending = state.tasks.filter(t=>!t.done)
-    .sort((a,b)=>{
-      const ad=(a.scheduledDate||a.dueDate)||'9999', bd=(b.scheduledDate||b.dueDate)||'9999';
-      return ad.localeCompare(bd);
-    }).slice(0,5);
-  const tEl = document.getElementById('side-tasks');
-  tEl.innerHTML = pending.length ? pending.map(t=>`
-    <div class="side-item">
-      <div class="side-dot" style="background:var(--task);"></div>
-      <div class="sd-title">${esc(t.title)}</div>
-      <div class="sd-when">${t.scheduledDate ? humanDate(t.scheduledDate) : (t.dueDate ? humanDate(t.dueDate) : '')}</div>
-    </div>`).join('') : `<p class="side-empty">Tus tareas pendientes aparecerán aquí.</p>`;
-}
-
-/* ==================================================================
    RENDER: INICIO
    ================================================================== */
 function renderInicio(){
@@ -1614,126 +1140,10 @@ function renderInicio(){
   document.getElementById('dow').textContent = DOW_NAMES[d.getDay()];
   document.getElementById('fulldate').textContent = `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
   renderUpcoming();
-
-  const today = todayStr();
-  // Una tarea puede tener dueDate (su fecha límite) distinta de
-  // scheduledDate (el día en que Scheduler decidió que se hace realmente);
-  // para "hoy" nos importa dónde está programada, no cuándo vence.
-  // Fase R-6: se pide la ocurrencia de HOY (rango [today, today], nunca
-  // más amplio) en vez de filtrar state.tasks/state.events directamente,
-  // para que una tarea/evento recurrente cuya ocurrencia caiga hoy
-  // también aparezca (ver getTaskOccurrences/getEventOccurrences, R-3/R-4).
-  const items = [];
-  taskOccurrencesInRange(state.tasks, today, today).filter(t=>!t.done).forEach(t=>{
-    const time = t.scheduledStart || t.dueTime || '';
-    items.push({ type:'task', title:t.title, sortKey:time||'23:59', timeLabel:time, warning:t.schedulingWarning||'' });
-  });
-  const todayRecurringEvents = expandEventOccurrencesInRange(state.events, today, today);
-  eventsOnDate(state.events, todayRecurringEvents, today).forEach(e=>{
-    items.push({ type:'event', title:e.title, sortKey:(e.allDay?'00:00':(e.startTime||'00:00')), timeLabel: e.allDay?'Todo el día':(e.startTime||'') });
-  });
-  items.sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
-
-  const timelineEl = document.getElementById('today-timeline');
-  if(items.length===0){
-    timelineEl.innerHTML = `<div class="empty-state">Todavía no hay nada programado para hoy.<br><strong>Cuéntaselo al asistente</strong> de aquí abajo y aparecerá en tu día y en tu calendario.</div>`;
-  } else {
-    timelineEl.innerHTML = `<div class="timeline">${items.map(it=>`
-      <div class="tl-item">
-        <div class="tl-time">${it.timeLabel||'—'}</div>
-        <div class="tl-bar" style="background:var(--${it.type==='event'?'event':'task'});"></div>
-        <div class="tl-body">
-          <div class="tl-title">${esc(it.title)}</div>
-          <div class="tl-tag">${it.type==='task'?'tarea':'evento'}${it.warning?` · <span style="color:var(--alta);">${esc(it.warning)}</span>`:''}</div>
-        </div>
-      </div>`).join('')}</div>`;
-  }
-
-  updateSidebar();
 }
 
 function esc(s){
   return String(s??'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-}
-
-/* ==================================================================
-   FILAS DE TAREA / EVENTO (reutilizadas en Calendario)
-   ================================================================== */
-function taskRowHTML(t){
-  // Fase R-6: t puede ser la tarea base (recurrence: null) o una
-  // ocurrencia derivada de getTaskOccurrences (R-3, tiene taskId +
-  // occurrenceDate). displayDate usa occurrenceDate cuando existe, para
-  // que una ocurrencia recurrente muestre SU fecha (21/09), no la
-  // dueDate original de la tarea base (18/09) — para una tarea no
-  // recurrente occurrenceDate === scheduledDate||dueDate, así que el
-  // comportamiento no cambia en absoluto respecto a antes de R-6.
-  const displayDate = t.occurrenceDate || t.dueDate;
-  const overdue = displayDate && displayDate < todayStr() && !t.done;
-  // El checkbox identifica SIEMPRE tarea base (taskId) + fecha de la
-  // ocurrencia por separado (nunca solo t.id, que para una ocurrencia es
-  // un id compuesto "taskId::fecha"), para que
-  // toggleTaskOccurrenceFromView pueda decidir entre toggleTask (no
-  // recurrente) y completeTaskOccurrence/uncompleteTaskOccurrence
-  // (recurrente, R-3) sin ambigüedad. Editar/eliminar siguen operando
-  // sobre la tarea base (t.taskId||t.id): R-6 no implementa todavía
-  // edición/borrado individual de una ocurrencia.
-  const baseId = t.taskId || t.id;
-  return `
-    <div class="task-row ${t.done?'done':''}">
-      <div class="checkbox ${t.done?'checked':''}" data-action="toggle-task" data-task-id="${baseId}" data-occurrence-date="${displayDate||''}">${t.done?'✓':''}</div>
-      <div class="row-body">
-        <div class="row-top">
-          <span class="task-title">${esc(t.title)}</span>
-          ${t.priority ? `<span class="priority-dot" style="background:${PRIORITIES[t.priority].color};" title="Prioridad ${PRIORITIES[t.priority].label}"></span>` : ''}
-        </div>
-        <div class="row-meta">
-          ${t.scheduledDate ? `<span>Programada: ${humanDateShort(t.scheduledDate)} · ${t.scheduledStart}-${t.scheduledEnd}</span>` : ''}
-          ${displayDate ? `<span style="${overdue?'color:var(--alta);font-weight:600;':''}">${t.scheduledDate?'Vence':''} ${humanDateShort(displayDate)}${(!t.scheduledDate && t.dueTime)?' · '+t.dueTime:''}</span>` : ''}
-          ${t.priority ? `<span>Prioridad ${PRIORITIES[t.priority].label}</span>` : ''}
-          ${t.category ? `<span>${esc(t.category)}</span>` : ''}
-          ${t.estimatedMinutes ? `<span>⏱ Estimado: ${t.estimatedMinutes} min</span>` : ''}
-          ${(t.done && t.actualMinutes) ? `<span>Real: ${t.actualMinutes} min</span>` : ''}
-          ${t.schedulingWarning ? `<span style="color:var(--alta);">${esc(t.schedulingWarning)}</span>` : ''}
-        </div>
-        ${t.notes ? `<div class="row-notes">${esc(t.notes)}</div>` : ''}
-      </div>
-      <div class="row-actions">
-        <button class="btn-ghost" data-action="edit-task" data-id="${baseId}" title="Editar">✏️</button>
-        <button class="btn-ghost" data-action="delete-task" data-id="${baseId}" title="Eliminar">🗑️</button>
-      </div>
-    </div>`;
-}
-function eventRowHTML(e){
-  const catColor = resolveEventColor(e.categoryId);
-  const cat = resolveEventCategory(e.categoryId);
-  // Fase R-6: e puede ser el evento base (recurrence: null) o una
-  // ocurrencia derivada de getEventOccurrences (R-4, tiene eventId +
-  // occurrenceDate). date/endDate ya vienen desplazados a la fecha de
-  // esta ocurrencia concreta (ver buildEventOccurrence, R-4), así que no
-  // hace falta tocarlos aquí. Editar/eliminar sí deben operar sobre el
-  // evento BASE (e.eventId||e.id): R-6 no implementa todavía edición/
-  // borrado individual de una ocurrencia. Eventos no tienen estado de
-  // completado (R-6 punto 7: no se añade aquí).
-  const baseId = e.eventId || e.id;
-  return `
-    <div class="event-row">
-      <div class="row-body">
-        <div class="row-top">
-          ${catColor ? `<span class="priority-dot" style="background:${esc(catColor)};" title="${cat?esc(cat.name):''}"></span>` : ''}
-          <span class="event-title">${esc(e.title)}</span>
-        </div>
-        <div class="row-meta">
-          <span>${humanDateShort(e.date)}${e.endDate?' → '+humanDateShort(e.endDate):''}</span>
-          <span>${e.allDay?'Todo el día':(e.startTime||'')+(e.endTime?' - '+e.endTime:'')}</span>
-          ${e.location?`<span>${esc(e.location)}</span>`:''}
-        </div>
-        ${e.notes ? `<div class="row-notes">${esc(e.notes)}</div>` : ''}
-      </div>
-      <div class="row-actions">
-        <button class="btn-ghost" data-action="edit-event" data-id="${baseId}" title="Editar">✏️</button>
-        <button class="btn-ghost" data-action="delete-event" data-id="${baseId}" title="Eliminar">🗑️</button>
-      </div>
-    </div>`;
 }
 
 /* ==================================================================
@@ -1750,35 +1160,10 @@ function renderCalendar(){
   const daysInMonth = new Date(cal.year, cal.month+1, 0).getDate();
   const today = todayStr();
 
-  // Fase R-6: ocurrencias de todo el mes visible calculadas UNA sola vez
-  // (no una llamada a getTaskOccurrences/getEventOccurrences por cada
-  // día del bucle de abajo) — mismo rango exacto que se ve en pantalla,
-  // nunca más amplio (ver taskOccurrencesInRange/
-  // expandEventOccurrencesInRange más arriba).
-  const monthFrom = `${cal.year}-${pad(cal.month+1)}-${pad(1)}`;
-  const monthTo = `${cal.year}-${pad(cal.month+1)}-${pad(daysInMonth)}`;
-  const monthTaskOccurrences = taskOccurrencesInRange(state.tasks, monthFrom, monthTo);
-  const monthRecurringEvents = expandEventOccurrencesInRange(state.events, monthFrom, monthTo);
-
   let cells = '';
   for(let i=0;i<startOffset;i++) cells += `<div class="cal-cell empty"></div>`;
   for(let day=1; day<=daysInMonth; day++){
     const dateStr = `${cal.year}-${pad(cal.month+1)}-${pad(day)}`;
-    const dayTypes = [];
-    // Una tarea se pinta en el día donde va a HACERSE (scheduledDate si
-    // el Scheduler ya le asignó hueco), no necesariamente en su fecha límite.
-    if(monthTaskOccurrences.some(t=>t.occurrenceDate===dateStr)) dayTypes.push('task');
-    const dayEventsHere = eventsOnDate(state.events, monthRecurringEvents, dateStr);
-    if(dayEventsHere.length){
-      // 6A-4.2: si TODOS los eventos de ese día son all-day contextuales
-      // (blocksSchedule:false), el punto se pinta hueco en vez de macizo —
-      // señal mínima que no depende solo del color (5A11n), manteniendo el
-      // mismo punto/color de categoría existente y sin rediseñar el
-      // calendario. Basta con que uno bloquee para seguir usando el punto
-      // macizo de siempre.
-      const onlyContext = dayEventsHere.every(e => e.allDay && resolveEventBlocksSchedule(e.categoryId) === false);
-      dayTypes.push(onlyContext ? 'event-context' : 'event');
-    }
     // App de exámenes: cada examen o entrega con el color de su asignatura.
     const dayExams = examsOnDate(dateStr);
     const examPills = dayExams.slice(0, 2).map(ex => {
@@ -1790,10 +1175,6 @@ function renderCalendar(){
       <div class="cal-cell ${dateStr===today?'today':''} ${dateStr===cal.selected?'selected':''}" data-date="${dateStr}">
         <div class="cal-daynum">${day}</div>
         ${dayExams.length ? `<div class="cal-exams">${examPills}</div>` : ''}
-        <div class="cal-dots">${dayTypes.map(ty=>ty==='event-context'
-          ? `<div class="cal-dot cal-dot-context" title="Solo eventos de contexto"></div>`
-          : `<div class="cal-dot" style="background:var(--${ty});"></div>`
-        ).join('')}</div>
       </div>`;
   }
   document.getElementById('cal-grid').innerHTML = cells;
@@ -1802,7 +1183,6 @@ function renderCalendar(){
   });
 
   renderDayPanel();
-  updateSidebar();
 }
 function renderDayPanel(){
   const sel = cal.selected;
@@ -1814,29 +1194,16 @@ function renderDayPanel(){
     return;
   }
   title.textContent = humanDateShort(sel) + ' de ' + parseYMD(sel).getFullYear();
-  // Fase R-6: rango de un solo día [sel, sel] — igual que antes, pero
-  // vía getTaskOccurrences/getEventOccurrences para que las ocurrencias
-  // recurrentes de ese día también aparezcan (ver helpers más arriba).
-  const dayTasks = taskOccurrencesInRange(state.tasks, sel, sel);
-  const dayRecurringEvents = expandEventOccurrencesInRange(state.events, sel, sel);
-  const dayEvents = eventsOnDate(state.events, dayRecurringEvents, sel);
   const dayExams = examsOnDate(sel);
 
-  if(dayTasks.length===0 && dayEvents.length===0 && dayExams.length===0){
+  if(dayExams.length===0){
     content.innerHTML = `<div class="empty-state small">No hay nada guardado para este día todavía.</div>`;
   } else {
     content.innerHTML = `<div class="item-list">
       ${dayExams.map(ex=>examRowHTML(ex)).join('')}
-      ${dayEvents.map(e=>eventRowHTML(e)).join('')}
-      ${dayTasks.map(t=>taskRowHTML(t)).join('')}
     </div>`;
-    content.querySelectorAll('[data-action="toggle-task"]').forEach(b=>b.addEventListener('click', ()=>toggleTaskOccurrenceFromView(b.dataset.taskId, b.dataset.occurrenceDate)));
-    content.querySelectorAll('[data-action="edit-task"]').forEach(b=>b.addEventListener('click', ()=>openTaskModal({taskId:b.dataset.id})));
-    content.querySelectorAll('[data-action="delete-task"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar esta tarea?')){ deleteTask(b.dataset.id).then(renderCurrentView); } }));
     content.querySelectorAll('[data-action="edit-exam"]').forEach(b=>b.addEventListener('click', ()=>openExamModal({examId:b.dataset.id})));
     content.querySelectorAll('[data-action="delete-exam"]').forEach(b=>b.addEventListener('click', ()=>confirmDeleteExam(b.dataset.id)));
-    content.querySelectorAll('[data-action="edit-event"]').forEach(b=>b.addEventListener('click', ()=>openEventModal({eventId:b.dataset.id})));
-    content.querySelectorAll('[data-action="delete-event"]').forEach(b=>b.addEventListener('click', ()=>{ if(confirm('¿Eliminar este evento?')){ deleteEvent(b.dataset.id).then(renderCurrentView); } }));
   }
 }
 
@@ -1844,539 +1211,14 @@ document.getElementById('cal-prev').addEventListener('click', ()=>{ cal.month--;
 document.getElementById('cal-next').addEventListener('click', ()=>{ cal.month++; if(cal.month>11){cal.month=0;cal.year++;} renderCalendar(); });
 document.getElementById('cal-today').addEventListener('click', ()=>{ const d=new Date(); cal.year=d.getFullYear(); cal.month=d.getMonth(); cal.selected=todayStr(); renderCalendar(); });
 document.getElementById('day-add-exam').addEventListener('click', ()=>{ openExamModal({date: cal.selected || todayStr()}); });
-document.getElementById('day-add-task').addEventListener('click', ()=>{ if(cal.selected) openTaskModal({date:cal.selected}); });
-document.getElementById('day-add-event').addEventListener('click', ()=>{ if(cal.selected) openEventModal({date:cal.selected}); });
-
-/* ---------- 6A-4.2: eventos all-day "contexto" (blocksSchedule:false) ----------
-   Reciben tal cual el array `eventContext` que ya calcula
-   Scheduler.buildDayBlocks() (id, title, allDay) — solo lectura, no crea
-   ni modifica nada. Se pintan aparte de `blocks` (fuera de la secuencia
-   temporal 🔒/📚/🟢): no tienen hora ni ocupan tiempo, así que no encajan
-   como una fila más de renderDayAgendaList. La señal
-   visual es el icono 📌 + el propio título (no solo el color de fondo),
-   para que se distinga igual en pantallas pequeñas o sin buena percepción
-   del color (5A11n). */
-function renderEventContextBadges(eventContext){
-  if(!eventContext || !eventContext.length) return '';
-  return `<div class="semana-day-context">${eventContext.map(e =>
-    `<span class="semana-context-badge" data-context-id="${esc(e.id)}" title="Evento de contexto: ${esc(e.title)}">📌 ${esc(e.title)}</span>`
-  ).join('')}</div>`;
-}
 
 /* ==================================================================
-   RECURRENCIA — UI compartida entre tarea y evento (Fase R-5)
-   Controles de "Repetir" reutilizados por openTaskModal/openEventModal.
-   NO reimplementan la validación de R-1: readRecurrenceFromForm solo
-   construye el candidato "en bruto" a partir del formulario (puede
-   llevar un interval/fecha inválidos); quien llama SIEMPRE lo pasa por
-   sanitizeRecurrence antes de guardar — vía addTask/updateTask/
-   addEvent/updateEvent, que ya lo hacen automáticamente en cuanto
-   `data.recurrence` está presente (ver R-1). daysOfWeek usa la misma
-   convención 0=Lunes...6=Domingo que el resto de la app (DOW_SHORT,
-   DOW_FULL_MONFIRST, R-1, R-2).
-   `prefix` ("task"/"event") evita colisiones de id entre ambos modales
-   (solo hay uno abierto a la vez, pero así los ids son únicos siempre).
-   ================================================================== */
-function recurrenceUnitLabel(type){
-  if(type === 'daily') return 'días';
-  if(type === 'weekly') return 'semanas';
-  if(type === 'monthly') return 'meses';
-  if(type === 'yearly') return 'años';
-  return '';
-}
-
-/** HTML de los controles de recurrencia, precargados a partir de
- * `existingRecurrence` (o "No repetir" en blanco si es null/ausente).
- * Pura: no lee ni escribe `state`, no toca el DOM real (solo construye
- * un string) — se puede probar comprobando el string devuelto. */
-function recurrenceControlsHtml(prefix, existingRecurrence){
-  const r = existingRecurrence || null;
-  const type = r ? r.type : 'none';
-  const interval = (r && r.interval) ? r.interval : 1;
-  const daysOfWeek = (r && Array.isArray(r.daysOfWeek)) ? r.daysOfWeek : [];
-  const hasEndDate = !!(r && r.endDate);
-  const endDateValue = hasEndDate ? r.endDate : '';
-  return `
-    <div class="form-group">
-      <label for="${prefix}-repeat-type">Repetir</label>
-      <select name="repeatType" id="${prefix}-repeat-type">
-        <option value="none" ${type==='none'?'selected':''}>No repetir</option>
-        <option value="daily" ${type==='daily'?'selected':''}>Cada día</option>
-        <option value="weekly" ${type==='weekly'?'selected':''}>Cada semana</option>
-        <option value="monthly" ${type==='monthly'?'selected':''}>Cada mes</option>
-        <option value="yearly" ${type==='yearly'?'selected':''}>Cada año</option>
-      </select>
-    </div>
-    <div id="${prefix}-repeat-detail" style="${type==='none'?'display:none;':''}">
-      <div class="form-group">
-        <label for="${prefix}-repeat-interval">Cada</label>
-        <input type="number" name="repeatInterval" id="${prefix}-repeat-interval" min="1" step="1" value="${interval}" style="width:70px;display:inline-block;">
-        <span id="${prefix}-repeat-interval-unit">${recurrenceUnitLabel(type)}</span>
-      </div>
-      <div class="form-group" id="${prefix}-repeat-days-group" style="${type==='weekly'?'':'display:none;'}">
-        <span id="${prefix}-repeat-days-legend">Días</span>
-        <div class="day-pills" role="group" aria-labelledby="${prefix}-repeat-days-legend">
-          ${DOW_SHORT.map((lb,i)=>`
-            <label style="display:inline-flex;align-items:center;gap:3px;font-size:12.5px;" title="${esc(DOW_FULL_MONFIRST[i])}">
-              <input type="checkbox" name="repeatDaysOfWeek" id="${prefix}-repeat-day-${i}" value="${i}" ${daysOfWeek.includes(i)?'checked':''} aria-label="${esc(DOW_FULL_MONFIRST[i])}">${lb}
-            </label>`).join('')}
-        </div>
-      </div>
-      <div class="form-group">
-        <span id="${prefix}-repeat-end-legend">Finaliza</span>
-        <div role="radiogroup" aria-labelledby="${prefix}-repeat-end-legend" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <label style="display:inline-flex;align-items:center;gap:4px;font-weight:normal;">
-            <input type="radio" name="repeatEnd" id="${prefix}-repeat-end-never" value="never" ${!hasEndDate?'checked':''}> Nunca
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:4px;font-weight:normal;">
-            <input type="radio" name="repeatEnd" id="${prefix}-repeat-end-until" value="until" ${hasEndDate?'checked':''}> Hasta
-          </label>
-          <input type="date" name="repeatEndDate" id="${prefix}-repeat-end-date" value="${esc(endDateValue)}" aria-label="Fecha de fin de la recurrencia" ${hasEndDate?'':'disabled'}>
-        </div>
-      </div>
-    </div>`;
-}
-
-/** Cablea el show/hide de los controles de recurrencia dentro de
- * `modalBox` (el detalle solo aparece si "Repetir" no es "No repetir";
- * los días de la semana solo si es "Cada semana"; el input de fecha de
- * fin solo se habilita si se elige "Hasta"). No valida ni guarda nada:
- * eso ocurre al enviar el formulario (ver readRecurrenceFromForm /
- * isRecurrenceEndDateValid, usados en el submit de cada modal). */
-function wireRecurrenceControls(modalBox, prefix){
-  const typeSel = modalBox.querySelector(`#${prefix}-repeat-type`);
-  if(!typeSel) return;
-  const detail = modalBox.querySelector(`#${prefix}-repeat-detail`);
-  const daysGroup = modalBox.querySelector(`#${prefix}-repeat-days-group`);
-  const unitEl = modalBox.querySelector(`#${prefix}-repeat-interval-unit`);
-  const endDateInput = modalBox.querySelector(`#${prefix}-repeat-end-date`);
-  const untilRadio = modalBox.querySelector(`#${prefix}-repeat-end-until`);
-
-  function refreshType(){
-    const type = typeSel.value;
-    detail.style.display = type === 'none' ? 'none' : '';
-    daysGroup.style.display = type === 'weekly' ? '' : 'none';
-    unitEl.textContent = recurrenceUnitLabel(type);
-  }
-  function refreshEndMode(){
-    endDateInput.disabled = !(untilRadio && untilRadio.checked);
-  }
-  typeSel.addEventListener('change', refreshType);
-  modalBox.querySelectorAll(`input[name="repeatEnd"]`).forEach(r => r.addEventListener('change', refreshEndMode));
-  refreshType();
-  refreshEndMode();
-}
-
-/** Construye el candidato "en bruto" de recurrencia a partir de un
- * FormData (real, o cualquier objeto compatible con .get()/.getAll())
- * y la fecha ancla de la tarea/evento (dueDate / date). Devuelve `null`
- * si se eligió "No repetir". NO valida: eso lo sigue haciendo
- * exclusivamente sanitizeRecurrence (R-1) cuando addTask/updateTask/
- * addEvent/updateEvent guardan `data.recurrence`. Pura: no lee ni
- * escribe `state`, no toca el DOM.
- * R-5.1: `daysOfWeek` solo se lee de las casillas marcadas cuando
- * `type === 'weekly'` (si el usuario marcó días y luego cambia de tipo
- * sin desmarcarlos, esas casillas ocultas no deben colarse en una
- * recurrencia diaria/mensual/anual (R-1.6), que no usan daysOfWeek para
- * nada — ver isDateInRecurrence/getNextRecurrenceDate, R-2, sin tocar). Siempre sin
- * duplicados y en orden ascendente determinista (misma convención
- * 0=Lunes..6=Domingo que ya usan DOW_SHORT/DOW_FULL_MONFIRST y el resto
- * de la app — no se inventa ninguna numeración nueva), para que guardar
- * dos veces las mismas casillas marcadas produzca siempre el mismo
- * array, sin importar en qué orden el navegador las haya enumerado. */
-function readRecurrenceFromForm(fd, anchorDate){
-  const type = fd.get('repeatType');
-  if(!type || type === 'none') return null;
-  const intervalRaw = parseInt(fd.get('repeatInterval'), 10);
-  const daysOfWeek = type === 'weekly'
-    ? [...new Set(fd.getAll('repeatDaysOfWeek').map(v => parseInt(v, 10)))].sort((a, b) => a - b)
-    : [];
-  const endMode = fd.get('repeatEnd');
-  const endDateRaw = fd.get('repeatEndDate');
-  return {
-    type,
-    interval: intervalRaw,
-    daysOfWeek,
-    startDate: anchorDate,
-    endDate: (endMode === 'until' && endDateRaw) ? endDateRaw : null,
-  };
-}
-
-/** Guarda cliente-side (mensaje inmediato) para no dejar que el usuario
- * pierda en silencio una recurrencia por poner una fecha de fin
- * anterior al inicio: sanitizeRecurrence ya la rechazaría igualmente
- * (devolviendo recurrence: null), pero aquí se avisa ANTES de guardar
- * en vez de descartarla sin explicación. `endDate` null/vacío siempre
- * es válido (recurrencia sin fin). */
-function isRecurrenceEndDateValid(startDate, endDate){
-  if(!endDate) return true;
-  if(!startDate) return true;
-  return endDate >= startDate;
-}
-
-/* ==================================================================
-   MODAL: TAREA
+   MODALES
    ================================================================== */
 const overlay = document.getElementById('modal-overlay');
 const modalBox = document.getElementById('modal-box');
 function closeModal(){ overlay.classList.remove('open'); modalBox.innerHTML=''; }
 overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeModal(); });
-
-/* ==================================================================
-   UX-8 — secciones desplegables de los modales de tarea/evento
-   (⚙️ Más opciones / 🔁 Repetición / 🔔 Recordatorio). Envuelven HTML ya
-   existente (recurrenceControlsHtml de R-5, el <select> de recordatorio
-   de reminderOptionsHtml, prioridad, categoría...) en un <button>
-   accesible por teclado (aria-expanded) + panel colapsable — no
-   reimplementan ni cambian ninguna lógica de recurrencia, recordatorios,
-   categorías ni prioridad: solo deciden si sus controles ya existentes
-   ocupan espacio visual o no. `open` decide el estado inicial (cerrado
-   al crear; abierto al editar si esa sección ya tiene algo configurado,
-   para no esconder información existente).
-   ================================================================== */
-function modalCollapsibleSection(id, label, contentHtml, open){
-  return `
-    <div class="modal-collapsible">
-      <button type="button" class="modal-collapsible-toggle" data-modal-collapsible="${id}" aria-expanded="${open?'true':'false'}" aria-controls="modal-collapsible-panel-${id}">
-        <span>${esc(label)}</span>
-        <span class="modal-collapsible-chevron" aria-hidden="true">▾</span>
-      </button>
-      <div class="modal-collapsible-panel" id="modal-collapsible-panel-${id}"${open?'':' hidden'}>
-        ${contentHtml}
-      </div>
-    </div>`;
-}
-/** Cablea el toggle abrir/cerrar de todas las secciones desplegables que
- * haya en `modalBox` (puede haber una — Más opciones en tareas — o dos —
- * Repetición y Recordatorio en eventos). Idéntico patrón que ya usa el
- * acordeón de Ajustes (UX-7, ver wireRecurrenceControls/ajustesAccordionSection
- * más abajo/arriba): togglea `hidden` del panel y `aria-expanded` del botón. */
-function wireModalCollapsibleSections(modalBox){
-  modalBox.querySelectorAll('[data-modal-collapsible]').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      const panel = modalBox.querySelector('#modal-collapsible-panel-' + btn.dataset.modalCollapsible);
-      if(!panel) return;
-      const willOpen = panel.hidden;
-      panel.hidden = !willOpen;
-      btn.setAttribute('aria-expanded', String(willOpen));
-    });
-  });
-}
-
-function openTaskModal({taskId=null, date=null, prefill=null}={}){
-  const editing = !!taskId;
-  const existing = editing ? state.tasks.find(t=>t.id===taskId) : null;
-  // AI-2.3: prefill (title/date/time) SOLO se aplica al crear una tarea
-  // nueva desde el chat (nunca al editar una ya existente, que siempre
-  // manda sobre sus propios valores guardados) — y solo rellena los
-  // campos que el propio prefill trae explícitamente; el resto conserva
-  // los defaults normales del formulario de siempre, exactamente igual
-  // que al abrirlo a mano. `fields` es el objeto ya resuelto por
-  // detectSmartFormIntent (AI-2.1): título/fecha/hora ya interpretados,
-  // nunca recalculados ni inventados aquí.
-  const pre = (!editing && prefill) ? prefill : null;
-  // UX-8: "Más opciones" empieza cerrado al crear una tarea nueva; al
-  // editar una que ya tenga algo configurado ahí dentro (hora, prioridad
-  // distinta de la media por defecto, minutos estimados o un recordatorio
-  // activo) empieza abierto, para no esconder información ya guardada.
-  // AI-2.3: igual criterio si el prefill del chat ya trae una hora, para
-  // no esconderla dentro de la sección colapsada.
-  const taskMoreOpen = !!(existing && (existing.dueTime || (existing.priority && existing.priority !== 'media') || existing.estimatedMinutes)) || !!(pre && pre.time);
-
-  modalBox.innerHTML = `
-    <h3>${editing?'Editar':'Añadir'} tarea</h3>
-    <form id="task-form">
-      <div class="form-group"><label>Título</label>
-        <input type="text" name="title" required value="${existing?esc(existing.title):esc((pre&&pre.title)||'')}" placeholder="Ej. Estudiar para el examen">
-      </div>
-      <div class="form-group"><label>Fecha límite</label>
-        <input type="date" name="dueDate" value="${existing?existing.dueDate||'':((pre&&pre.date)||date||'')}">
-      </div>
-      ${recurrenceControlsHtml('task', existing ? existing.recurrence : null)}
-      ${modalCollapsibleSection('task-more', '⚙️ Más opciones', `
-        <div class="form-group"><label>Hora (opcional)</label>
-          <input type="time" name="dueTime" value="${existing?existing.dueTime||'':((pre&&pre.time)||'')}">
-        </div>
-        <div class="form-group"><label>Prioridad</label>
-          <select name="priority">
-            <option value="media" ${(!existing||existing.priority==='media')?'selected':''}>Media</option>
-            <option value="alta" ${existing&&existing.priority==='alta'?'selected':''}>Alta</option>
-            <option value="baja" ${existing&&existing.priority==='baja'?'selected':''}>Baja</option>
-          </select>
-        </div>
-        <div class="form-row-2">
-          <div class="form-group"><label>Categoría (opcional)</label>
-            <input type="text" name="category" value="${existing?esc(existing.category||''):''}" placeholder="Ej. Estudio, Casa, Trabajo">
-          </div>
-          <div class="form-group"><label>Minutos estimados (opcional)</label>
-            <input type="number" name="estimatedMinutes" min="1" step="1" value="${existing&&existing.estimatedMinutes?existing.estimatedMinutes:''}" placeholder="Ej. 45">
-            <div class="duration-hint" id="duration-hint" style="font-size:12.5px;color:var(--ink-soft);margin-top:4px;"></div>
-          </div>
-        </div>
-      `, taskMoreOpen)}
-      <div class="modal-actions">
-        <div>${editing?`<button type="button" class="btn" id="task-delete-btn">Eliminar</button>`:''}</div>
-        <div class="right">
-          <button type="button" class="btn" id="task-cancel-btn">Cancelar</button>
-          <button type="submit" class="btn btn-dark">Guardar</button>
-        </div>
-      </div>
-    </form>`;
-
-  /* Sugerencia de duración (Paso 4B): usa DurationLearning para mostrar,
-     de forma puramente informativa, "normalmente esto te lleva unos X
-     minutos" cuando hay suficiente historial de tareas parecidas o de la
-     misma categoría. NUNCA rellena ni modifica estimatedMinutes: solo
-     texto de ayuda junto al campo. Si no hay datos suficientes, o el
-     módulo no está cargado, no se muestra nada (el hint queda vacío). */
-  function renderDurationHint(){
-    const hintEl = modalBox.querySelector('#duration-hint');
-    if(!hintEl) return;
-    hintEl.textContent = '';
-    if(!window.DurationLearning || !Array.isArray(state.tasks)) return;
-    const titleEl = modalBox.querySelector('[name="title"]');
-    const categoryEl = modalBox.querySelector('[name="category"]');
-    const draftTask = {
-      id: existing ? existing.id : null,
-      title: titleEl ? titleEl.value : '',
-      category: categoryEl ? categoryEl.value.trim() : '',
-    };
-    if(!draftTask.title || !draftTask.title.trim()) return;
-    const suggestion = window.DurationLearning.suggestDuration(draftTask, state.tasks);
-    if(suggestion && Number.isFinite(suggestion.suggestedMinutes) && suggestion.suggestedMinutes > 0){
-      hintEl.textContent = `💡 Normalmente esta tarea te lleva unos ${suggestion.suggestedMinutes} minutos.`;
-    }
-  }
-  renderDurationHint();
-  modalBox.querySelector('[name="title"]').addEventListener('input', renderDurationHint);
-  modalBox.querySelector('[name="category"]').addEventListener('input', renderDurationHint);
-
-  // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
-  // openEventModal, ver RECURRENCIA — UI compartida más arriba).
-  wireRecurrenceControls(modalBox, 'task');
-  // UX-8: abrir/cerrar "Más opciones".
-  wireModalCollapsibleSections(modalBox);
-
-  modalBox.querySelector('#task-cancel-btn').addEventListener('click', closeModal);
-  if(editing){
-    modalBox.querySelector('#task-delete-btn').addEventListener('click', async ()=>{
-      if(confirm('¿Eliminar esta tarea?')){ await deleteTask(taskId); closeModal(); renderCurrentView(); }
-    });
-  }
-  modalBox.querySelector('#task-form').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const rawMinutes = parseInt(fd.get('estimatedMinutes'), 10);
-    const data = {
-      title: fd.get('title').trim(),
-      dueDate: fd.get('dueDate') || '',
-      dueTime: fd.get('dueTime') || '',
-      priority: fd.get('priority'),
-      category: (fd.get('category')||'').trim(),
-      estimatedMinutes: (Number.isFinite(rawMinutes) && rawMinutes > 0) ? rawMinutes : null,
-      // UX-8: el campo "Notas" se quitó de la UI (ver requisito de la
-      // fase); no se incluye en `data` para no crear la propiedad en
-      // tareas nuevas y no pisar/borrar un `notes` ya guardado (importado
-      // o de antes de UX-8) al editar — updateTask (Fase R-1) solo toca
-      // los campos que `data` trae explícitamente.
-    };
-    if(!data.title) return;
-    // Fase R-5: startDate de la recurrencia se deriva de la fecha de la
-    // propia tarea (dueDate); si el usuario pone una fecha de fin
-    // anterior a esa, se avisa y no se guarda nada (sanitizeRecurrence,
-    // R-1, la rechazaría igualmente, pero en silencio).
-    if(fd.get('repeatType') !== 'none' && fd.get('repeatEnd') === 'until'){
-      const repeatEndDateRaw = fd.get('repeatEndDate');
-      if(repeatEndDateRaw && !isRecurrenceEndDateValid(data.dueDate, repeatEndDateRaw)){
-        showToast('La fecha de fin de la recurrencia no puede ser anterior a la fecha de la tarea');
-        return;
-      }
-    }
-    // data.recurrence SIEMPRE se incluye (aunque sea null): updateTask
-    // solo toca recurrence si `data` la trae explícitamente (ver R-1), y
-    // "No repetir" debe poder borrar una recurrencia existente. La
-    // sanitización real la hace sanitizeRecurrence dentro de
-    // addTask/updateTask — aquí no se duplica esa validación.
-    data.recurrence = readRecurrenceFromForm(fd, data.dueDate);
-    // R-5.1: una recurrencia semanal sin ningún día marcado no tiene
-    // sentido (no ocurriría nunca) — se avisa y no se guarda nada, mismo
-    // mecanismo que la validación de fecha de fin de arriba. No se toca
-    // sanitizeRecurrence/isValidRecurrenceDaysOfWeek (R-1): ahí un
-    // daysOfWeek vacío sigue siendo válido a propósito (una recurrencia
-    // ya guardada con datos antiguos no debe romperse al leerla), esta
-    // comprobación es solo del lado del formulario, antes de guardar.
-    if(data.recurrence && data.recurrence.type === 'weekly' && data.recurrence.daysOfWeek.length === 0){
-      showToast('Elige al menos un día de la semana para la recurrencia semanal');
-      return;
-    }
-    if(editing) await updateTask(taskId, data); else await addTask(data);
-    closeModal();
-    showToast(editing?'Guardado':'Añadido');
-    renderCurrentView();
-  });
-
-  overlay.classList.add('open');
-}
-
-/* ==================================================================
-   MODAL: MINUTOS REALES AL COMPLETAR UNA TAREA (opcional)
-   Se muestra justo después de marcar una tarea como hecha. No bloquea
-   nada: se puede omitir y la tarea queda completada igualmente.
-   ================================================================== */
-function openActualMinutesModal(taskId){
-  const t = state.tasks.find(x=>x.id===taskId);
-  if(!t) return;
-  modalBox.innerHTML = `
-    <h3>Tarea completada</h3>
-    <form id="actual-minutes-form">
-      <div class="form-group"><label>¿Cuántos minutos te ha llevado? (opcional)</label>
-        <input type="number" name="actualMinutes" min="1" step="1" autofocus
-          value="${(t.actualMinutes!=null)?t.actualMinutes:''}"
-          placeholder="${t.estimatedMinutes?('Estimado: '+t.estimatedMinutes+' min'):'Ej. 30'}">
-      </div>
-      <div class="modal-actions">
-        <div></div>
-        <div class="right">
-          <button type="button" class="btn" id="actual-minutes-skip-btn">Omitir</button>
-          <button type="submit" class="btn btn-dark">Guardar</button>
-        </div>
-      </div>
-    </form>`;
-  modalBox.querySelector('#actual-minutes-skip-btn').addEventListener('click', closeModal);
-  modalBox.querySelector('#actual-minutes-form').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const raw = parseInt(fd.get('actualMinutes'), 10);
-    await updateTask(taskId, { actualMinutes: (Number.isFinite(raw) && raw > 0) ? raw : null });
-    closeModal();
-    renderCurrentView();
-  });
-  overlay.classList.add('open');
-}
-
-/* ==================================================================
-   MODAL: EVENTO
-   ================================================================== */
-function openEventModal({eventId=null, date=null, prefill=null}={}){
-  const editing = !!eventId;
-  const existing = editing ? state.events.find(x=>x.id===eventId) : null;
-  const allDay = existing ? !!existing.allDay : false;
-  // AI-2.3: mismo criterio que openTaskModal (ver comentario allí) — el
-  // prefill del chat solo se aplica al crear un evento nuevo, nunca al
-  // editar uno existente, y solo rellena los campos que trae
-  // explícitamente (title/date/time -> startTime); allDay/endDate/
-  // endTime/categoría/recurrencia/recordatorio conservan siempre sus
-  // defaults normales, nunca se inventan a partir del chat.
-  const pre = (!editing && prefill) ? prefill : null;
-  // UX-8: "Repetición" empieza cerrada al crear un evento; al editar uno
-  // que ya tenga recurrencia, empieza abierta para no esconderla.
-  const eventRepeatOpen = !!(existing && existing.recurrence);
-
-  modalBox.innerHTML = `
-    <h3>${editing?'Editar':'Añadir'} evento</h3>
-    <form id="event-form">
-      <div class="form-group"><label>Título</label>
-        <input type="text" name="title" required value="${existing?esc(existing.title):esc((pre&&pre.title)||'')}" placeholder="Ej. Reunión de equipo">
-      </div>
-      <div class="form-row-2">
-        <div class="form-group"><label>Fecha</label>
-          <input type="date" name="date" required value="${existing?existing.date:((pre&&pre.date)||date||'')}">
-        </div>
-        <div class="form-group"><label>Fecha de fin (opcional)</label>
-          <input type="date" name="endDate" value="${existing?existing.endDate||'':''}">
-        </div>
-      </div>
-      <div class="form-check">
-        <input type="checkbox" name="allDay" id="event-allday" ${allDay?'checked':''}>
-        <label for="event-allday" style="margin:0;">Todo el día</label>
-      </div>
-      <div class="form-row-2" id="event-time-row" style="${allDay?'display:none;':''}">
-        <div class="form-group"><label>Hora inicio</label><input type="time" name="startTime" value="${existing?existing.startTime||'':((pre&&pre.time)||'')}"></div>
-        <div class="form-group"><label>Hora fin (opcional)</label><input type="time" name="endTime" value="${existing?existing.endTime||'':''}"></div>
-      </div>
-      <div class="form-group"><label>Categoría (opcional)</label>
-        <select name="categoryId">
-          <option value="">Sin categoría</option>
-          ${existing && existing.categoryId && !(state.eventCategories||[]).some(c=>c.id===existing.categoryId) ? `<option value="${esc(existing.categoryId)}" selected>Categoría eliminada</option>` : ''}
-          ${(state.eventCategories||[]).map(c=>`<option value="${c.id}" ${existing&&existing.categoryId===c.id?'selected':''}>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</option>`).join('')}
-        </select>
-      </div>
-      ${modalCollapsibleSection('event-repeat', '🔁 Repetición', recurrenceControlsHtml('event', existing ? existing.recurrence : null), eventRepeatOpen)}
-      <div class="modal-actions">
-        <div>${editing?`<button type="button" class="btn" id="event-delete-btn">Eliminar</button>`:''}</div>
-        <div class="right">
-          <button type="button" class="btn" id="event-cancel-btn">Cancelar</button>
-          <button type="submit" class="btn btn-dark">Guardar</button>
-        </div>
-      </div>
-    </form>`;
-
-  const allDayCb = modalBox.querySelector('#event-allday');
-  allDayCb.addEventListener('change', ()=>{
-    document.getElementById('event-time-row').style.display = allDayCb.checked ? 'none' : '';
-  });
-
-  // Fase R-5: controles de "Repetir" (mismo bloque compartido que usa
-  // openTaskModal, ver RECURRENCIA — UI compartida más arriba). Funciona
-  // igual con allDay que con startTime/endTime: la recurrencia no
-  // depende de si el evento tiene hora o no.
-  wireRecurrenceControls(modalBox, 'event');
-  // UX-8: abrir/cerrar "Repetición" y "Recordatorio".
-  wireModalCollapsibleSections(modalBox);
-
-  modalBox.querySelector('#event-cancel-btn').addEventListener('click', closeModal);
-  if(editing){
-    modalBox.querySelector('#event-delete-btn').addEventListener('click', async ()=>{
-      if(confirm('¿Eliminar este evento?')){ await deleteEvent(eventId); closeModal(); renderCurrentView(); }
-    });
-  }
-  modalBox.querySelector('#event-form').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const isAllDay = fd.get('allDay') === 'on';
-    const data = {
-      title: fd.get('title').trim(),
-      categoryId: fd.get('categoryId') || '',
-      date: fd.get('date'),
-      endDate: fd.get('endDate') || '',
-      allDay: isAllDay,
-      startTime: isAllDay ? '' : (fd.get('startTime')||''),
-      endTime: isAllDay ? '' : (fd.get('endTime')||''),
-      // UX-8: "Ubicación" y "Notas" se quitaron de la UI (ver requisito de
-      // la fase); no se incluyen en `data` — mismo criterio que en
-      // openTaskModal (ver comentario allí) para no crear estas
-      // propiedades en eventos nuevos ni pisar/borrar un location/notes ya
-      // guardado (importado o de antes de UX-8) al editar.
-    };
-    if(!data.title || !data.date) return;
-    // Fase R-5: recurrence.startDate se deriva de la fecha del propio
-    // evento (data.date) — NO de data.endDate, que es el fin del tramo
-    // de días del evento (un concepto distinto de
-    // recurrence.endDate, el fin de la serie recurrente; ver R-1/R-4).
-    if(fd.get('repeatType') !== 'none' && fd.get('repeatEnd') === 'until'){
-      const repeatEndDateRaw = fd.get('repeatEndDate');
-      if(repeatEndDateRaw && !isRecurrenceEndDateValid(data.date, repeatEndDateRaw)){
-        showToast('La fecha de fin de la recurrencia no puede ser anterior a la fecha del evento');
-        return;
-      }
-    }
-    // data.recurrence SIEMPRE se incluye (aunque sea null): mismo
-    // criterio que en openTaskModal (ver comentario allí).
-    data.recurrence = readRecurrenceFromForm(fd, data.date);
-    // R-5.1: mismo criterio exacto que openTaskModal (ver comentario
-    // allí) — una recurrencia semanal sin ningún día marcado no se guarda.
-    if(data.recurrence && data.recurrence.type === 'weekly' && data.recurrence.daysOfWeek.length === 0){
-      showToast('Elige al menos un día de la semana para la recurrencia semanal');
-      return;
-    }
-    if(editing) await updateEvent(eventId, data); else await addEvent(data);
-    closeModal();
-    showToast(editing?'Guardado':'Añadido');
-    renderCurrentView();
-  });
-
-  overlay.classList.add('open');
-}
 
 /* ==================================================================
    VISTA HORARIO (app de exámenes)
@@ -2650,70 +1492,6 @@ function openScheduleModal({scheduleId=null, subjectId=null, prefill=null, fromH
     closeModal();
     showToast(editing?'Guardado':'Añadido');
     renderCurrentView();
-  });
-
-  overlay.classList.add('open');
-}
-
-/* ==================================================================
-   MODAL: CATEGORÍA DE EVENTO (Fase 6A-3)
-   ================================================================== */
-function openEventCategoryModal({categoryId=null}={}){
-  const editing = !!categoryId;
-  const existing = editing ? state.eventCategories.find(c=>c.id===categoryId) : null;
-  const blocks = existing ? existing.blocksSchedule !== false : true;
-
-  modalBox.innerHTML = `
-    <h3>${editing?'Editar':'Añadir'} categoría de evento</h3>
-    <form id="event-category-form">
-      <div class="form-group"><label>Nombre</label>
-        <input type="text" name="name" required value="${existing?esc(existing.name):''}" placeholder="Ej. Vacaciones, Trabajo, Personal…">
-      </div>
-      <div class="form-row-2">
-        <div class="form-group"><label>Color</label>
-          <input type="color" name="color" value="${existing?esc(existing.color||'#1B1F23'):'#1B1F23'}">
-        </div>
-        <div class="form-group"><label>Icono (opcional)</label>
-          <input type="text" name="icon" maxlength="4" value="${existing?esc(existing.icon||''):''}" placeholder="Ej. 🌴">
-        </div>
-      </div>
-      <div class="form-check">
-        <input type="checkbox" name="blocksSchedule" id="cat-blocks-schedule" ${blocks?'checked':''}>
-        <label for="cat-blocks-schedule" style="margin:0;">Bloquea planificación (un evento de todo el día con esta categoría ocupa el día entero)</label>
-      </div>
-      <div class="modal-actions">
-        <div>${editing?`<button type="button" class="btn" id="event-category-delete-btn">Eliminar</button>`:''}</div>
-        <div class="right">
-          <button type="button" class="btn" id="event-category-cancel-btn">Cancelar</button>
-          <button type="submit" class="btn btn-dark">Guardar</button>
-        </div>
-      </div>
-    </form>`;
-
-  modalBox.querySelector('#event-category-cancel-btn').addEventListener('click', closeModal);
-  if(editing){
-    modalBox.querySelector('#event-category-delete-btn').addEventListener('click', async ()=>{
-      if(confirm('¿Eliminar esta categoría? Los eventos que la usan no se eliminan: pasarán a comportarse como un evento sin categoría.')){
-        await deleteEventCategory(categoryId);
-        closeModal();
-        renderAjustes();
-      }
-    });
-  }
-  modalBox.querySelector('#event-category-form').addEventListener('submit', async (e)=>{
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const data = {
-      name: fd.get('name').trim(),
-      color: fd.get('color') || '#1B1F23',
-      icon: fd.get('icon') || '',
-      blocksSchedule: fd.get('blocksSchedule') === 'on',
-    };
-    if(!data.name) return;
-    if(editing) await updateEventCategory(categoryId, data); else await addEventCategory(data);
-    closeModal();
-    showToast(editing?'Guardado':'Añadido');
-    renderAjustes();
   });
 
   overlay.classList.add('open');
@@ -3508,22 +2286,6 @@ function renderScheduleRows(){
   return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-schedule">+ Añadir bloque de horario</button>`;
 }
 
-/* Fase 6A-3: filas de categorías de eventos, mismo patrón visual que
-   renderScheduleRows (reutiliza .schedule-row/.sched-main/.sched-meta/
-   .sched-time y .priority-dot para el color, sin CSS nuevo). */
-function renderEventCategoryRows(){
-  const sorted = [...state.eventCategories].sort((a,b) => (a.name||'').localeCompare(b.name||''));
-  const rows = sorted.map(c=>{
-    return `<div class="schedule-row" data-category-id="${c.id}">
-      <div class="sched-main">
-        <div class="sched-name"><span class="priority-dot" style="background:${esc(c.color)};margin-right:6px;"></span>${c.icon?esc(c.icon)+' ':''}${esc(c.name)}</div>
-        <div class="sched-meta">${c.blocksSchedule!==false ? 'Bloquea planificación' : 'No bloquea planificación'}</div>
-      </div>
-    </div>`;
-  }).join('');
-  const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no has creado ninguna categoría. Los eventos sin categoría siguen funcionando exactamente igual que ahora.</div>`;
-  return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-event-category">+ Añadir categoría</button>`;
-}
 
 /* Paso 4D: filas de duración por categoría, usando SOLO categorías reales
    que ya existen en las tareas (nunca se inventa una lista de categorías).
@@ -3721,24 +2483,11 @@ function renderAjustes(){
       </section>
 
       <section class="block">
-        <div class="block-head"><h2>Categorías de eventos</h2><span class="hint">Colores y comportamiento para tus eventos. "Bloquea planificación" decide si un evento de todo el día ocupa el día entero de cara al organizador</span></div>
-        <div class="settings-list" id="event-categories-list">${renderEventCategoryRows()}</div>
-      </section>
-
-      <section class="block">
         <div class="block-head"><h2>Preferencias de organización</h2></div>
         <div class="settings-list">
           <div class="settings-row select-row">
             <div class="left">Inicio predeterminado</div>
             <select id="pref-default-home">${homeOptions}</select>
-          </div>
-          <div class="settings-row">
-            <div class="left">Mostrar tareas completadas</div>
-            <button type="button" class="toggle ${state.prefs.showCompletedTasks?'on':''}" data-toggle-pref="showCompletedTasks" aria-label="Mostrar tareas completadas"></button>
-          </div>
-          <div class="settings-row">
-            <div class="left">Mostrar eventos pasados</div>
-            <button type="button" class="toggle ${state.prefs.showPastEvents?'on':''}" data-toggle-pref="showPastEvents" aria-label="Mostrar eventos pasados"></button>
           </div>
           <div class="settings-row select-row">
             <div class="left">Horario del día</div>
@@ -3817,14 +2566,6 @@ function renderAjustes(){
     });
   });
 
-  el.querySelectorAll('[data-toggle-pref]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
-      const key = btn.dataset.togglePref;
-      state.prefs[key] = !state.prefs[key];
-      await savePrefs();
-      renderAjustes();
-    });
-  });
   const homeSelect = el.querySelector('#pref-default-home');
   if(homeSelect) homeSelect.addEventListener('change', async ()=>{
     state.prefs.defaultHome = homeSelect.value;
@@ -3854,12 +2595,6 @@ function renderAjustes(){
   if(addSchedBtn) addSchedBtn.addEventListener('click', ()=> openScheduleModal());
   el.querySelectorAll('[data-schedule-id]').forEach(row=>{
     row.addEventListener('click', ()=> openScheduleModal({ scheduleId: row.dataset.scheduleId }));
-  });
-
-  const addCatBtn = el.querySelector('#btn-add-event-category');
-  if(addCatBtn) addCatBtn.addEventListener('click', ()=> openEventCategoryModal());
-  el.querySelectorAll('[data-category-id]').forEach(row=>{
-    row.addEventListener('click', ()=> openEventCategoryModal({ categoryId: row.dataset.categoryId }));
   });
 
   el.querySelector('#btn-logout').addEventListener('click', logout);
@@ -3906,16 +2641,8 @@ function exportData(){
 }
 
 /* ==================================================================
-   SANEAMIENTO DE EVENTOS/CATEGORÍAS IMPORTADOS
-   Un backup importado puede venir corrupto o editado a mano (evento sin
-   title/date, allDay como string, etc.). Estas funciones validan y
-   normalizan cada elemento de forma individual ANTES de reemplazar
-   state, para que un elemento inválido no rompa el resto de la
-   importación ni el renderizado/Scheduler posterior. No cambian el
-   formato de exportación ni la semántica de categorías/all-day/contexto
-   (6A-3/6A-4.2): un categoryId huérfano NO se toca aquí, se sigue
-   resolviendo más tarde exactamente igual que hoy (resolveEventCategory/
-   resolveEventBlocksSchedule), igual que ya protege 6A-4.3.
+   FECHAS VÁLIDAS (YYYY-MM-DD)
+   Comprobación de fecha real que usan los exámenes al validar el formulario.
    ================================================================== */
 const IMPORT_DATE_YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -3930,506 +2657,6 @@ function isValidYMDDate(str){
   if(m < 1 || m > 12) return false;
   const date = new Date(y, m - 1, d);
   return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
-}
-
-/* ==================================================================
-   RECURRENCIA — modelo de datos (Fase R-1, ampliada en R-1.6)
-   Campo opcional `recurrence` en tareas/eventos: null si no hay
-   recurrencia, o { type:'daily'|'weekly'|'monthly'|'yearly', interval,
-   daysOfWeek, startDate, endDate }. Esta fase SOLO guarda el dato
-   saneado: nadie calcula todavía próximas ocurrencias ni genera copias —
-   eso es de una fase posterior. daysOfWeek usa el mismo índice que
-   customSchedules.days y DOW_SHORT (0=Lunes...6=Domingo); solo se usa
-   con `type:'weekly'` (ver R-5.1) — `yearly`, como `daily`/`monthly`, lo
-   ignora por completo.
-   R-1.6: `yearly` reutiliza EXACTAMENTE el mismo modelo — `interval`
-   entero positivo (cada N años), `startDate` como fecha ancla y
-   `endDate` con la misma semántica de siempre (límite inclusivo). No se
-   añade ningún campo nuevo solo para `yearly`. */
-const RECURRENCE_TYPES = ['daily', 'weekly', 'monthly', 'yearly'];
-
-function isValidRecurrenceInterval(n){
-  return typeof n === 'number' && Number.isInteger(n) && n >= 1;
-}
-
-function isValidRecurrenceDaysOfWeek(arr){
-  if(arr === undefined) return true;
-  if(!Array.isArray(arr)) return false;
-  return arr.every(d => typeof d === 'number' && Number.isInteger(d) && d >= 0 && d <= 6);
-}
-
-/** Valida y normaliza una recurrencia importada/introducida. Devuelve
- * `null` si `value` no es un objeto de recurrencia válido (type
- * desconocido, interval no entero >=1, daysOfWeek con valores fuera de
- * 0-6, startDate/endDate que no sean YYYY-MM-DD reales, o endDate
- * anterior a startDate). No convierte silenciosamente datos inválidos en
- * una recurrencia válida, y no modifica el objeto `value` recibido. */
-function sanitizeRecurrence(value){
-  if(!value || typeof value !== 'object') return null;
-  if(!RECURRENCE_TYPES.includes(value.type)) return null;
-  if(!isValidRecurrenceInterval(value.interval)) return null;
-  if(!isValidRecurrenceDaysOfWeek(value.daysOfWeek)) return null;
-  if(!isValidYMDDate(value.startDate)) return null;
-  const hasEndDate = value.endDate !== null && value.endDate !== undefined;
-  if(hasEndDate && !isValidYMDDate(value.endDate)) return null;
-  const endDate = hasEndDate ? value.endDate : null;
-  if(endDate !== null && endDate < value.startDate) return null;
-  return {
-    type: value.type,
-    interval: value.interval,
-    daysOfWeek: Array.isArray(value.daysOfWeek) ? [...value.daysOfWeek] : [],
-    startDate: value.startDate,
-    endDate,
-  };
-}
-
-/* ==================================================================
-   RECURRENCIA — cálculo de próximas ocurrencias (Fase R-2)
-   Lógica pura sobre una recurrencia ya saneada (ver sanitizeRecurrence,
-   Fase R-1): saber si una fecha pertenece a la recurrencia
-   (isDateInRecurrence) y calcular la siguiente ocurrencia después de una
-   fecha dada (getNextRecurrenceDate). Ninguna de las dos funciones ni sus
-   helpers internos modifican `recurrence`, tareas/eventos ni `state`, ni
-   crean ocurrencias reales — eso sigue siendo de una fase posterior.
-   Reutilizan parseYMD/addDays/dowOfDate/getWeekMonday/pad ya definidos en
-   UTILIDADES DE FECHA para no duplicar el manejo de fechas y evitar
-   errores de zona horaria (parseYMD siempre construye la fecha en
-   horario local a medianoche).
-   ================================================================== */
-
-// Nº de días entre dos fechas YYYY-MM-DD (b - a); siempre exacto porque
-// ambas se construyen a medianoche en el mismo huso horario local.
-function daysBetweenYMD(a, b){
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  return Math.round((parseYMD(b).getTime() - parseYMD(a).getTime()) / MS_PER_DAY);
-}
-
-// Nº de meses completos entre dos fechas YYYY-MM-DD (b - a), ignorando el
-// día del mes (solo año/mes). Puede ser negativo.
-function monthsBetweenYMD(a, b){
-  const [ay, am] = a.split('-').map(Number);
-  const [by, bm] = b.split('-').map(Number);
-  return (by - ay) * 12 + (bm - am);
-}
-
-// Último día (28-31) del mes `month` (1-12) de `year`.
-function daysInMonthOf(year, month){
-  return new Date(year, month, 0).getDate();
-}
-
-/** Indica si `dateStr` (YYYY-MM-DD) es una ocurrencia válida de
- * `recurrence` (ya saneada por sanitizeRecurrence). No muta `recurrence`.
- * Devuelve `false` de forma segura si `recurrence` es null/inválida o si
- * `dateStr` no es una fecha YYYY-MM-DD real (nunca lanza).
- *
- * Reglas por tipo:
- * - daily: cada `interval` días exactos desde startDate.
- * - weekly: cada `interval` semanas (semanas lunes-domingo, alineadas a
- *   la semana de startDate) y, dentro de esa semana, en cualquiera de los
- *   días de `daysOfWeek`; si `daysOfWeek` está vacío se usa el mismo día
- *   de la semana que startDate.
- * - monthly: cada `interval` meses desde startDate, en el mismo día del
- *   mes que startDate. Si ese día no existe en el mes de destino (p.ej.
- *   startDate=31 de enero y el mes de destino es febrero), se usa el
- *   último día de ese mes (recorte/"clamp"), sin inventar otra fecha ni
- *   lanzar: 31/01 → 28/02 (o 29/02 en año bisiesto). Este recorte es
- *   solo para ese mes concreto: el mes siguiente vuelve a usar el día
- *   original de startDate si cabe (ver getNextRecurrenceDate).
- * - yearly (R-1.6): cada `interval` años desde startDate, en el mismo
- *   mes y día que startDate (pensado para cumpleaños/aniversarios).
- *   MISMO criterio de recorte que monthly (reutiliza daysInMonthOf, sin
- *   duplicar esa lógica): un startDate de 29 de febrero cae el 28 de
- *   febrero en un año de destino no bisiesto, y el 29 de febrero en uno
- *   que sí lo es — nunca se salta ese año ni se mueve a otro mes. Esta
- *   es la única fecha de startDate para la que el mes de destino puede
- *   variar de longitud según el año (el resto de días de todos los
- *   demás meses son válidos en cualquier año), así que es la única que
- *   necesita recorte; el resto de meses siempre reproduce el mismo día
- *   exacto de startDate. Regla determinista, sin excepción ni caso
- *   especial oculto: mismo mecanismo exacto que ya usa monthly arriba.
- */
-function isDateInRecurrence(dateStr, recurrence){
-  if(!isValidYMDDate(dateStr)) return false;
-  if(!recurrence || typeof recurrence !== 'object') return false;
-  const { type, interval, startDate, endDate, daysOfWeek } = recurrence;
-  if(!RECURRENCE_TYPES.includes(type)) return false;
-  if(!isValidRecurrenceInterval(interval)) return false;
-  if(!isValidYMDDate(startDate)) return false;
-  if(dateStr < startDate) return false;
-  if(endDate !== null && endDate !== undefined && dateStr > endDate) return false;
-
-  if(type === 'daily'){
-    const diff = daysBetweenYMD(startDate, dateStr);
-    return diff % interval === 0;
-  }
-
-  if(type === 'weekly'){
-    const days = Array.isArray(daysOfWeek) && daysOfWeek.length ? daysOfWeek : [dowOfDate(startDate)];
-    if(!days.includes(dowOfDate(dateStr))) return false;
-    const weekDiff = daysBetweenYMD(getWeekMonday(startDate), getWeekMonday(dateStr)) / 7;
-    return weekDiff % interval === 0;
-  }
-
-  if(type === 'monthly'){
-    const sd = Number(startDate.split('-')[2]);
-    const [y, m, d] = dateStr.split('-').map(Number);
-    const monthDiff = monthsBetweenYMD(startDate, dateStr);
-    if(monthDiff % interval !== 0) return false;
-    const expectedDay = Math.min(sd, daysInMonthOf(y, m));
-    return d === expectedDay;
-  }
-
-  if(type === 'yearly'){
-    const [sy, sm, sd] = startDate.split('-').map(Number);
-    const [y, m, d] = dateStr.split('-').map(Number);
-    if(m !== sm) return false;
-    const yearDiff = y - sy;
-    if(yearDiff % interval !== 0) return false;
-    const expectedDay = Math.min(sd, daysInMonthOf(y, sm));
-    return d === expectedDay;
-  }
-
-  return false;
-}
-
-/** Devuelve la siguiente ocurrencia (YYYY-MM-DD) de `recurrence`
- * estrictamente posterior a `dateStr` (`dateStr` no tiene por qué ser
- * una ocurrencia válida: puede ser cualquier fecha, p.ej. "hoy"). No
- * muta `recurrence`. Devuelve `null` de forma segura si `recurrence` es
- * null/inválida, si `dateStr` no es una fecha YYYY-MM-DD real, o si no
- * queda ninguna ocurrencia futura antes de `endDate` (nunca lanza).
- * Ver isDateInRecurrence para el criterio de recorte usado en monthly y
- * en yearly (R-1.6).
- */
-function getNextRecurrenceDate(dateStr, recurrence){
-  if(!isValidYMDDate(dateStr)) return null;
-  if(!recurrence || typeof recurrence !== 'object') return null;
-  const { type, interval, startDate, endDate, daysOfWeek } = recurrence;
-  if(!RECURRENCE_TYPES.includes(type)) return null;
-  if(!isValidRecurrenceInterval(interval)) return null;
-  if(!isValidYMDDate(startDate)) return null;
-
-  const withinEnd = (d) => (endDate === null || endDate === undefined || d <= endDate);
-
-  // Si dateStr es anterior al inicio de la recurrencia, la primera
-  // ocurrencia posible es startDate mismo (siempre es una ocurrencia
-  // válida de su propia recurrencia).
-  if(dateStr < startDate){
-    return withinEnd(startDate) ? startDate : null;
-  }
-
-  if(type === 'daily'){
-    const diff = daysBetweenYMD(startDate, dateStr);
-    const stepsPassed = Math.floor(diff / interval);
-    const next = addDays(startDate, (stepsPassed + 1) * interval);
-    return withinEnd(next) ? next : null;
-  }
-
-  if(type === 'weekly'){
-    const days = (Array.isArray(daysOfWeek) && daysOfWeek.length) ? [...daysOfWeek].sort((a,b)=>a-b) : [dowOfDate(startDate)];
-    const startMonday = getWeekMonday(startDate);
-    const dateMonday = getWeekMonday(dateStr);
-    const weekDiff = daysBetweenYMD(startMonday, dateMonday) / 7;
-    // Alinea a la semana "activa" (múltiplo de interval desde startMonday)
-    // igual o posterior a la semana de dateStr.
-    const offset = ((weekDiff % interval) + interval) % interval;
-    let monday = offset === 0 ? dateMonday : addDays(dateMonday, (interval - offset) * 7);
-    let candidate = null;
-    for(const dow of days){
-      const c = addDays(monday, dow);
-      if(c > dateStr){ candidate = c; break; }
-    }
-    if(candidate === null){
-      // Ningún día activo de esta semana cae después de dateStr: se salta
-      // a la siguiente semana activa y se toma su primer día (ya ordenado).
-      monday = addDays(monday, interval * 7);
-      candidate = addDays(monday, days[0]);
-    }
-    return withinEnd(candidate) ? candidate : null;
-  }
-
-  if(type === 'monthly'){
-    const [sy, sm, sd] = startDate.split('-').map(Number);
-    const monthDiff = monthsBetweenYMD(startDate, dateStr);
-    const candidateForStep = (k) => {
-      const totalMonths = (sm - 1) + k * interval;
-      const y = sy + Math.floor(totalMonths / 12);
-      const m = (totalMonths % 12) + 1;
-      const day = Math.min(sd, daysInMonthOf(y, m));
-      return `${y}-${pad(m)}-${pad(day)}`;
-    };
-    let steps = Math.floor(monthDiff / interval);
-    let candidate = candidateForStep(steps);
-    if(candidate <= dateStr){
-      steps += 1;
-      candidate = candidateForStep(steps);
-    }
-    return withinEnd(candidate) ? candidate : null;
-  }
-
-  if(type === 'yearly'){
-    // Mismo mecanismo exacto que monthly (candidateForStep + recorte vía
-    // daysInMonthOf), sustituyendo "meses desde startDate" por "años
-    // desde startDate": el mes/día de destino siempre son los de
-    // startDate, salvo el recorte de 29 de febrero (ver isDateInRecurrence).
-    const [sy, sm, sd] = startDate.split('-').map(Number);
-    const yearDiff = Number(dateStr.split('-')[0]) - sy;
-    const candidateForStep = (k) => {
-      const y = sy + k * interval;
-      const day = Math.min(sd, daysInMonthOf(y, sm));
-      return `${y}-${pad(sm)}-${pad(day)}`;
-    };
-    let steps = Math.floor(yearDiff / interval);
-    let candidate = candidateForStep(steps);
-    if(candidate <= dateStr){
-      steps += 1;
-      candidate = candidateForStep(steps);
-    }
-    return withinEnd(candidate) ? candidate : null;
-  }
-
-  return null;
-}
-
-/* ==================================================================
-   RECURRENCIA — integración con TAREAS (Fase R-3)
-   Convierte una tarea base (única, con su `recurrence`) en sus
-   "ocurrencias" dentro de un rango de fechas, sin crear copias
-   persistentes: getTaskOccurrences() es pura, no lee ni escribe
-   `state.tasks`, y calcula las fechas exclusivamente con
-   isDateInRecurrence/getNextRecurrenceDate (Fase R-2) — no duplica esa
-   lógica. Cada ocurrencia se identifica de forma estable por
-   `taskId` + `occurrenceDate` (nunca por posición de array), vía
-   getTaskOccurrenceId. El estado de "completada" de cada ocurrencia se
-   guarda aparte de `done`: ver completedOccurrences más abajo (funciones
-   completeTaskOccurrence/uncompleteTaskOccurrence, en el bloque CRUD,
-   que sí mutan `state.tasks`).
-   ================================================================== */
-
-// Id estable y determinista de una ocurrencia, derivado de taskId +
-// occurrenceDate (nunca de la posición en ningún array).
-function getTaskOccurrenceId(taskId, occurrenceDate){
-  return `${taskId}::${occurrenceDate}`;
-}
-
-/** Indica si la ocurrencia `occurrenceDate` de `task` está completada.
- * - Tarea no recurrente (`recurrence` null/ausente): usa `task.done`
- *   tal cual, igual que siempre (la fecha se ignora, como antes de R-3).
- * - Tarea recurrente: comprueba `completedOccurrences` (un array de
- *   fechas YYYY-MM-DD opcional; si no existe todavía, ninguna ocurrencia
- *   está completada). No muta `task`. */
-function isTaskOccurrenceCompleted(task, occurrenceDate){
-  if(!task || typeof task !== 'object') return false;
-  if(!task.recurrence) return !!task.done;
-  return Array.isArray(task.completedOccurrences) && task.completedOccurrences.includes(occurrenceDate);
-}
-
-// Construye el objeto derivado de una ocurrencia a partir de la tarea
-// base; no muta `task` ni state.tasks. `completedOccurrences` no se
-// incluye en el resultado (es un detalle interno de la tarea base, no de
-// la ocurrencia individual); en su lugar se expone `done`, ya resuelto
-// para esa fecha concreta vía isTaskOccurrenceCompleted.
-function buildTaskOccurrence(task, occurrenceDate){
-  const { completedOccurrences, scheduledOccurrences, ...rest } = task;
-  // Repetición planificada al aceptar una propuesta IA: su franja propia.
-  const planned = scheduledOccurrences && scheduledOccurrences[occurrenceDate];
-  if(task.recurrence && planned && planned.start && planned.end){
-    Object.assign(rest, { scheduledDate: occurrenceDate, scheduledStart: planned.start, scheduledEnd: planned.end });
-  }
-  return {
-    ...rest,
-    id: getTaskOccurrenceId(task.id, occurrenceDate),
-    taskId: task.id,
-    occurrenceDate,
-    done: isTaskOccurrenceCompleted(task, occurrenceDate),
-  };
-}
-
-/** Devuelve las ocurrencias de `task` dentro de [fromDate, toDate]
- * (ambos límites incluidos), como objetos derivados (ver
- * buildTaskOccurrence). Pura: no modifica `task`, `task.recurrence` ni
- * `state.tasks`; no crea ninguna tarea nueva. Devuelve `[]` de forma
- * segura ante entradas inválidas (nunca lanza).
- *
- * - Tarea no recurrente (`recurrence` null/ausente): se comporta
- *   exactamente como antes de R-3 — devuelve, como mucho, una única
- *   ocurrencia en su fecha propia (scheduledDate si la tiene, si no
- *   dueDate; mismo criterio que usa el resto de la app para "la fecha de
- *   la tarea", ver taskRowHTML/renderToday), solo si cae en el rango.
- * - Tarea recurrente: genera las fechas válidas dentro del rango
- *   apoyándose exclusivamente en isDateInRecurrence/getNextRecurrenceDate
- *   de R-2 (ninguna lógica de recurrencia se reimplementa aquí). Respeta
- *   `endDate`: nunca hay ocurrencias después de esa fecha. */
-function getTaskOccurrences(task, fromDate, toDate){
-  if(!task || typeof task !== 'object') return [];
-  if(!isValidYMDDate(fromDate) || !isValidYMDDate(toDate) || fromDate > toDate) return [];
-
-  if(!task.recurrence){
-    const anchor = task.scheduledDate || task.dueDate;
-    if(anchor && isValidYMDDate(anchor) && anchor >= fromDate && anchor <= toDate){
-      return [buildTaskOccurrence(task, anchor)];
-    }
-    return [];
-  }
-
-  const occurrences = [];
-  // Primer candidato a comprobar: el rango pedido puede empezar antes de
-  // que exista la recurrencia (startDate siempre es su primera ocurrencia
-  // válida, ver R-2), así que se arranca en el más tardío de los dos.
-  const cursor = fromDate < task.recurrence.startDate ? task.recurrence.startDate : fromDate;
-  if(cursor <= toDate && isDateInRecurrence(cursor, task.recurrence)){
-    occurrences.push(buildTaskOccurrence(task, cursor));
-  }
-  let next = getNextRecurrenceDate(cursor, task.recurrence);
-  while(next !== null && next <= toDate){
-    occurrences.push(buildTaskOccurrence(task, next));
-    next = getNextRecurrenceDate(next, task.recurrence);
-  }
-  return occurrences;
-}
-
-/* ==================================================================
-   RECURRENCIA — integración con EVENTOS (Fase R-4)
-   Mismo principio que R-3 (tareas), aplicado a eventos: una única
-   entidad base (con su `id` y `recurrence`) genera ocurrencias
-   derivadas dentro de un rango de fechas, sin crear copias persistentes
-   en `state.events`. getEventOccurrences() es pura y calcula las fechas
-   exclusivamente con isDateInRecurrence/getNextRecurrenceDate (Fase
-   R-2) — no duplica esa lógica. Cada ocurrencia se identifica de forma
-   estable por `eventId` + `occurrenceDate` (nunca por posición de
-   array), vía getEventOccurrenceId.
-   Un evento tiene dos conceptos de "fecha fin" distintos que no hay que
-   confundir: `event.endDate` (fin del tramo de días del evento, p.ej.
-   un viaje de varios días) y `event.recurrence.endDate` (fin de la
-   propia recurrencia, ver R-1/R-2). Esta fase respeta ambos: la
-   duración en días de `event.date` → `event.endDate` se conserva igual
-   en cada ocurrencia (ver eventDurationDays/buildEventOccurrence), y
-   `event.recurrence.endDate` sigue acotando qué ocurrencias existen
-   (vía R-2, sin reimplementarlo aquí).
-   Esta fase NO añade ningún estado de "completado" a los eventos (a
-   diferencia de completedOccurrences en tareas, R-3): los eventos no
-   tienen ese concepto todavía, y no se inventa aquí.
-   ================================================================== */
-
-// Id estable y determinista de una ocurrencia de evento, derivado de
-// eventId + occurrenceDate (nunca de la posición en ningún array).
-function getEventOccurrenceId(eventId, occurrenceDate){
-  return `${eventId}::${occurrenceDate}`;
-}
-
-// Duración en días completos entre event.date y event.endDate (0 si el
-// evento es de un solo día, o si endDate/date faltan o no son fechas
-// YYYY-MM-DD reales). Nunca negativa: un endDate anterior a date (dato
-// corrupto) se trata como duración 0, sin lanzar.
-function eventDurationDays(event){
-  if(!event || typeof event !== 'object') return 0;
-  if(!isValidYMDDate(event.date) || !isValidYMDDate(event.endDate)) return 0;
-  const diff = daysBetweenYMD(event.date, event.endDate);
-  return diff > 0 ? diff : 0;
-}
-
-// Construye el objeto derivado de una ocurrencia a partir del evento
-// base; no muta `event` ni state.events. Conserva todos los campos del
-// evento base (title, allDay, startTime, endTime, location, notes,
-// categoryId, y cualquier otro campo existente) y desplaza `date`/
-// `endDate` a la ocurrencia concreta, preservando la duración original
-// (ver eventDurationDays) si el evento abarca varios días.
-function buildEventOccurrence(event, occurrenceDate){
-  const durationDays = eventDurationDays(event);
-  return {
-    ...event,
-    id: getEventOccurrenceId(event.id, occurrenceDate),
-    eventId: event.id,
-    occurrenceDate,
-    date: occurrenceDate,
-    endDate: event.endDate ? addDays(occurrenceDate, durationDays) : event.endDate,
-  };
-}
-
-/** Devuelve las ocurrencias de `event` dentro de [fromDate, toDate]
- * (ambos límites incluidos), como objetos derivados (ver
- * buildEventOccurrence). Pura: no modifica `event`, `event.recurrence`
- * ni `state.events`; no crea ningún evento nuevo. Devuelve `[]` de
- * forma segura ante entradas inválidas (nunca lanza).
- *
- * - Evento no recurrente (`recurrence` null/ausente): se comporta
- *   exactamente como antes de R-4 — devuelve, como mucho, una única
- *   ocurrencia en su fecha original (`event.date`), solo si esa fecha
- *   cae en el rango (igual que el resto de la app filtra eventos por
- *   `e.date`, ver isDateInRange/renderToday). Conserva su `endDate`
- *   original (el tramo de días del evento) sin recalcular nada.
- * - Evento recurrente: genera las fechas de inicio válidas dentro del
- *   rango apoyándose exclusivamente en
- *   isDateInRecurrence/getNextRecurrenceDate de R-2 (ninguna lógica de
- *   recurrencia se reimplementa aquí). Respeta `recurrence.endDate`:
- *   nunca hay ocurrencias después de esa fecha. Cada ocurrencia
- *   conserva la duración del evento base (ver eventDurationDays). */
-function getEventOccurrences(event, fromDate, toDate){
-  if(!event || typeof event !== 'object') return [];
-  if(!isValidYMDDate(fromDate) || !isValidYMDDate(toDate) || fromDate > toDate) return [];
-
-  if(!event.recurrence){
-    if(isValidYMDDate(event.date) && event.date >= fromDate && event.date <= toDate){
-      return [buildEventOccurrence(event, event.date)];
-    }
-    return [];
-  }
-
-  const occurrences = [];
-  // Primer candidato a comprobar: el rango pedido puede empezar antes de
-  // que exista la recurrencia (startDate siempre es su primera ocurrencia
-  // válida, ver R-2), así que se arranca en el más tardío de los dos.
-  const cursor = fromDate < event.recurrence.startDate ? event.recurrence.startDate : fromDate;
-  if(cursor <= toDate && isDateInRecurrence(cursor, event.recurrence)){
-    occurrences.push(buildEventOccurrence(event, cursor));
-  }
-  let next = getNextRecurrenceDate(cursor, event.recurrence);
-  while(next !== null && next <= toDate){
-    occurrences.push(buildEventOccurrence(event, next));
-    next = getNextRecurrenceDate(next, event.recurrence);
-  }
-  return occurrences;
-}
-
-/** Valida y normaliza un array de eventos importados. Descarta (sin
- * lanzar) los que no tengan title no vacío y date en formato YYYY-MM-DD
- * que además sea una fecha de calendario real (ver isValidYMDDate).
- * Normaliza allDay/notes/location si vienen con un tipo incorrecto.
- * Conserva intactos el resto de campos (incluido categoryId, aunque sea
- * huérfano, e id). Devuelve { kept, discarded }. */
-function sanitizeImportedEvents(arr){
-  const kept = [];
-  let discarded = 0;
-  (Array.isArray(arr) ? arr : []).forEach(e=>{
-    if(!e || typeof e !== 'object'){ discarded++; return; }
-    const hasTitle = typeof e.title === 'string' && e.title.trim().length > 0;
-    const hasDate = isValidYMDDate(e.date);
-    if(!hasTitle || !hasDate){ discarded++; return; }
-    kept.push({
-      ...e,
-      allDay: typeof e.allDay === 'boolean' ? e.allDay : false,
-      notes: typeof e.notes === 'string' ? e.notes : '',
-      location: typeof e.location === 'string' ? e.location : '',
-      recurrence: sanitizeRecurrence(e.recurrence),
-    });
-  });
-  return { kept, discarded };
-}
-
-/** Valida un array de categorías de eventos importadas. Descarta las
- * que no tengan name no vacío. Conserva intactos el resto de campos
- * (color, icon, blocksSchedule, id...) de las categorías válidas.
- * Devuelve { kept, discarded }. */
-function sanitizeImportedEventCategories(arr){
-  const kept = [];
-  let discarded = 0;
-  (Array.isArray(arr) ? arr : []).forEach(c=>{
-    if(!c || typeof c !== 'object'){ discarded++; return; }
-    const hasName = typeof c.name === 'string' && c.name.trim().length > 0;
-    if(!hasName){ discarded++; return; }
-    kept.push({ ...c });
-  });
-  return { kept, discarded };
 }
 
 /** Valida una lista importada de asignaturas, exámenes o sesiones de
@@ -4492,21 +2719,12 @@ function initSettingsDataIO(){
     const ok = confirm('Vas a reemplazar TODOS los datos actuales de ORGANIZATOR de tu cuenta por los del archivo importado. El cambio se aplicará en todos tus dispositivos y no se puede deshacer. ¿Quieres continuar?');
     if(!ok) return;
 
-    const sanitizedEvents = sanitizeImportedEvents(data.events);
-    const sanitizedCategories = sanitizeImportedEventCategories(data.eventCategories);
-
-    // Fase R-1 de recurrencia: solo se normaliza el campo `recurrence`
-    // (igual que hace sanitizeImportedEvents para eventos); el resto de
-    // campos/tareas se conserva exactamente igual que hasta ahora.
-    state.tasks = (Array.isArray(data.tasks) ? data.tasks : []).map(t =>
-      (t && typeof t === 'object') ? { ...t, recurrence: sanitizeRecurrence(t.recurrence) } : t
-    );
-    state.events = sanitizedEvents.kept;
+    // Tareas, eventos, categorías y recordatorios ya no se usan en la app,
+    // pero sus datos se conservan: se importan tal cual (solo que sean listas).
+    state.tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    state.events = Array.isArray(data.events) ? data.events : [];
     state.customSchedules = Array.isArray(data.customSchedules) ? data.customSchedules : [];
-    state.eventCategories = sanitizedCategories.kept;
-    // Fase 1 de recordatorios: solo validación mínima (que sea un array),
-    // igual que tasks/customSchedules — el saneamiento por-campo (como el
-    // que ya tienen events/eventCategories) es de una fase posterior.
+    state.eventCategories = Array.isArray(data.eventCategories) ? data.eventCategories : [];
     state.reminders = Array.isArray(data.reminders) ? data.reminders : [];
     const sanitizedStudy = {};
     for(const key of STUDY_KEYS){
@@ -4550,8 +2768,6 @@ function initSettingsDataIO(){
         saveReminderNotificationLedger(), savePrefs(), saveIA(),
       ]);
       const discardedParts = [];
-      if(sanitizedEvents.discarded) discardedParts.push(`${sanitizedEvents.discarded} evento(s)`);
-      if(sanitizedCategories.discarded) discardedParts.push(`${sanitizedCategories.discarded} categoría(s)`);
       if(sanitizedStudy.subjects.discarded) discardedParts.push(`${sanitizedStudy.subjects.discarded} asignatura(s)`);
       if(sanitizedStudy.exams.discarded) discardedParts.push(`${sanitizedStudy.exams.discarded} examen(es)`);
       if(sanitizedStudy.studySessions.discarded) discardedParts.push(`${sanitizedStudy.studySessions.discarded} sesión(es) de estudio`);
@@ -4827,7 +3043,7 @@ let remoteReloadTimer = null;
 async function activateAccountStorage(){
   const fail = (err) => {
     if(err) console.error('No se pudo activar el almacén de la cuenta', err);
-    document.getElementById('today-timeline').innerHTML = `<div class="empty-state small">No se pudieron cargar tus datos. Recarga la página.</div>`;
+    document.getElementById('upcoming-exams').innerHTML = `<div class="empty-state small">No se pudieron cargar tus datos. Recarga la página.</div>`;
     showToast('No se pudieron cargar tus datos. Recarga la página.');
     return false;
   };
@@ -5201,7 +3417,7 @@ async function logout(){
    ================================================================== */
 async function startApp(){
   appStarted = true;
-  document.getElementById('today-timeline').innerHTML = `<div class="empty-state small">Cargando…</div>`;
+  document.getElementById('upcoming-exams').innerHTML = `<div class="empty-state small">Cargando…</div>`;
   const d = new Date();
   cal.year = d.getFullYear(); cal.month = d.getMonth(); cal.selected = todayStr();
   // SYNC: window.storage pasa a ser el de la cuenta ANTES de leer nada.
