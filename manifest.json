@@ -1,7 +1,7 @@
 {
   "name": "ORGANIZATOR",
   "short_name": "ORGANIZATOR",
-  "description": "Organización personal: tareas, hábitos, Rubik, CESI, Casa, Compras, Vacaciones, Cole y asistente de IA.",
+  "description": "Tus exámenes, notas y horario del instituto, guardados en tu cuenta.",
   "start_url": "/",
   "scope": "/",
   "id": "/",

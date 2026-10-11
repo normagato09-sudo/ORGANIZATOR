@@ -32,10 +32,9 @@ const schedulesSrc = extractBetween(html, `${HDR}HORARIOS BLOQUEADOS`, '\nfuncti
 const horarioSrc = extractBetween(html, `${HDR}VISTA HORARIO (app de exámenes)
 `, `\n${HDR}MODAL: HORARIO BLOQUEADO`, 'bloque VISTA HORARIO');
 const scheduleModalSrc = extractBetween(html, 'function openScheduleModal(', `\n${HDR}`, 'openScheduleModal()');
-const scheduleRowsSrc = extractBetween(html, 'function renderScheduleRows(){', '\n}\n', 'renderScheduleRows()') + '\n}\n';
 const textColorOnSrc = 'const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/;\n' + extractBetween(html, 'function textColorOn(hex){', '\n}\n', 'textColorOn()') + '\n}\n';
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';
-const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'initSettingsDataIO()');
+const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\n/* ==================================================================\n   PWA — registro del Service Worker', 'initSettingsDataIO()');
 const renderCurrentViewSrc = extractBetween(html, 'function renderCurrentView(){', '\n}\n', 'renderCurrentView()');
 
 let pass = 0, fail = 0;
@@ -67,8 +66,8 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
     document: { getElementById: (id) => (id === 'view-horario' ? view : null) },
   };
   vm.createContext(sb);
-  vm.runInContext([escSrc, textColorOnSrc, schedulesSrc, horarioSrc, scheduleRowsSrc,
-    'Object.assign(this, { scheduleSubject, addCustomSchedule, updateCustomSchedule, horarioLayout, hhmmToMin, minToHHMM, horarioSlots, horarioSlotPrefill, renderHorario, renderScheduleRows, HORARIO_SLOT_PX });'].join('\n'), sb);
+  vm.runInContext([escSrc, textColorOnSrc, schedulesSrc, horarioSrc,
+    'Object.assign(this, { scheduleSubject, addCustomSchedule, updateCustomSchedule, horarioLayout, hhmmToMin, minToHHMM, horarioSlots, horarioSlotPrefill, renderHorario, HORARIO_SLOT_PX });'].join('\n'), sb);
   return { sb, saved, view };
 }
 
@@ -175,12 +174,7 @@ function makeSandbox({ subjects = [], customSchedules = [], todayDow = 0 } = {})
       scheduleModalSrc.includes('<option value="" disabled selected>Elige una asignatura…</option>') && scheduleModalSrc.includes('const base = existing || prefill || {}')
       && scheduleModalSrc.includes('inHorario: fromHorario || !!(existing && existing.inHorario)'));
     check('D5. la hora de fin tiene que ser posterior a la de inicio', scheduleModalSrc.includes("if(data.endTime <= data.startTime)"));
-    const { sb } = makeSandbox({ subjects: [MATES], customSchedules: [
-      { id: 'c1', name: 'Mates', days: [0], startTime: '09:00', endTime: '10:00', subjectId: 's1' },
-      { id: 'g', name: 'Gimnasio', days: [1], startTime: '18:00', endTime: '19:00' },
-    ] });
-    const rows = sb.renderScheduleRows();
-    check('D6. en Ajustes las clases llevan el punto de color de su asignatura', rows.includes('background:#D64545') && (rows.match(/subject-dot/g) || []).length === 1);
+    check('D6. la lista oculta "Horarios bloqueados" de Ajustes ya no existe (3.0.0); las clases se editan en el Horario', !html.includes('function renderScheduleRows(') && !html.includes('id="btn-add-schedule"'));
     check('D7. menú: Inicio, Calendario, Horario, Ajustes (sin Semana); la vista Semana ya no existe',
       ['inicio', 'calendario', 'horario', 'ajustes'].every(v => html.includes(`data-view="${v}"`)) && !html.includes('data-view="semana"')
       && !html.includes('id="view-semana"') && !html.includes('function renderSemana(){') && renderCurrentViewSrc.includes("currentView === 'horario') renderHorario()"));

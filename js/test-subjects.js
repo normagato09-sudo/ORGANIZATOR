@@ -33,8 +33,8 @@ const studyConstSrc = extractBetween(html, '/* ---------- App de exámenes: mode
 const subjectsSrc = extractBetween(html, `${HDR}ASIGNATURAS (app de exámenes, paso 2)`, `\n${HDR}EXÁMENES Y ENTREGAS (app de exámenes)`, 'bloque ASIGNATURAS');
 const importSanitizerSrc = extractBetween(html, '/** Valida las asignaturas de una copia importada', '\nfunction initSettingsDataIO(){', 'sanitizeImportedSubjects()');
 const escSrc = extractBetween(html, 'function esc(s){', '\n}\n', 'esc()') + '\n}\n';
-const renderAjustesSrc = extractBetween(html, 'function renderAjustes(){', '\nasync function deleteAllData(){', 'renderAjustes()');
-const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'initSettingsDataIO()');
+const renderAjustesSrc = extractBetween(html, 'function renderAjustes(){', '\n/* ---------- Exportar / Importar datos', 'renderAjustes()');
+const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\n/* ==================================================================\n   PWA — registro del Service Worker', 'initSettingsDataIO()');
 
 let pass = 0, fail = 0;
 function check(label, ok) {
@@ -236,7 +236,7 @@ function contrast(a, b) {
     check('G3. el nombre se escapa', rows.includes('Biología &lt;b&gt;') && !rows.includes('<b>'));
     check('G4. sin asignaturas muestra un mensaje', makeSandbox().sb.renderSubjectRows().includes('Todavía no tienes asignaturas'));
     const accordion = renderAjustesSrc.indexOf("ajustesAccordionSection('asignaturas'");
-    check('G5. "Asignaturas" es la primera sección de Ajustes', accordion !== -1 && accordion < renderAjustesSrc.indexOf("ajustesAccordionSection('organizacion'"));
+    check('G5. "Asignaturas" es la primera sección de Ajustes', accordion !== -1 && accordion < renderAjustesSrc.indexOf("ajustesAccordionSection('cuenta'"));
     check('G6. los botones están conectados', ['openSubjectModal()', 'openSubjectModal({ subjectId: btn.dataset.subjectEdit })', 'confirmDeleteSubject(btn.dataset.subjectDelete)'].every(s => renderAjustesSrc.includes(s)));
   }
 
@@ -262,16 +262,15 @@ function contrast(a, b) {
   // =====================================================================
   {
     const src = renderAjustesSrc;
-    const visible = src.slice(src.indexOf('<div class="settings-accordion">'), src.indexOf('<div class="settings-hidden-sections" hidden>'));
-    const hidden = src.slice(src.indexOf('<div class="settings-hidden-sections" hidden>'));
+    const visible = src.slice(src.indexOf('<div class="settings-accordion">'));
     check('I1. visibles, en este orden: Asignaturas, Cuenta, Copia de seguridad, Información', ["'asignaturas'", "'cuenta'", "'datos', 'Copia de seguridad'", "'informacion'"]
       .map(k => visible.indexOf(k)).every((i, n, arr) => i !== -1 && (n === 0 || i > arr[n - 1])));
-    check('I2. oculta (pero se sigue pintando): Organización (Horarios bloqueados); las secciones de IA y Recordatorios ya no existen', hidden.includes("'organizacion'") && !visible.includes("'organizacion'")
-      && !src.includes("ajustesAccordionSection('ia'") && !src.includes('id="toggle-ia"')
+    check('I2. sin secciones ocultas: Organización (Horarios bloqueados), IA y Recordatorios ya no existen', !src.includes("'organizacion'") && !src.includes('settings-hidden-sections')
+      && !src.includes('id="pref-default-home"') && !src.includes("ajustesAccordionSection('ia'") && !src.includes('id="toggle-ia"')
       && !src.includes("ajustesAccordionSection('recordatorios'") && !src.includes('id="btn-enable-notifications"'));
     check('I3. estadísticas de duración borradas (bloque 5); la versión sigue a la vista', !html.includes('renderDurationStatsSection') && !html.includes('renderGeneralPatternsSection') && src.includes('versión ${APP_VERSION}'));
-    check('I4. Copia de seguridad: Exportar e Importar; "Borrar todos los datos" oculto (su código sigue)', src.includes('id="btn-export-data">⬇️ Exportar copia') && src.includes('id="btn-import-data">⬆️ Importar copia')
-      && src.includes('id="btn-delete-data" hidden>') && html.includes('async function deleteAllData(){'));
+    check('I4. Copia de seguridad: Exportar e Importar; "Borrar todos los datos" ya no existe', src.includes('id="btn-export-data">⬇️ Exportar copia') && src.includes('id="btn-import-data">⬆️ Importar copia')
+      && !html.includes('btn-delete-data') && !html.includes('function deleteAllData('));
     check('I5. Cuenta: cerrar sesión y estado de sincronización', src.includes('id="btn-logout"') && src.includes('id="sync-status-text"'));
   }
 

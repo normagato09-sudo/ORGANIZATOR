@@ -39,8 +39,8 @@ const defaultsSrc = extractBetween(html, 'function defaultPrefs(){', `\n\n${HDR}
 const storageBlockSrc = extractBetween(html, 'async function loadState(){', `\n\n${HDR}TOAST`, 'bloque ALMACENAMIENTO');
 const authBlockSrc = extractBetween(html, `${HDR}AUTENTICACIÓN`, '\n</script>', 'bloque AUTENTICACIÓN + INICIALIZACIÓN');
 const startAppSrc = extractBetween(html, 'async function startApp(){', '\n(async function init(){', 'startApp()');
-// Paso 8: bloque real de Exportar / Importar / Borrar datos (incluye el saneamiento de importación).
-const dataIOSrc = extractBetween(html, '/* ---------- Exportar / Importar / Borrar datos ---------- */', `\n\n${HDR}PWA — registro del Service Worker`, 'bloque Exportar/Importar/Borrar');
+// Paso 8: bloque real de Exportar / Importar datos (incluye el saneamiento de importación).
+const dataIOSrc = extractBetween(html, '/* ---------- Exportar / Importar datos ---------- */', `\n\n${HDR}PWA — registro del Service Worker`, 'bloque Exportar/Importar');
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -260,7 +260,7 @@ async function loadPage(device, { withSyncStorage = true, legacyStorage = null, 
       get state(){ return state; },
       get currentUser(){ return currentUser; },
       saveTasks, saveEvents, logout, handleRemoteDataChange,
-      exportData, deleteAllData, syncStatusText, syncNow,
+      exportData, syncStatusText, syncNow,
     };`, sb, { filename: 'organizator.html (AUTENTICACIÓN + INICIALIZACIÓN)' });
   await settle();
   const app = sb.__app;
@@ -430,7 +430,7 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
   check('J2. se avisa al usuario y la app no sigue arrancando', brokenPage.toasts.some(t => /no se pudieron cargar/i.test(t)) && !brokenPage.calls.includes('initPWA'));
 
   // =====================================================================
-  section('K) Ajustes: estado, exportar, importar y borrar actúan sobre la cuenta actual (paso 8)');
+  section('K) Ajustes: estado, exportar e importar actúan sobre la cuenta actual (paso 8)');
   // =====================================================================
   {
     const idsOf = (list) => (list || []).map(t => t.id).sort().join(',');
@@ -478,25 +478,6 @@ const taskIds = (page) => page.app.state.tasks.map(t => t.id).sort();
     tablet.online = true;
     await tp.store().sync();
     check('K12. al volver la conexión se sube', idsOf(fakeDb.valueOf(SIS.id, 'tasks')) === 'imp2');
-
-    // Borrar todos los datos
-    const confirmsBeforeDelete = tp.confirms.length;
-    await tp.app.deleteAllData();
-    await settle();
-    check('K13. la confirmación de borrar avisa de que es en TODOS sus dispositivos', /TODOS tus dispositivos/.test(tp.confirms[confirmsBeforeDelete] || ''));
-    check('K14. borrar todo vacía SU cuenta en el servidor', idsOf(fakeDb.valueOf(SIS.id, 'tasks')) === '' && fakeDb.valueOf(SIS.id, 'settingsPrefs').defaultHome === 'inicio');
-    check('K15. y no toca la cuenta del hermano', JSON.stringify(fakeDb.valueOf(BRO.id, 'tasks')) === brotherBefore);
-    check('K16. aviso normal (subido)', tp.toasts[tp.toasts.length - 1] === 'Todos los datos se han borrado');
-    await pcPage.store().sync();
-    await settle();
-    check('K17. su otro dispositivo también queda vacío', pcPage.app.state.tasks.length === 0);
-
-    tablet.online = false;
-    await tp.addTask('late', 'x');
-    await tp.app.deleteAllData();
-    await settle();
-    check('K18. borrar sin conexión avisa de que se aplicará a la cuenta al volver la red', /al volver la conexión/.test(tp.toasts[tp.toasts.length - 1]));
-    tablet.online = true;
   }
 
   console.log(`\n${pass} ✅  ·  ${fail} ❌`);

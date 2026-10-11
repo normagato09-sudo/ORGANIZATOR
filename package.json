@@ -1,8 +1,8 @@
 {
   "name": "organizator",
-  "version": "1.0.0",
+  "version": "3.0.0",
   "private": true,
-  "description": "ORGANIZATOR — funciones serverless (auth + IA) para Vercel",
+  "description": "ORGANIZATOR — app de exámenes, notas y horario; funciones serverless (cuentas y sincronización) para Vercel",
   "dependencies": {
     "@neondatabase/serverless": "^0.10.4",
     "bcryptjs": "^2.4.3",

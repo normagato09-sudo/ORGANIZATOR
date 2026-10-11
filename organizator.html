@@ -147,8 +147,7 @@
   .settings-accordion-panel section.block{margin-bottom:20px;}
   .settings-accordion-panel section.block:last-child{margin-bottom:0;}
   .settings-accordion-panel[hidden]{display:none;}
-  /* App de exámenes: lo que se quita de la interfaz se oculta con [hidden] (su código se conserva). */
-  .btn[hidden], section.block[hidden], .settings-section[hidden]{display:none !important;}
+  .btn[hidden], section.block[hidden]{display:none !important;}
 
   .empty-state{
     background:var(--surface);
@@ -206,18 +205,16 @@
   .toggle.on::after{left:16px;}
   .settings-row .row-sub{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
   .settings-row .left.stack{flex-direction:column;align-items:flex-start;gap:2px;}
-  .settings-row.select-row{gap:14px;}
   .settings-row select{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;color:var(--ink);background:var(--surface);}
   .settings-row select:focus{outline:2px solid var(--ink);outline-offset:1px;}
 
-  /* ---------- Horarios bloqueados ---------- */
+  /* ---------- Filas de lista (asignaturas) ---------- */
   .schedule-row{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line);gap:12px;cursor:pointer;}
   .schedule-row:last-child{border-bottom:none;}
   .schedule-row:hover{background:var(--paper);}
   .schedule-row .sched-main{display:flex;flex-direction:column;gap:3px;min-width:0;}
   .schedule-row .sched-name{font-size:13.5px;font-weight:600;}
   .schedule-row .sched-meta{font-size:11.5px;color:var(--ink-soft);}
-  .schedule-row .sched-time{font-size:12.5px;color:var(--ink-soft);font-weight:500;flex:none;}
   .day-pills{display:flex;gap:6px;flex-wrap:wrap;}
   .day-pill{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--surface);color:var(--ink-soft);font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s ease,color .15s ease,border-color .15s ease;}
   .day-pill.on{background:var(--ink);color:var(--paper);border-color:var(--ink);}
@@ -288,8 +285,6 @@
   .settings-actions{display:flex;flex-wrap:wrap;gap:10px;}
   .app-info-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;font-size:13px;color:var(--ink-soft);line-height:1.6;}
   .app-info-box strong{color:var(--ink);}
-  .hour-row{display:flex;align-items:center;gap:10px;}
-  .hour-row select{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;}
 
   /* ---------- Calendario ---------- */
   .cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
@@ -480,7 +475,6 @@
        no cambia). */
     .form-group input, .form-group select, .form-group textarea{font-size:16px;}
     .settings-row select{font-size:16px;}
-    .hour-row select{font-size:16px;}
 
     /* Escala tipográfica algo menor, pensada para el ancho de un móvil
        en vez de heredar tamaños pensados para escritorio. */
@@ -511,7 +505,7 @@
   <div class="auth-box">
     <div class="auth-logo">O</div>
     <h1>ORGANIZATOR</h1>
-    <p class="auth-sub" id="auth-subtitle">Inicia sesión para ver tus tareas y tu calendario</p>
+    <p class="auth-sub" id="auth-subtitle">Inicia sesión para ver tus exámenes, tus notas y tu horario</p>
 
     <div class="auth-error" id="auth-error"></div>
 
@@ -566,7 +560,7 @@
 
   <main>
 
-    <!-- ===================== INICIO (chat con la IA) ===================== -->
+    <!-- ===================== INICIO ===================== -->
     <div class="view active" id="view-inicio">
       <p class="greeting" id="greeting">Buenos días</p>
       <h1 class="date"><span class="dow" id="dow">—</span> · <span id="fulldate">—</span></h1>
@@ -658,7 +652,7 @@
    ================================================================== */
 const DOW_NAMES = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const DOW_SHORT = ['L','M','X','J','V','S','D'];
-// Nombres completos en el mismo orden que DOW_SHORT (0=Lunes...6=Domingo), usados para el contexto de la IA
+// Nombres completos en el mismo orden que DOW_SHORT (0=Lunes...6=Domingo)
 const DOW_FULL_MONFIRST = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
 const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
@@ -666,7 +660,7 @@ const MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','a
    AJUSTES — valores por defecto
    ================================================================== */
 const APP_NAME = 'ORGANIZATOR';
-const APP_VERSION = '2.3.24';
+const APP_VERSION = '3.0.0';
 function defaultPrefs(){
   return {
     defaultHome: 'inicio',        // vista con la que arranca la app: 'inicio' o 'calendario'
@@ -707,21 +701,11 @@ let cal = { year:0, month:0, selected:null };
    ================================================================== */
 function pad(n){ return String(n).padStart(2,'0'); }
 function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
-function nowTimeStr(){ const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
 function parseYMD(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y, m-1, d); }
-function humanDate(s){
-  if(!s) return '';
-  const d = parseYMD(s);
-  return `${d.getDate()} de ${MONTH_NAMES[d.getMonth()]}`;
-}
 function humanDateShort(s){
   if(!s) return '';
   const d = parseYMD(s);
   return `${DOW_SHORT[(d.getDay()+6)%7]}, ${d.getDate()} ${MONTH_NAMES[d.getMonth()].slice(0,3)}`;
-}
-function isDateInRange(dateStr, start, end){
-  if(!end) return dateStr === start;
-  return dateStr >= start && dateStr <= end;
 }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 
@@ -729,8 +713,8 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
    HORARIOS BLOQUEADOS (bloques de rutina definidos por el usuario)
    Cada bloque: { id, name, days:[0..6] (0=Lunes...6=Domingo, igual que DOW_SHORT), startTime:"HH:MM", endTime:"HH:MM", subjectId, inHorario }
    subjectId (opcional): el bloque es una clase de esa asignatura;
-   su nombre se copia del de la asignatura (así la IA y el planificador lo
-   siguen viendo por s.name) y en la vista Horario se pinta con su color.
+   su nombre se copia del de la asignatura (s.name) y en la vista Horario
+   se pinta con su color.
    inHorario (opcional): bloque sin asignatura creado desde la vista Horario
    (p. ej. el recreo); sale en esa tabla, a diferencia del resto de bloques.
    ================================================================== */
@@ -761,23 +745,6 @@ function schedulesForDow(dow){
   return state.customSchedules
     .filter(s => Array.isArray(s.days) && s.days.includes(dow))
     .sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
-}
-
-/* ==================================================================
-   FECHAS — sumar días y lunes de la semana
-   Reutiliza parseYMD/pad/dowOfDate ya existentes; nada de esto pinta UI.
-   ================================================================== */
-function addDays(dateStr, n){
-  // Suma (o resta, con n negativo) días a una fecha YYYY-MM-DD sin problemas
-  // de zona horaria: parseYMD crea la fecha en horario local a medianoche,
-  // y Date#setDate ya gestiona correctamente los saltos de mes/año.
-  const d = parseYMD(dateStr);
-  d.setDate(d.getDate() + n);
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-}
-function getWeekMonday(dateStr){
-  // Lunes de la semana que contiene dateStr (dowOfDate: 0=Lunes...6=Domingo)
-  return addDays(dateStr, -dowOfDate(dateStr));
 }
 
 /* ==================================================================
@@ -2173,25 +2140,6 @@ function renderNotas(){
 /* ==================================================================
    RENDER: AJUSTES
    ================================================================== */
-function renderScheduleRows(){
-  const sorted = [...state.customSchedules].sort((a,b) => (a.startTime||'').localeCompare(b.startTime||''));
-  const rows = sorted.map(s=>{
-    const daysLabel = DOW_SHORT.map((lb,i)=> s.days.includes(i) ? `<strong>${lb}</strong>` : lb).join(' ');
-    const subject = scheduleSubject(s);
-    const dot = subject ? `<span class="priority-dot subject-dot" style="background:${esc(subject.color)};" title="Clase de ${esc(subject.name)}"></span>` : '';
-    return `<div class="schedule-row" data-schedule-id="${s.id}">
-      <div class="sched-main">
-        <div class="sched-name">${dot}${esc(s.name)}</div>
-        <div class="sched-meta">${daysLabel}</div>
-      </div>
-      <div class="sched-time">${esc(s.startTime)} – ${esc(s.endTime)}</div>
-    </div>`;
-  }).join('');
-  const empty = sorted.length ? '' : `<div class="empty-state small" style="border:none;border-radius:0;">Todavía no has creado ningún bloque. Añade tu escuela, tu trabajo, el gimnasio… lo que quieras que ORGANIZATOR sepa que tienes ocupado.</div>`;
-  return rows + empty + `<button type="button" class="add-schedule-btn" id="btn-add-schedule">+ Añadir bloque de horario</button>`;
-}
-
-
 /* UX-7 (acordeón): qué categorías de Ajustes están abiertas/cerradas.
    Vive a nivel de módulo (mismo patrón que `cal`/`week`): es solo estado
    de UI de esta sesión, nunca se guarda ni se exporta. Persiste ENTRE
@@ -2228,11 +2176,6 @@ function ajustesAccordionSection(key, title, contentHtml){
 function renderAjustes(){
   const el = document.getElementById('view-ajustes');
 
-  const homeOptions = [{id:'inicio', name:'Inicio'}, {id:'calendario', name:'Calendario'}]
-    .map(o=>`<option value="${o.id}" ${state.prefs.defaultHome===o.id?'selected':''}>${esc(o.name)}</option>`).join('');
-
-  const hourOptions = (selected)=> Array.from({length:24},(_,h)=>`<option value="${h}" ${Number(selected)===h?'selected':''}>${pad(h)}:00</option>`).join('');
-
   // UX-7 (acordeón): contenido de cada categoría, EXACTAMENTE el mismo
   // HTML que antes vivía dentro de cada <div class="settings-group"> —
   // solo se movió a una variable para poder pasarlo a
@@ -2263,37 +2206,12 @@ function renderAjustes(){
         <div class="settings-list" id="subjects-list">${renderSubjectRows()}</div>
       </section>`;
 
-  const organizacionHtml = `
-      <section class="block">
-        <div class="block-head"><h2>Horarios bloqueados</h2><span class="hint">Define los bloques fijos de tu rutina (escuela, trabajo, gimnasio…) para que la IA nunca te ponga nada encima</span></div>
-        <div class="settings-list" id="schedules-list">${renderScheduleRows()}</div>
-      </section>
-
-      <section class="block">
-        <div class="block-head"><h2>Preferencias de organización</h2></div>
-        <div class="settings-list">
-          <div class="settings-row select-row">
-            <div class="left">Inicio predeterminado</div>
-            <select id="pref-default-home">${homeOptions}</select>
-          </div>
-          <div class="settings-row select-row">
-            <div class="left">Horario del día</div>
-            <div class="hour-row">
-              <select id="pref-day-start">${hourOptions(state.prefs.dayStartHour)}</select>
-              <span class="hint">a</span>
-              <select id="pref-day-end">${hourOptions(state.prefs.dayEndHour)}</select>
-            </div>
-          </div>
-        </div>
-      </section>`;
-
   const datosHtml = `
       <section class="block">
         <div class="block-head"><h2>Copia de seguridad</h2></div>
         <div class="settings-actions">
           <button class="btn" id="btn-export-data">⬇️ Exportar copia</button>
           <button class="btn" id="btn-import-data">⬆️ Importar copia</button>
-          <button class="btn btn-danger" id="btn-delete-data" hidden>🗑️ Borrar todos los datos</button>
         </div>
         <p class="hint" style="display:block;margin-top:8px;font-size:12px;color:var(--ink-soft);">Exportar descarga una copia de seguridad (archivo JSON) con los datos de tu cuenta. Importar sustituye los datos de tu cuenta en todos tus dispositivos y pide confirmación antes de aplicarse.</p>
       </section>`;
@@ -2320,22 +2238,14 @@ function renderAjustes(){
       ${ajustesAccordionSection('cuenta', 'Cuenta', cuentaHtml)}
       ${ajustesAccordionSection('datos', 'Copia de seguridad', datosHtml)}
       ${ajustesAccordionSection('informacion', 'Información', informacionHtml)}
-      <!-- App de exámenes: secciones ocultas (Horarios bloqueados y el resto de
-           Organización). Se siguen
-           pintando para que su código funcione igual; se quitarán en la
-           limpieza final. -->
-      <div class="settings-hidden-sections" hidden>
-        ${ajustesAccordionSection('organizacion', 'Organización', organizacionHtml)}
-      </div>
     </div>
   `;
 
   // UX-7 (acordeón): toggle directo del panel pulsado, sin volver a
   // llamar a renderAjustes() — más ágil y no pierde el scroll/foco del
   // resto de la pantalla. ajustesAccordionOpen se actualiza igualmente,
-  // así que si luego se dispara un render completo (toggle de IA, botón
-  // de notificaciones) el estado abierto/cerrado de CADA categoría se
-  // conserva tal cual lo dejó el usuario.
+  // así que si luego se dispara un render completo el estado
+  // abierto/cerrado de CADA categoría se conserva tal cual lo dejó el usuario.
   el.querySelectorAll('[data-accordion]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const key = btn.dataset.accordion;
@@ -2348,22 +2258,6 @@ function renderAjustes(){
     });
   });
 
-  const homeSelect = el.querySelector('#pref-default-home');
-  if(homeSelect) homeSelect.addEventListener('change', async ()=>{
-    state.prefs.defaultHome = homeSelect.value;
-    await savePrefs();
-  });
-  const startSelect = el.querySelector('#pref-day-start');
-  const endSelect = el.querySelector('#pref-day-end');
-  if(startSelect) startSelect.addEventListener('change', async ()=>{
-    state.prefs.dayStartHour = Number(startSelect.value);
-    await savePrefs();
-  });
-  if(endSelect) endSelect.addEventListener('change', async ()=>{
-    state.prefs.dayEndHour = Number(endSelect.value);
-    await savePrefs();
-  });
-
   const addSubjectBtn = el.querySelector('#btn-add-subject');
   if(addSubjectBtn) addSubjectBtn.addEventListener('click', ()=> openSubjectModal());
   el.querySelectorAll('[data-subject-edit]').forEach(btn=>{
@@ -2373,20 +2267,13 @@ function renderAjustes(){
     btn.addEventListener('click', ()=> confirmDeleteSubject(btn.dataset.subjectDelete));
   });
 
-  const addSchedBtn = el.querySelector('#btn-add-schedule');
-  if(addSchedBtn) addSchedBtn.addEventListener('click', ()=> openScheduleModal());
-  el.querySelectorAll('[data-schedule-id]').forEach(row=>{
-    row.addEventListener('click', ()=> openScheduleModal({ scheduleId: row.dataset.scheduleId }));
-  });
-
   el.querySelector('#btn-logout').addEventListener('click', logout);
   el.querySelector('#btn-sync-now').addEventListener('click', syncNow);
   el.querySelector('#btn-export-data').addEventListener('click', exportData);
   el.querySelector('#btn-import-data').addEventListener('click', ()=> document.getElementById('import-file-input').click());
-  el.querySelector('#btn-delete-data').addEventListener('click', deleteAllData);
 }
 
-/* ---------- Exportar / Importar / Borrar datos ---------- */
+/* ---------- Exportar / Importar datos ---------- */
 function exportData(){
   const payload = {
     app: APP_NAME,
@@ -2550,41 +2437,6 @@ function initSettingsDataIO(){
   });
 }
 
-async function deleteAllData(){
-  const ok1 = confirm('Esto borrará PERMANENTEMENTE todos los datos de ORGANIZATOR de tu cuenta (tareas, eventos y ajustes) en TODOS tus dispositivos. Esta acción no se puede deshacer. ¿Seguro que quieres continuar?');
-  if(!ok1) return;
-  const ok2 = confirm('Última confirmación: se van a borrar todos los datos de tu cuenta ahora mismo. ¿Confirmas el borrado?');
-  if(!ok2) return;
-
-  state.tasks = [];
-  state.events = [];
-  state.customSchedules = [];
-  state.eventCategories = [];
-  state.reminders = [];
-  state.subjects = [];
-  state.exams = [];
-  state.studySessions = [];
-  state.prefs = defaultPrefs();
-  state.ia = defaultIA();
-
-  try{
-    await Promise.all([
-      saveTasks(), saveEvents(), saveCustomSchedules(), saveEventCategories(), saveReminders(),
-      saveSubjects(), saveExams(), saveStudySessions(),
-      savePrefs(), saveIA(),
-    ]);
-    // SYNC: mismo criterio que al importar (ver initSettingsDataIO).
-    const uploaded = (typeof flushAccountChanges === 'function') ? await flushAccountChanges() : true;
-    showToast(uploaded
-      ? 'Todos los datos se han borrado'
-      : 'Todos los datos se han borrado en este dispositivo; se borrarán de tu cuenta al volver la conexión');
-    showView('inicio');
-  }catch(err){
-    console.error(err);
-    showToast('Hubo un problema al borrar los datos');
-  }
-}
-
 /* ==================================================================
    PWA — registro del Service Worker y control de actualizaciones.
    No toca window.storage ni ningún dato del usuario: solo gestiona
@@ -2632,7 +2484,7 @@ function showUpdateBanner(reg){
 
 /* ==================================================================
    AUTENTICACIÓN (registro / inicio de sesión)
-   Los datos (tareas, eventos…) se siguen guardando con window.storage,
+   Los datos (asignaturas, exámenes…) se siguen guardando con window.storage,
    pero desde SYNC ese window.storage es el de la CUENTA que ha iniciado
    sesión (js/sync-storage.js): caché local propia de cada usuario,
    sincronizada con /api/data. Ver activateAccountStorage() más abajo.

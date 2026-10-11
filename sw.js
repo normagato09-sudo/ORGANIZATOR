@@ -13,13 +13,12 @@
  * que alguien se quede atascado con una versión vieja.
  */
 
-const CACHE_VERSION = 'v2.3.24';
+const CACHE_VERSION = 'v3.0.0';
 const CACHE_NAME = `organizator-shell-${CACHE_VERSION}`;
 
 // Recursos propios de la app que se pueden precachear con seguridad.
-// (Las fuentes de Google Fonts y la llamada a la IA se dejan siempre pasar
-// directamente a la red: no tiene sentido cachear peticiones externas de IA,
-// y las fuentes ya las gestiona el propio navegador con su caché HTTP.)
+// (Las fuentes de Google Fonts se dejan siempre pasar directamente a la red:
+// ya las gestiona el propio navegador con su caché HTTP.)
 const PRECACHE_URLS = [
   '/',
   '/organizator.html',
@@ -67,7 +66,7 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
 
   // Solo gestionamos peticiones GET del propio origen; todo lo demás
-  // (fuentes de Google, la API de la IA, etc.) va directo a la red tal cual.
+  // (fuentes de Google, etc.) va directo a la red tal cual.
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) {
     return;
   }

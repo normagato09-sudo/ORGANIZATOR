@@ -9,8 +9,8 @@
  * organizator.html loadState(), saveSubjects()/saveExams()/
  * saveStudySessions(), sanitizeImportedStudyItems() y el bloque de import
  * de estas claves, y los ejecuta en un sandbox con un window.storage en
- * memoria — mismo patrón que test-reminders-model.js. exportData() y
- * deleteAllData() se revisan por contenido (dependen de DOM/confirm).
+ * memoria — mismo patrón que test-reminders-model.js. exportData() se
+ * revisa por contenido (depende del DOM).
  *
  * Uso:  node js/test-study-data-model.js
  * Sale con código 0 si todo pasa, 1 si algo falla.
@@ -40,8 +40,7 @@ const sanitizeSrc = extractBetween(html, '/** Valida una lista importada de asig
 const importBlockSrc = extractBetween(html, '    const sanitizedStudy = {};', '    state.prefs = { ...defaultPrefs()', 'bloque de import de STUDY_KEYS');
 const subjectsBlockSrc = extractBetween(html, '/* ==================================================================\n   ASIGNATURAS (app de exámenes, paso 2)', '\n/* ==================================================================\n   RENDER: AJUSTES', 'bloque ASIGNATURAS');
 const exportDataSrc = extractBetween(html, 'function exportData(){', '\n  try{', 'función exportData()');
-const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\nasync function deleteAllData(){', 'función initSettingsDataIO()');
-const deleteAllSrc = extractBetween(html, 'async function deleteAllData(){', '\n/* ==================================================================\n   PWA — registro del Service Worker', 'función deleteAllData()');
+const importFnSrc = extractBetween(html, 'function initSettingsDataIO(){', '\n/* ==================================================================\n   PWA — registro del Service Worker', 'función initSettingsDataIO()');
 
 let pass = 0, fail = 0;
 function check(label, ok) {
@@ -157,9 +156,7 @@ function makeSandbox(initial) {
     const oldBackup = runImport({ tasks: [] });
     check('D7. una copia antigua sin estas claves deja las listas vacías', same(oldBackup.state.subjects, []) && same(oldBackup.state.exams, []) && same(oldBackup.state.studySessions, []));
     check('D8. el import guarda las tres listas', ['saveSubjects()', 'saveExams()', 'saveStudySessions()'].every(s => importFnSrc.includes(s)));
-
-    check('D9. "Borrar todos los datos" vacía y guarda las tres listas',
-      ['state.subjects = [];', 'state.exams = [];', 'state.studySessions = [];', 'saveSubjects()', 'saveExams()', 'saveStudySessions()'].every(s => deleteAllSrc.includes(s)));
+    check('D9. "Borrar todos los datos" ya no existe (3.0.0)', !html.includes('function deleteAllData(') && !html.includes('btn-delete-data'));
   }
 
   // =====================================================================
